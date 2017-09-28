@@ -155,6 +155,8 @@ class Runner:
 
   def add(self, params):
     '''Add new params to the job queue.  Duplicate params are ignored.'''
+    if not isinstance(param, list):
+      param = [param]
     with self.lock:
       new_jobs = [self.job_type(self.next_job_id + i, param) for i, param in enumerate(params)]
       job_ids = [job.job_id for job in new_jobs]
@@ -166,6 +168,8 @@ class Runner:
 
   def remove(self, job_ids):
     '''Remove pending jobs from the job queue.'''
+    if isinstance(job_ids, int):
+      job_ids = [job_ids]
     job_ids = set(job_ids)
     with self.lock:
       self.pending_jobs = [job for job in self.pending_jobs if job.job_id not in job_ids]
