@@ -1,0 +1,11 @@
+name: exptools
+channels:
+- defaults
+dependencies:
+- pytz
+- termcolor
+- jupyter
+- pandas
+- matplotlib
+- pip:
+  - tzlocal

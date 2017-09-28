@@ -1,0 +1,6 @@
+pytz
+tzlocal
+termcolor
+jupyter
+pandas
+matplotlib
