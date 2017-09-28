@@ -4,7 +4,7 @@ import subprocess
 import time
 import traceback
 
-__all__ = ['wait_for_procs', 'kill_procs']
+__all__ = ['wait_for_procs', 'kill_procs', 'run_ssh_cmd']
 
 def wait_for_procs(procs, timeout=None):
   '''Wait for processes to terminate.'''
@@ -44,3 +44,22 @@ def kill_procs(procs):
       proc.kill()
     except subprocess.SubprocessError:
       traceback.print_exc()
+
+def run_ssh_cmd(host, cmd, **kwargs):
+  '''Run a remote command using ssh.'''
+
+  ssh_cmd = ['ssh']
+  ssh_cmd += ['-o', 'ServerAliveInterval=10']
+  ssh_cmd += ['-o', 'ServerAliveCountMax=6']
+  ssh_cmd += ['-T']
+  if host.find(':') != -1:
+    host, _, port = host.partition(':')
+    ssh_cmd += ['-p', port]
+  ssh_cmd += [host]
+  ssh_cmd += ['bash', '-l']
+
+  proc = subprocess.Popen(ssh_cmd, stdin=subprocess.PIPE, **kwargs)
+  proc.stdin.write(cmd.encode('utf-8'))
+  proc.stdin.close()
+
+  return proc
