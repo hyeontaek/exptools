@@ -127,6 +127,16 @@ class Runner:
 
     self.stopping = False
 
+  def reset(self):
+    '''Reset the job queue state.'''
+
+    with self.lock:
+      self.succeeded_jobs = []
+      self.failed_jobs = []
+      # Keep active jobs because reset() does not kill them
+      #self.active_jobs = []
+      self.pending_jobs = []
+
   def _state(self):
     '''Get the runner state (locking assumed).'''
     assert self.lock.locked()
