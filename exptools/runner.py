@@ -24,7 +24,8 @@ class Runner:
       self.resources = {}
 
     self.lock = Lock()
-    self.cond = Condition(self.lock)
+    self.queue_update_cond = Condition(self.lock)
+    self.sleep_cond = Condition()
 
     self.next_job_id = 0
     self.succeeded_jobs = []
@@ -49,7 +50,7 @@ class Runner:
           break
 
         if not self.pending_jobs:
-          self.cond.wait()
+          self.queue_update_cond.wait()
           continue
 
         job = self.pending_jobs[0]
@@ -64,9 +65,10 @@ class Runner:
             self._failed_demand(job, demand)
 
             self._check_empty_queue()
+            self.queue_update_cond.notify_all()
           else:
-            # Retry when some job returns resources
-            self.cond.wait()
+            # Retry when some job finishes (and hopefully returns resources)
+            self.queue_update_cond.wait()
           continue
 
         self.pending_jobs.pop(0)
@@ -96,7 +98,7 @@ class Runner:
       with self.lock:
         if not (self.active_jobs or self.pending_jobs):
           break
-      time.sleep(1)
+        self.queue_update_cond.wait(1)
 
   def stop(self):
     '''Stop the runner.'''
@@ -106,17 +108,14 @@ class Runner:
     with self.lock:
       self.stopping = True
 
-    # Wake up the runner
+    # Wake up threads
     with self.lock:
-      self.cond.notify()
+      self.queue_update_cond.notify_all()
 
-    while True:
-      with self.lock:
-        if not self.running:
-          break
-      time.sleep(1)
+    with self.sleep_cond:
+      self.sleep_cond.notify()
 
-    # Join all threads
+    # Join threads
     self.main_t.join()
     self.main_t = None
 
@@ -162,7 +161,7 @@ class Runner:
       self.next_job_id += len(params)
 
       self.pending_jobs = self._dedup(self.pending_jobs + new_jobs)
-      self.cond.notify()
+      self.queue_update_cond.notify_all()
     return job_ids
 
   def remove(self, job_ids):
@@ -170,7 +169,7 @@ class Runner:
     job_ids = set(job_ids)
     with self.lock:
       self.pending_jobs = [job for job in self.pending_jobs if job.job_id not in job_ids]
-      self.cond.notify()
+      self.queue_update_cond.notify_all()
 
   def _dedup(self, jobs):
     '''Deduplicate jobs with params that share the same hash.'''
@@ -229,8 +228,7 @@ class Runner:
           self._failed_result(job)
 
         self._check_empty_queue()
-
-        self.cond.notify()
+        self.queue_update_cond.notify_all()
 
   def _succeeded(self, job):
     '''Report a succeeded job.'''
@@ -304,4 +302,5 @@ class Runner:
     while self.running:
       with self.lock:
         self.concurrency = max(1., alpha * self.concurrency + (1. - alpha) * len(self.active_jobs))
-      time.sleep(1)
+      with self.sleep_cond:
+        self.sleep_cond.wait(1)
