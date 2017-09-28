@@ -116,8 +116,6 @@ class Runner:
           break
       time.sleep(1)
 
-    self.wait()
-
     # Join all threads
     self.main_t.join()
     self.main_t = None
