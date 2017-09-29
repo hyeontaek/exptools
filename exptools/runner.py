@@ -2,7 +2,7 @@
 
 from threading import Lock, Condition, Thread
 from collections import namedtuple
-import time
+from queue import Queue, Empty
 from .estimator import Estimator
 
 __all__ = ['Runner']
@@ -40,6 +40,7 @@ class Runner:
     self.stopping = False
 
     self.est = Estimator(history_mgr)
+    self.messages = Queue()
 
   def run(self):
     '''Run params.'''
@@ -91,14 +92,35 @@ class Runner:
     self.concurrency_update_t = Thread(target=self._update_concurrency, daemon=True)
     self.concurrency_update_t.start()
 
-  def wait(self):
+  def wait(self, show_messages=True):
     '''Wait for the runner to process all jobs.'''
     # Wait for all jobs to finish
     while True:
       with self.lock:
         if not (self.active_jobs or self.pending_jobs):
           break
+        if show_messages:
+          while True:
+            try:
+              msg = self.messages.get_nowait()
+              print(msg)
+            except Empty:
+              break
         self.queue_update_cond.wait(1)
+
+  def monitor(self):
+    '''Print progress messages.'''
+    while True:
+      msg = self.messages.get()
+      print(msg)
+
+  def clear_messages(self):
+    '''Clear unprinted progress messages.'''
+    while True:
+      try:
+        self.messages.get_nowait()
+      except Empty:
+        break
 
   def stop(self):
     '''Stop the runner.'''
@@ -134,6 +156,8 @@ class Runner:
       #self.active_jobs = []
       self.pending_jobs = []
 
+      self.clear_messages()
+
   def _state(self):
     '''Get the runner state (locking assumed).'''
     assert self.lock.locked()
@@ -155,8 +179,8 @@ class Runner:
 
   def add(self, params):
     '''Add new params to the job queue.  Duplicate params are ignored.'''
-    if not isinstance(param, list):
-      param = [param]
+    if not isinstance(params, list):
+      params = [params]
     with self.lock:
       new_jobs = [self.job_type(self.next_job_id + i, param) for i, param in enumerate(params)]
       job_ids = [job.job_id for job in new_jobs]
@@ -201,8 +225,8 @@ class Runner:
 
     if self.history_mgr is not None:
       self.history_mgr.started(param)
-    print(f'Started:   job={job}')
-    print(self.est.format_estimated_time(self._state()))
+    self.messages.put(f'Started:   job={job}')
+    self.messages.put(self.est.format_estimated_time(self._state()))
 
     thread.start()
 
@@ -240,8 +264,8 @@ class Runner:
     if self.history_mgr is not None:
       self.history_mgr.finished(job.param, True)
     self.succeeded_jobs.append(job)
-    print(f'Succeeded: job={job}')
-    print(self.est.format_estimated_time(self._state()))
+    self.messages.put(f'Succeeded: job={job}')
+    self.messages.put(self.est.format_estimated_time(self._state()))
 
   def _failed_result(self, job):
     '''Report a failed job due to a failed result.'''
@@ -249,8 +273,8 @@ class Runner:
     if self.history_mgr is not None:
       self.history_mgr.finished(job.param, False)
     self.failed_jobs.append(job)
-    print(f'Failed:   job={job} (failed result)')
-    print(self.est.format_estimated_time(self._state()))
+    self.messages.put(f'Failed:   job={job} (failed result)')
+    self.messages.put(self.est.format_estimated_time(self._state()))
 
   def _failed_demand(self, job, demand):
     '''Report a failed job due to unsatisfiable demand.'''
@@ -258,8 +282,8 @@ class Runner:
     if self.history_mgr is not None:
       self.history_mgr.finished(job.param, False)
     self.failed_jobs.append(job)
-    print(f'Failed: job={job} (unable to satisfy demand: {demand})')
-    print(self.est.format_estimated_time(self._state()))
+    self.messages.put(f'Failed: job={job} (unable to satisfy demand: {demand})')
+    self.messages.put(self.est.format_estimated_time(self._state()))
 
   def _failed_error(self, job, error):
     '''Report a failed job due to an error.'''
@@ -267,13 +291,13 @@ class Runner:
     if self.history_mgr is not None:
       self.history_mgr.finished(job.param, False)
     self.failed_jobs.append(job)
-    print(f'Failed:   job={job} (error: {error})')
-    print(self.est.format_estimated_time(self._state()))
+    self.messages.put(f'Failed:   job={job} (error: {error})')
+    self.messages.put(self.est.format_estimated_time(self._state()))
 
   def _check_empty_queue(self):
     assert self.lock.locked()
     if not (self.active_jobs or self.pending_jobs):
-      print('Job queue empty')
+      self.messages.put('Job queue empty')
 
   def _is_available(self, demand):
     '''Check if required resources are available.'''
