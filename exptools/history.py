@@ -32,7 +32,7 @@ class HistoryManager:
 
   def _dump(self):
     '''Store history data.'''
-    assert self.lock.locked()
+    assert self.lock.locked() # pylint: disable=no-member
 
     with open(self.path + '.tmp', 'wb') as file:
       self.pickler(file).dump(self.history)

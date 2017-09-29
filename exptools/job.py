@@ -9,9 +9,9 @@ __all__ = ['JobDef', 'OrderedDict']
 class JobDef:
   '''Define a job.'''
 
+  # pylint: disable=unused-argument, no-self-use
   def hash_filter_func(self, key):
     '''Return True if the key is included in the hash.'''
-    # pylint: disable=unused-argument, no-self-use
     return True
 
   def hash(self, param):
@@ -19,14 +19,17 @@ class JobDef:
     filtered_param = {key: param[1][key] for key in param[1] if self.hash_filter_func(key)}
 
     param_str = param[0] + '__' + json.dumps(filtered_param, sort_keys=True)
-    return hashlib.blake2b(param_str.encode('utf-8')).hexdigest()[:16]
+    hash_func = hashlib.blake2b # pylint: disable=no-member
+    return hash_func(param_str.encode('utf-8')).hexdigest()[:16]
 
+  # pylint: disable=unused-argument, no-self-use
   def format(self, param):
-    return f"{param[0]}: {param[1]}"
+    '''Format a parameter.'''
+    return f'{param[0]}: {param[1]}'
 
+  # pylint: disable=unused-argument, no-self-use
   def demand(self, param):
     '''Return resource requirements.'''
-    # pylint: disable=unused-argument, no-self-use
     return {}
 
   def run(self, param):
