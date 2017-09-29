@@ -70,15 +70,15 @@ class HistoryManager:
       self.history[param_hash]['success'] = success
       self._dump()
 
-  def df(self):
-    '''Return a dataframe.'''
+  def df_datetime(self):
+    '''Return a dataframe using datetime objects.'''
     import pandas as pd
     data = list(self.history.values())
     return pd.DataFrame(data, columns=data[0].keys())
 
   def df_utc(self):
     '''Return a dataframe using the UTC timezone.'''
-    history_df = self.df()
+    history_df = self.df_datetime()
     history_df['started'] = history_df['started']\
         .map(lambda v: format_utc(v) if v else v)
     history_df['finished'] = history_df['finished']\
@@ -87,7 +87,7 @@ class HistoryManager:
 
   def df_local(self):
     '''Return a dataframe using the local timezone.'''
-    history_df = self.df()
+    history_df = self.df_datetime()
     history_df['started'] = history_df['started']\
         .map(lambda v: format_local(v) if v else v)
     history_df['finished'] = history_df['finished']\
