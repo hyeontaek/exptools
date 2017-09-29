@@ -3,6 +3,7 @@
 from threading import Lock, Condition, Thread
 from collections import namedtuple
 from queue import Queue, Empty
+import weakref
 import termcolor
 from .estimator import Estimator
 from .history import HistoryManager
@@ -74,7 +75,6 @@ class RunnerState:
 
     return output
 
-
 class Runner:
   '''Run jobs with params.'''
 
@@ -100,22 +100,42 @@ class Runner:
 
     self.main_t = None
     self.concurrency_update_t = None
+    self.active_job_t = {}
+    self.joinable_job_t = []
+
     self.running = False
     self.stopping = False
 
     self.est = Estimator(history_mgr)
     self.messages = Queue()
 
+  def __del__(self):
+    if self.running:
+      self.stop()
+
   def run(self):
     '''Run params.'''
+    self._run(weakref.ref(self))
+
+  # pylint: disable=protected-access
+  @staticmethod
+  def _run(weak_self):
+    '''Run params.  This is intended for internal use because it takes a weak reference to self.'''
+
     while True:
+      self = weak_self()
+      if self is None:
+        break
+
       with self.lock:
         if self.stopping:
           self.running = False
           break
 
         if not self._state.pending_jobs:
-          self.queue_update_cond.wait()
+          queue_update_cond = self.queue_update_cond
+          del self
+          queue_update_cond.wait()
           continue
 
         job = self._state.pending_jobs[0]
@@ -130,15 +150,21 @@ class Runner:
             self._failed_demand(job, demand)
 
             self._check_empty_queue()
+
             self.queue_update_cond.notify_all()
           else:
             # Retry when some job finishes (and hopefully returns resources)
-            self.queue_update_cond.wait()
+            queue_update_cond = self.queue_update_cond
+            del self
+            queue_update_cond.wait()
           continue
 
         self._state.pending_jobs.pop(0)
 
         self._launch(job, param, demand)
+
+        while self.joinable_job_t:
+          self.joinable_job_t.pop().join()
 
   def start(self):
     '''Start the runner.'''
@@ -149,20 +175,25 @@ class Runner:
       self.stopping = False
 
     assert self.main_t is None
-    self.main_t = Thread(target=self.run, daemon=True)
+    self.main_t = Thread(target=Runner._run, args=(weakref.ref(self),), name='Runner.main_t')
     self.main_t.start()
 
     assert self.concurrency_update_t is None
-    self.concurrency_update_t = Thread(target=self._update_concurrency, daemon=True)
+    self.concurrency_update_t = Thread(target=Runner._update_concurrency, args=(weakref.ref(self),),
+                                       name='Runner.concurrency_update_t')
     self.concurrency_update_t.start()
 
-  def wait(self, show_messages=True):
+  def wait(self, active_only=False, show_messages=True):
     '''Wait for the runner to process all jobs.'''
     # Wait for all jobs to finish
     while True:
       with self.lock:
-        if not (self._state.active_jobs or self._state.pending_jobs):
-          break
+        if active_only:
+          if not self._state.active_jobs:
+            break
+        else:
+          if not (self._state.active_jobs or self._state.pending_jobs):
+            break
         if show_messages:
           while True:
             try:
@@ -204,12 +235,20 @@ class Runner:
     with self.sleep_cond:
       self.sleep_cond.notify()
 
-    # Join threads
+    # Join runner threads
     self.main_t.join()
     self.main_t = None
 
     self.concurrency_update_t.join()
     self.concurrency_update_t = None
+
+    # Join job threads
+    self.wait(active_only=True, show_messages=False)
+
+    with self.lock:
+      while self.joinable_job_t:
+        self.joinable_job_t.pop().join()
+      assert not self.active_job_t
 
     self.stopping = False
 
@@ -273,10 +312,12 @@ class Runner:
     '''Start the job with param in a per-param thread.'''
     assert self.lock.locked() # pylint: disable=no-member
 
-    thread = Thread(target=self._run_param, args=(job, param, demand), daemon=True)
+    thread = Thread(target=self._run_param, args=(job, param, demand),
+                    name=f'Runner.job-{job.job_id}')
 
     self._take(demand)
     self._state.active_jobs.append(job)
+    self.active_job_t[job.job_id] = thread
 
     self.history_mgr.started(param)
     self.messages.put(termcolor.colored(f'Started:   {self.format_job(job)}', 'blue'))
@@ -301,7 +342,6 @@ class Runner:
           if job.job_id == active_job.job_id:
             del self._state.active_jobs[i]
             break
-
         if exception is not None:
           self._failed_error(job, exception)
         if success:
@@ -311,6 +351,9 @@ class Runner:
 
         self._check_empty_queue()
         self.queue_update_cond.notify_all()
+
+        self.joinable_job_t.append(self.active_job_t[job.job_id])
+        del self.active_job_t[job.job_id]
 
   def format_job(self, job):
     '''Format a job.'''
@@ -396,13 +439,25 @@ class Runner:
     for res, req in demand.items():
       self.resources[res] += req
 
-  def _update_concurrency(self):
+  # pylint: disable=protected-access
+  @staticmethod
+  def _update_concurrency(weak_self):
     '''Update the current concurrency.'''
     alpha = 0.9
 
-    while self.running:
+    while True:
+      self = weak_self()
+      if self is None:
+        break
+
       with self.lock:
+        if not self.running:
+          break
+
         self._state.concurrency = max(1., alpha * self._state.concurrency + \
                                       (1. - alpha) * len(self._state.active_jobs))
-      with self.sleep_cond:
-        self.sleep_cond.wait(1)
+
+      sleep_cond = self.sleep_cond
+      del self
+      with sleep_cond:
+        sleep_cond.wait(1)

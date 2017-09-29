@@ -34,5 +34,9 @@ job_defs = {'my_job': MyJobDef()}
 init_resources = {'concurrency': 2, 'ps': 2, 'worker': 6}
 
 hist_mgr = HistoryManager(job_defs)
-runner = Runner(job_defs, init_resources, hist_mgr)
-runner.start()
+
+def new_runner():
+  '''Create and start a new runner.'''
+  runner = Runner(job_defs, init_resources, hist_mgr)
+  runner.start()
+  return runner
