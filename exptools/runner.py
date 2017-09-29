@@ -71,7 +71,7 @@ class RunnerState:
       output += f'  {self.runner.format_job(job)}\n'
     output += '\n'
 
-    output += f'Concurrency: {self.concurrency}\n'
+    output += f'Concurrency: {self.concurrency}'
 
     return output
 
