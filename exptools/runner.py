@@ -36,6 +36,12 @@ class RunnerState:
     state.concurrency = self.concurrency
     return state
 
+  def __str__(self):
+    '''Format the job queue state.'''
+    return f'succeeded_jobs={self.succeeded_jobs}, failed_jobs={self.failed_jobs}, ' + \
+           f'active_jobs={self.active_jobs}, pending_jobs={self.pending_jobs}, ' + \
+           f'concurrency={self.concurrency}'
+
 class Runner:
   '''Run jobs with params.'''
 
