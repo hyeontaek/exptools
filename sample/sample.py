@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 from exptools.job import JobDef, OrderedDict
 from exptools.history import HistoryManager
 from exptools.runner import Runner
+from exptools.time import *
 
 class MyJobDef(JobDef):
   '''Define my job.'''

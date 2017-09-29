@@ -1,9 +1,8 @@
 '''Provides Estimator.'''
 
 import datetime
-import pytz
 import termcolor
-import tzlocal
+from .time import utcnow, format_local, diff_sec, format_sec
 
 __all__ = ['Estimator']
 
@@ -16,7 +15,7 @@ class Estimator:
   def estimate_remaining_time(self, runner_state):
     '''Estimate the remaining time using Runner's state.'''
 
-    now = datetime.datetime.utcnow()
+    now = utcnow()
     state = runner_state
 
     # Future parallelism cannot be higher than the remaining job count
@@ -59,7 +58,7 @@ class Estimator:
       if self.hist_mgr is not None:
         hist_entry = self.hist_mgr.get(job.param)
         if hist_entry['started'] is not None:
-          known_active_duration += (now - hist_entry['started']).total_seconds()
+          known_active_duration += diff_sec(now, hist_entry['started'])
 
     # Estimate remaining duration
     remaining_duration = (interpolated_duration - known_done_duration - known_active_duration)
@@ -69,30 +68,6 @@ class Estimator:
     remaining_time = remaining_duration / concurrency
 
     return remaining_time
-
-
-  # output formatting
-  @staticmethod
-  def _format_sec(time):
-    '''Format seconds as human-readable shorthands.'''
-    time = round(time)
-    output = ''
-    if time >= 86400:
-      value = int(time / 86400)
-      time -= value * 86400
-      output += '%d day%s ' % (value, 's' if value != 1 else '')
-    if time >= 3600:
-      value = int(time / 3600)
-      time -= value * 3600
-      output += '%d hour%s ' % (value, 's' if value != 1 else '')
-    if time >= 60:
-      value = int(time / 60)
-      time -= value * 60
-      output += '%d minute%s ' % (value, 's' if value != 1 else '')
-    value = time
-    if value > 0 or output == '':
-      output += '%d second%s ' % (value, 's' if value != 1 else '')
-    return output.rstrip()
 
   @staticmethod
   def _format_job_count(runner_state):
@@ -122,14 +97,12 @@ class Estimator:
   def format_estimated_time(self, runner_state):
     '''Format the estimated time with colors.'''
     remaining_time = self.estimate_remaining_time(runner_state)
-    remaining_str = self._format_sec(remaining_time)
+    remaining_str = format_sec(remaining_time)
 
-    current_time = datetime.datetime.utcnow()
+    current_time = utcnow()
 
     finish_by = current_time + datetime.timedelta(seconds=remaining_time)
-    finish_by_local_str = finish_by.replace(
-        tzinfo=pytz.utc).astimezone(
-            tzlocal.get_localzone()).strftime('%Y-%m-%d %H:%M:%S')
+    finish_by_local_str = format_local(finish_by)
 
     output = termcolor.colored('[', 'blue')
     output += self._format_job_count(runner_state)

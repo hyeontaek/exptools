@@ -5,13 +5,16 @@ from collections import namedtuple
 from queue import Queue, Empty
 import termcolor
 from .estimator import Estimator
+from .history import HistoryManager
+from .time import utcnow, diff_sec, format_sec
 
 __all__ = ['Runner']
 
 class RunnerState:
   '''Store the state of Runner.'''
 
-  def __init__(self):
+  def __init__(self, runner):
+    self.runner = runner
     self.succeeded_jobs = []
     self.failed_jobs = []
     self.active_jobs = []
@@ -28,7 +31,7 @@ class RunnerState:
 
   def clone(self):
     '''Clone the job queue state.'''
-    state = RunnerState()
+    state = RunnerState(self.runner)
     state.succeeded_jobs = list(self.succeeded_jobs)
     state.failed_jobs = list(self.failed_jobs)
     state.active_jobs = list(self.active_jobs)
@@ -42,6 +45,36 @@ class RunnerState:
            f'active_jobs={self.active_jobs}, pending_jobs={self.pending_jobs}, ' + \
            f'concurrency={self.concurrency}'
 
+  def format(self):
+    '''Format the job queue state in detail.'''
+    output = f'Succeeded jobs ({len(self.succeeded_jobs)}):\n'
+    for job in self.succeeded_jobs:
+      output += f'  {self.runner.format_job(job)} '
+      output += f'[elapsed: {self.runner.format_elapsed(job)}]\n'
+    output += '\n'
+
+    output += f'Failed jobs ({len(self.failed_jobs)}):\n'
+    for job in self.failed_jobs:
+      output += f'  {self.runner.format_job(job)} '
+      output += f'[elapsed: {self.runner.format_elapsed(job)}]\n'
+    output += '\n'
+
+    output += f'Active jobs ({len(self.active_jobs)}):\n'
+    for job in self.active_jobs:
+      output += f'  {self.runner.format_job(job)} '
+      output += f'[elapsed: {self.runner.format_elapsed(job)}]\n'
+    output += '\n'
+
+    output += f'Pending jobs ({len(self.pending_jobs)}):\n'
+    for job in self.pending_jobs:
+      output += f'  {self.runner.format_job(job)}\n'
+    output += '\n'
+
+    output += f'Concurrency: {self.concurrency}\n'
+
+    return output
+
+
 class Runner:
   '''Run jobs with params.'''
 
@@ -49,18 +82,21 @@ class Runner:
 
   def __init__(self, job_defs, init_resources=None, history_mgr=None):
     self.job_defs = job_defs
-    self.history_mgr = history_mgr
     if init_resources is not None:
       self.resources = dict(init_resources)
     else:
       self.resources = {}
+    if history_mgr is not None:
+      self.history_mgr = history_mgr
+    else:
+      self.history_mgr = HistoryManager(job_defs, path=None)
 
     self.lock = Lock()
     self.queue_update_cond = Condition(self.lock)
     self.sleep_cond = Condition()
 
     self.next_job_id = 0
-    self._state = RunnerState()
+    self._state = RunnerState(self)
 
     self.main_t = None
     self.concurrency_update_t = None
@@ -242,9 +278,8 @@ class Runner:
     self._take(demand)
     self._state.active_jobs.append(job)
 
-    if self.history_mgr is not None:
-      self.history_mgr.started(param)
-    self.messages.put(termcolor.colored(f'Started:   {self._format_job(job)}', 'blue'))
+    self.history_mgr.started(param)
+    self.messages.put(termcolor.colored(f'Started:   {self.format_job(job)}', 'blue'))
     self.messages.put(self.est.format_estimated_time(self._state))
 
     thread.start()
@@ -277,47 +312,59 @@ class Runner:
         self._check_empty_queue()
         self.queue_update_cond.notify_all()
 
-  def _format_job(self, job):
+  def format_job(self, job):
+    '''Format a job.'''
     return f'[{job.job_id}] {self.job_defs[job.param[0]].format(job.param)}'
+
+  def format_elapsed(self, job):
+    '''Format the elapsed time of a job.'''
+    hist_entry = self.history_mgr.get(job[1])
+    started = hist_entry['started']
+    finished = hist_entry['finished']
+    if not started:
+      return format_sec(0.)
+    if not finished:
+      return format_sec(diff_sec(utcnow(), started))
+    return format_sec(diff_sec(finished, started))
 
   def _succeeded(self, job):
     '''Report a succeeded job.'''
     assert self.lock.locked() # pylint: disable=no-member
-    if self.history_mgr is not None:
-      self.history_mgr.finished(job.param, True)
+    self.history_mgr.finished(job.param, True)
     self._state.succeeded_jobs.append(job)
     self.messages.put(termcolor.colored(
-        f'Succeeded: {self._format_job(job)}', 'green'))
+        f'Succeeded: {self.format_job(job)} ' + \
+        f'[elapsed: {self.format_elapsed(job)}]', 'green'))
     self.messages.put(self.est.format_estimated_time(self._state))
 
   def _failed_result(self, job):
     '''Report a failed job due to a failed result.'''
     assert self.lock.locked() # pylint: disable=no-member
-    if self.history_mgr is not None:
-      self.history_mgr.finished(job.param, False)
+    self.history_mgr.finished(job.param, False)
     self._state.failed_jobs.append(job)
     self.messages.put(termcolor.colored(
-        f'Failed:   {self._format_job(job)} (fail returned)', 'red'))
+        f'Failed:   {self.format_job(job)} (fail returned) ' + \
+        f'[elapsed: {self.format_elapsed(job)}]', 'red'))
     self.messages.put(self.est.format_estimated_time(self._state))
 
   def _failed_demand(self, job, demand):
     '''Report a failed job due to unsatisfiable demand.'''
     assert self.lock.locked() # pylint: disable=no-member
-    if self.history_mgr is not None:
-      self.history_mgr.finished(job.param, False)
+    self.history_mgr.finished(job.param, False)
     self._state.failed_jobs.append(job)
     self.messages.put(termcolor.colored(
-        f'Failed: {self._format_job(job)} (unable to satisfy demand: {demand})', 'red'))
+        f'Failed: {self.format_job(job)} (unable to satisfy demand: {demand})' + \
+        f'[elapsed: {self.format_elapsed(job)}]', 'red'))
     self.messages.put(self.est.format_estimated_time(self._state))
 
   def _failed_error(self, job, error):
     '''Report a failed job due to an error.'''
     assert self.lock.locked() # pylint: disable=no-member
-    if self.history_mgr is not None:
-      self.history_mgr.finished(job.param, False)
+    self.history_mgr.finished(job.param, False)
     self._state.failed_jobs.append(job)
     self.messages.put(termcolor.colored(
-        f'Failed:   {self._format_job(job)} (error: {error})', 'red'))
+        f'Failed:   {self.format_job(job)} (error: {error}) ' + \
+        f'[elapsed: {self.format_elapsed(job)}]', 'red'))
     self.messages.put(self.est.format_estimated_time(self._state))
 
   def _check_empty_queue(self):
