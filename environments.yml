@@ -4,8 +4,10 @@ channels:
 dependencies:
 - pytz
 - termcolor
-- jupyter
 - pandas
-- matplotlib
 - pip:
   - tzlocal
+- wheel
+- pylint
+- jupyter
+- matplotlib
