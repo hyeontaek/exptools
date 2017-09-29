@@ -58,7 +58,9 @@ setup(
         '': ['sample/*.ipynb'],
         },
 
-    data_files=[],
+    data_files=[
+        ('', ['LICENSE.txt']),
+        ],
 
     entry_points={},
 )
