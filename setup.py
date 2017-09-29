@@ -47,6 +47,8 @@ setup(
         'dev': [
           'wheel',
           'pylint',
+          'pytest',
+          'pytest-cov',
           ],
         'sample': [
           'jupyter',

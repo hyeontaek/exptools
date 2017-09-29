@@ -9,5 +9,7 @@ dependencies:
   - tzlocal
 - wheel
 - pylint
+- pytest
+- pytest-cov
 - jupyter
 - matplotlib

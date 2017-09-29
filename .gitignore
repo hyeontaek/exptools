@@ -4,3 +4,6 @@ __pycache__
 /build
 /dist
 /exptools.egg-info
+/.coverage
+/.cache
+/cov_html
