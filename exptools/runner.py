@@ -1,5 +1,6 @@
 '''Provides Runner.'''
 
+import termcolor
 from threading import Lock, Condition, Thread
 from collections import namedtuple
 from queue import Queue, Empty
@@ -110,9 +111,12 @@ class Runner:
 
   def monitor(self):
     '''Print progress messages.'''
-    while True:
-      msg = self.messages.get()
-      print(msg)
+    try:
+      while True:
+        msg = self.messages.get()
+        print(msg)
+    except KeyboardInterrupt:
+      pass
 
   def clear_messages(self):
     '''Clear unprinted progress messages.'''
@@ -225,7 +229,7 @@ class Runner:
 
     if self.history_mgr is not None:
       self.history_mgr.started(param)
-    self.messages.put(f'Started:   job={job}')
+    self.messages.put(termcolor.colored(f'Started:   {self._format_job(job)}', 'blue'))
     self.messages.put(self.est.format_estimated_time(self._state()))
 
     thread.start()
@@ -258,13 +262,16 @@ class Runner:
         self._check_empty_queue()
         self.queue_update_cond.notify_all()
 
+  def _format_job(self, job):
+    return f'[{job.job_id}] {self.job_defs[job.param[0]].format(job.param)}'
+
   def _succeeded(self, job):
     '''Report a succeeded job.'''
     assert self.lock.locked()
     if self.history_mgr is not None:
       self.history_mgr.finished(job.param, True)
     self.succeeded_jobs.append(job)
-    self.messages.put(f'Succeeded: job={job}')
+    self.messages.put(termcolor.colored(f'Succeeded: {self._format_job(job)}', 'green'))
     self.messages.put(self.est.format_estimated_time(self._state()))
 
   def _failed_result(self, job):
@@ -273,7 +280,7 @@ class Runner:
     if self.history_mgr is not None:
       self.history_mgr.finished(job.param, False)
     self.failed_jobs.append(job)
-    self.messages.put(f'Failed:   job={job} (failed result)')
+    self.messages.put(termcolor.colored(f'Failed:   {self._format_job(job)} (fail returned)', 'red'))
     self.messages.put(self.est.format_estimated_time(self._state()))
 
   def _failed_demand(self, job, demand):
@@ -282,7 +289,7 @@ class Runner:
     if self.history_mgr is not None:
       self.history_mgr.finished(job.param, False)
     self.failed_jobs.append(job)
-    self.messages.put(f'Failed: job={job} (unable to satisfy demand: {demand})')
+    self.messages.put(termcolor.colored(f'Failed: {self._format_job(job)} (unable to satisfy demand: {demand})', 'red'))
     self.messages.put(self.est.format_estimated_time(self._state()))
 
   def _failed_error(self, job, error):
@@ -291,7 +298,7 @@ class Runner:
     if self.history_mgr is not None:
       self.history_mgr.finished(job.param, False)
     self.failed_jobs.append(job)
-    self.messages.put(f'Failed:   job={job} (error: {error})')
+    self.messages.put(termcolor.colored(f'Failed:   {self._format_job(job)} (error: {error})', 'red'))
     self.messages.put(self.est.format_estimated_time(self._state()))
 
   def _check_empty_queue(self):

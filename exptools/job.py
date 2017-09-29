@@ -21,6 +21,9 @@ class JobDef:
     param_str = param[0] + '__' + json.dumps(filtered_param, sort_keys=True)
     return hashlib.blake2b(param_str.encode('utf-8')).hexdigest()[:16]
 
+  def format(self, param):
+    return f"{param[0]}: {param[1]}"
+
   def demand(self, param):
     '''Return resource requirements.'''
     # pylint: disable=unused-argument, no-self-use

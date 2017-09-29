@@ -10,6 +10,9 @@ from exptools.runner import Runner
 class MyJobDef(JobDef):
   '''Define my job.'''
 
+  def format(self, param):
+    return f"{param[0]}: i={param[1]['i']}"
+
   def demand(self, param):
     '''Require resources.'''
     return {'concurrency': 1, 'ps': 1, 'worker': 2}
