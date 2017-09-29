@@ -1,9 +1,7 @@
-'''A setup module for exptools.'''
+'''A setup.py for exptools.'''
 
 from setuptools import setup, find_packages
 from os import path
-
-here = path.abspath(path.dirname(__file__))
 
 setup(
     name='exptools',
@@ -15,11 +13,9 @@ setup(
 
     url='https://github.com/hyeontaek/exptools',
 
-    # Author details
     author='Hyeontaek Lim',
     author_email='hl@cs.cmu.edu',
 
-    # Choose your license
     license='Apache',
 
     classifiers=[
@@ -28,6 +24,7 @@ setup(
         'Intended Audience :: Developers',
         'Intended Audience :: Science/Research',
 
+        'Topic :: Scientific/Engineering',
         'Topic :: Software Development',
 
         'License :: OSI Approved :: Apache Software License',
@@ -35,7 +32,7 @@ setup(
         'Programming Language :: Python :: 3.6',
     ],
 
-    keywords='experiment',
+    keywords='experiment research',
 
     packages=find_packages(),
 
@@ -57,7 +54,9 @@ setup(
           ],
     },
 
-    package_data={},
+    package_data={
+        '': ['sample/*.ipynb'],
+        },
 
     data_files=[],
 
