@@ -338,9 +338,13 @@ class Runner:
         self.joinable_job_t.append(self.active_job_t[job.job_id])
         del self.active_job_t[job.job_id]
 
+  def format_param(self, param):
+    '''Format a param.'''
+    return f'{self.job_defs[param[0]].format(param)}'
+
   def format_job(self, job):
     '''Format a job.'''
-    return f'[{job.job_id}] {self.job_defs[job.param[0]].format(job.param)}'
+    return f'[{job.job_id}] {self.format_param(job.param)}'
 
   def format_elapsed(self, job):
     '''Format the elapsed time of a job.'''
