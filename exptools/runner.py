@@ -1,8 +1,8 @@
 '''Provides Runner.'''
 
-from threading import Lock, Condition, Thread
 from collections import namedtuple
-from queue import Queue, Empty
+import sys
+from threading import Lock, Condition, Thread
 import weakref
 import termcolor
 from .estimator import Estimator
@@ -80,7 +80,7 @@ class Runner:
 
   job_type = namedtuple('job_type', ['job_id', 'param'])
 
-  def __init__(self, job_defs, init_resources=None, history_mgr=None):
+  def __init__(self, job_defs, init_resources=None, history_mgr=None, message_f=sys.stdout):
     self.job_defs = job_defs
     if init_resources is not None:
       self.resources = dict(init_resources)
@@ -90,6 +90,7 @@ class Runner:
       self.history_mgr = history_mgr
     else:
       self.history_mgr = HistoryManager(job_defs, path=None)
+    self.message_f = message_f
 
     self.lock = Lock()
     self.queue_update_cond = Condition(self.lock)
@@ -107,7 +108,6 @@ class Runner:
     self.stopping = False
 
     self.est = Estimator(history_mgr)
-    self.messages = Queue()
 
   def __del__(self):
     if self.running:
@@ -115,7 +115,12 @@ class Runner:
 
   def run(self):
     '''Run params.'''
+    assert not self.stopping
+    assert not self.running
+
+    self.running = True
     self._run(weakref.ref(self))
+    self.running = False
 
   # pylint: disable=protected-access
   @staticmethod
@@ -183,7 +188,7 @@ class Runner:
                                        name='Runner.concurrency_update_t')
     self.concurrency_update_t.start()
 
-  def wait(self, active_only=False, show_messages=True):
+  def wait(self, active_only=False):
     '''Wait for the runner to process all jobs.'''
     # Wait for all jobs to finish
     while True:
@@ -194,31 +199,11 @@ class Runner:
         else:
           if not (self._state.active_jobs or self._state.pending_jobs):
             break
-        if show_messages:
-          while True:
-            try:
-              msg = self.messages.get_nowait()
-              print(msg)
-            except Empty:
-              break
         self.queue_update_cond.wait(1)
 
-  def monitor(self):
-    '''Print progress messages.'''
-    try:
-      while True:
-        msg = self.messages.get()
-        print(msg)
-    except KeyboardInterrupt:
-      pass
-
-  def clear_messages(self):
-    '''Clear unprinted progress messages.'''
-    while True:
-      try:
-        self.messages.get_nowait()
-      except Empty:
-        break
+  def _print(self, msg):
+    '''Print a message.'''
+    print(msg, file=self.message_f)
 
   def stop(self):
     '''Stop the runner.'''
@@ -243,7 +228,7 @@ class Runner:
     self.concurrency_update_t = None
 
     # Join job threads
-    self.wait(active_only=True, show_messages=False)
+    self.wait(active_only=True)
 
     with self.lock:
       while self.joinable_job_t:
@@ -257,8 +242,6 @@ class Runner:
 
     with self.lock:
       self._state.reset()
-
-      self.clear_messages()
 
   def state(self):
     '''Get the runner state.'''
@@ -320,8 +303,8 @@ class Runner:
     self.active_job_t[job.job_id] = thread
 
     self.history_mgr.started(param)
-    self.messages.put(termcolor.colored(f'Started:   {self.format_job(job)}', 'blue'))
-    self.messages.put(self.est.format_estimated_time(self._state))
+    self._print(termcolor.colored(f'Started:   {self.format_job(job)}', 'blue'))
+    self._print(self.est.format_estimated_time(self._state))
 
     thread.start()
 
@@ -375,45 +358,45 @@ class Runner:
     assert self.lock.locked() # pylint: disable=no-member
     self.history_mgr.finished(job.param, True)
     self._state.succeeded_jobs.append(job)
-    self.messages.put(termcolor.colored(
+    self._print(termcolor.colored(
         f'Succeeded: {self.format_job(job)} ' + \
         f'[elapsed: {self.format_elapsed(job)}]', 'green'))
-    self.messages.put(self.est.format_estimated_time(self._state))
+    self._print(self.est.format_estimated_time(self._state))
 
   def _failed_result(self, job):
     '''Report a failed job due to a failed result.'''
     assert self.lock.locked() # pylint: disable=no-member
     self.history_mgr.finished(job.param, False)
     self._state.failed_jobs.append(job)
-    self.messages.put(termcolor.colored(
+    self._print(termcolor.colored(
         f'Failed:   {self.format_job(job)} (fail returned) ' + \
         f'[elapsed: {self.format_elapsed(job)}]', 'red'))
-    self.messages.put(self.est.format_estimated_time(self._state))
+    self._print(self.est.format_estimated_time(self._state))
 
   def _failed_demand(self, job, demand):
     '''Report a failed job due to unsatisfiable demand.'''
     assert self.lock.locked() # pylint: disable=no-member
     self.history_mgr.finished(job.param, False)
     self._state.failed_jobs.append(job)
-    self.messages.put(termcolor.colored(
+    self._print(termcolor.colored(
         f'Failed: {self.format_job(job)} (unable to satisfy demand: {demand})' + \
         f'[elapsed: {self.format_elapsed(job)}]', 'red'))
-    self.messages.put(self.est.format_estimated_time(self._state))
+    self._print(self.est.format_estimated_time(self._state))
 
   def _failed_error(self, job, error):
     '''Report a failed job due to an error.'''
     assert self.lock.locked() # pylint: disable=no-member
     self.history_mgr.finished(job.param, False)
     self._state.failed_jobs.append(job)
-    self.messages.put(termcolor.colored(
+    self._print(termcolor.colored(
         f'Failed:   {self.format_job(job)} (error: {error}) ' + \
         f'[elapsed: {self.format_elapsed(job)}]', 'red'))
-    self.messages.put(self.est.format_estimated_time(self._state))
+    self._print(self.est.format_estimated_time(self._state))
 
   def _check_empty_queue(self):
     assert self.lock.locked() # pylint: disable=no-member
     if not (self._state.active_jobs or self._state.pending_jobs):
-      self.messages.put('Job queue empty')
+      self._print('Job queue empty')
 
   def _is_available(self, demand):
     '''Check if required resources are available.'''

@@ -1,5 +1,6 @@
 '''Example experiment definition.'''
 
+import sys
 import time
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -37,6 +38,6 @@ hist_mgr = HistoryManager(job_defs)
 
 def new_runner():
   '''Create and start a new runner.'''
-  runner = Runner(job_defs, init_resources, hist_mgr)
+  runner = Runner(job_defs, init_resources, hist_mgr, sys.__stdout__)
   runner.start()
   return runner
