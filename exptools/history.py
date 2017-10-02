@@ -49,7 +49,6 @@ class History:
     with self.lock:
       if exec_id not in self.history:
         self.history[exec_id] = OrderedDict([
-            ('param', param),
             ('started', now),
             ('finished', None),
             ('duration', None),
@@ -78,7 +77,6 @@ class History:
   def get(self, param):
     '''Get param's history data.'''
     stub = OrderedDict([
-        ('param', param),
         ('started', None),
         ('finished', None),
         ('duration', None),
@@ -87,17 +85,17 @@ class History:
     with self.lock:
       return dict(self.history.get(param.exec_id, stub))
 
-  def add(self, hist_data, defer_dump=False):
+  def add(self, param, hist_data, defer_dump=False):
     '''Add a param's history data manually.'''
-    param = hist_data['param']
     exec_id = param.exec_id
     with self.lock:
-      self.history[exec_id] = param
+      self.history[exec_id] = hist_data
       if not defer_dump:
         self._dump()
 
-  def remove(self, exec_id, defer_dump=False):
+  def remove(self, param, defer_dump=False):
     '''Remove a param's history data manually.'''
+    exec_id = param.exec_id
     with self.lock:
       del self.history[exec_id]
       if not defer_dump:
@@ -122,29 +120,39 @@ class History:
       if not defer_dump:
         self._dump()
 
-  def df_datetime(self):
-    '''Return a dataframe using datetime objects.'''
+  def get_df(self, time='datetime'):
+    '''Return a dataframe for history data.'''
     import pandas as pd
     data = list(self.history.values())
+    history_df = pd.DataFrame(data, columns=data[0].keys())
+    if time == 'utc':
+      history_df['started'] = history_df['started']\
+          .map(lambda v: format_utc(v) if v else v)
+      history_df['finished'] = history_df['finished']\
+          .map(lambda v: format_utc(v) if v else v)
+    elif time == 'local':
+      history_df['started'] = history_df['started']\
+          .map(lambda v: format_local(v) if v else v)
+      history_df['finished'] = history_df['finished']\
+          .map(lambda v: format_local(v) if v else v)
+    return history_df
+
+  def get_joined_df(self, params):
+    '''Return a dataframe that joins params and history data on exec_id.'''
+    import pandas as pd
+    stub = OrderedDict([
+        ('started', None),
+        ('finished', None),
+        ('duration', None),
+        ('success', None),
+        ])
+    data = list(params)
+    for item in data:
+      exec_id = param.exec_id
+      hist_data = self.history.get(exec_id, stub)
+      data.update({'_' + key: value for key, value in hist_data.items()})
     return pd.DataFrame(data, columns=data[0].keys())
 
-  def df_utc(self):
-    '''Return a dataframe using the UTC timezone.'''
-    history_df = self.df_datetime()
-    history_df['started'] = history_df['started']\
-        .map(lambda v: format_utc(v) if v else v)
-    history_df['finished'] = history_df['finished']\
-        .map(lambda v: format_utc(v) if v else v)
-    return history_df
-
-  def df_local(self):
-    '''Return a dataframe using the local timezone.'''
-    history_df = self.df_datetime()
-    history_df['started'] = history_df['started']\
-        .map(lambda v: format_local(v) if v else v)
-    history_df['finished'] = history_df['finished']\
-        .map(lambda v: format_local(v) if v else v)
-    return history_df
 
   def is_finished(self, param):
     '''Check if a param finished.'''
@@ -159,14 +167,14 @@ class History:
 
   def get_finished_params(self, params):
     '''Get params that finished.'''
-    empty = {}
+    empty = {'finished': None}
     with self.lock:
       return [param for param in params \
               if self.history.get(param.exec_id, empty)['finished'] is not None]
 
   def get_unfinished_params(self, params):
     '''Get params that did not unfinish.'''
-    empty = {}
+    empty = {'finished': None}
     with self.lock:
       return [param for param in params \
               if self.history.get(param.exec_id, empty)['finished'] is None]
