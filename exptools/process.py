@@ -1,10 +1,10 @@
-'''Provides process execution functions.'''
+'''Provide process execution functions.'''
+
+__all__ = ['wait_for_procs', 'kill_procs', 'run_ssh_cmd']
 
 import subprocess
 import time
 import traceback
-
-__all__ = ['wait_for_procs', 'kill_procs', 'run_ssh_cmd']
 
 def wait_for_procs(procs, timeout=None):
   '''Wait for processes to terminate.'''

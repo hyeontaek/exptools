@@ -1,8 +1,4 @@
-'''Provides time related functions.'''
-
-import datetime
-import pytz
-import tzlocal
+'''Provide time related functions.'''
 
 __all__ = [
     'utcnow', 'localnow',
@@ -11,6 +7,10 @@ __all__ = [
     'parse_utc', 'parse_local',
     'diff_sec',
     'format_sec']
+
+import datetime
+import pytz
+import tzlocal
 
 def utcnow():
   '''Return the current time in UTC.'''

@@ -1,17 +1,17 @@
-'''Provides HistoryManager.'''
+'''Provide the History class.'''
 
+__all__ = ['History']
+
+from collections import OrderedDict
 from threading import Lock
 import os
 import pickle
-from .time import utcnow, diff_sec, format_utc, format_local
+from exptools.time import diff_sec, format_local, format_utc, utcnow
 
-__all__ = ['HistoryManager']
+class History:
+  '''Manage the history data of previous job execution.'''
 
-class HistoryManager:
-  '''Manage the history data of job execution.'''
-
-  def __init__(self, job_defs, path='hist.dat', pickler=pickle.Pickler, unpickler=pickle.Unpickler):
-    self.job_defs = job_defs
+  def __init__(self, path='hist.dat', pickler=pickle.Pickler, unpickler=pickle.Unpickler):
     self.path = path
     self.pickler = pickler
     self.unpickler = unpickler
@@ -37,38 +37,90 @@ class HistoryManager:
         self.pickler(file).dump(self.history)
       os.rename(self.path + '.tmp', self.path)
 
-  def started(self, param):
+  def dump(self):
+    '''Store history data.'''
+    with self.lock:
+      self._dump()
+
+  def started(self, param, defer_dump=False):
     '''Record started time.'''
+    exec_id = param.exec_id
+    now = utcnow()
     with self.lock:
-      param_hash = self.job_defs[param[0]].hash(param)
-
-      now = utcnow()
-
-      if param_hash not in self.history:
-        self.history[param_hash] = {
-            'param': param,
-            'started': now, 'finished': None,
-            'duration': None, 'success': None
-            }
+      if exec_id not in self.history:
+        self.history[exec_id] = OrderedDict([
+            ('param', param),
+            ('started', now),
+            ('finished', None),
+            ('duration', None),
+            ('success', None),
+            ])
       else:
-        self.history[param_hash]['started'] = now
-        self.history[param_hash]['finished'] = None
+        self.history[exec_id]['started'] = now
+        self.history[exec_id]['finished'] = None
         # Keep duration for Estimator
-        self.history[param_hash]['success'] = None
-      self._dump()
+        self.history[exec_id]['success'] = None
+      if not defer_dump:
+        self._dump()
 
-  def finished(self, param, success):
+  def finished(self, param, success, defer_dump=False):
     '''Record finished time and result.'''
+    exec_id = param.exec_id
+    now = utcnow()
     with self.lock:
-      param_hash = self.job_defs[param[0]].hash(param)
+      self.history[exec_id]['finished'] = now
+      self.history[exec_id]['duration'] = \
+          diff_sec(now, self.history[exec_id]['started'])
+      self.history[exec_id]['success'] = success
+      if not defer_dump:
+        self._dump()
 
-      now = utcnow()
+  def get(self, param):
+    '''Get param's history data.'''
+    stub = OrderedDict([
+        ('param', param),
+        ('started', None),
+        ('finished', None),
+        ('duration', None),
+        ('success', None),
+        ])
+    with self.lock:
+      return dict(self.history.get(param.exec_id, stub))
 
-      self.history[param_hash]['finished'] = now
-      self.history[param_hash]['duration'] = \
-          diff_sec(now, self.history[param_hash]['started'])
-      self.history[param_hash]['success'] = success
-      self._dump()
+  def add(self, hist_data, defer_dump=False):
+    '''Add a param's history data manually.'''
+    param = hist_data['param']
+    exec_id = param.exec_id
+    with self.lock:
+      self.history[exec_id] = param
+      if not defer_dump:
+        self._dump()
+
+  def remove(self, exec_id, defer_dump=False):
+    '''Remove a param's history data manually.'''
+    with self.lock:
+      del self.history[exec_id]
+      if not defer_dump:
+        self._dump()
+
+  def prune_absent(self, params, defer_dump=False):
+    '''Remove history entries that are absent in params.'''
+    with self.lock:
+      valid_exec_ids = set([param.exec_id for param in params])
+
+      self.history = {key: value for key, value in self.history.items() if key in valid_exec_ids}
+      if not defer_dump:
+        self._dump()
+
+  def reset_finished(self, params, defer_dump=False):
+    '''Remove finished data for params.'''
+    with self.lock:
+      for param in params:
+        exec_id = param.exec_id
+        if exec_id in self.history:
+          self.history[exec_id]['finished'] = None
+      if not defer_dump:
+        self._dump()
 
   def df_datetime(self):
     '''Return a dataframe using datetime objects.'''
@@ -94,37 +146,27 @@ class HistoryManager:
         .map(lambda v: format_local(v) if v else v)
     return history_df
 
-  def prune_absent(self, params):
-    '''Remove history entries that are absent in params.'''
+  def is_finished(self, param):
+    '''Check if a param finished.'''
+    return not self.is_unfinished(param)
+
+  def is_unfinished(self, param):
+    '''Check if a param did not finish.'''
+    exec_id = param.exec_id
     with self.lock:
-      valid_hashes = set([self.job_defs[param[0]].hash(param) for param in params])
+      return exec_id in self.history and \
+          self.history[exec_id]['finished'] is None
 
-      self.history = {h: self.history[h] for h in self.history if h in valid_hashes}
-      self._dump()
-
-  def reset_finished(self, params):
-    '''Remove finished data for params.'''
+  def get_finished_params(self, params):
+    '''Get params that finished.'''
+    empty = {}
     with self.lock:
-      for param in params:
-        param_hash = self.job_defs[param[0]].hash(param)
+      return [param for param in params \
+              if self.history.get(param.exec_id, empty)['finished'] is not None]
 
-        if param_hash in self.history:
-          self.history[param_hash]['finished'] = None
-
-  def remove_finished(self, params):
-    '''Remove finished params.'''
+  def get_unfinished_params(self, params):
+    '''Get params that did not unfinish.'''
+    empty = {}
     with self.lock:
-      empty = {}
-      return [param for param in params
-              if self.history\
-                  .get(self.job_defs[param[0]].hash(param), empty)\
-                  .get('finished', None) is None]
-
-  def get(self, param):
-    '''Get param's history data.'''
-    with self.lock:
-      stub = {
-          'param': param,
-          'started': None, 'finished': None,
-          'duration': None, 'success': None}
-      return dict(self.history.get(self.job_defs[param[0]].hash(param), stub))
+      return [param for param in params \
+              if self.history.get(param.exec_id, empty)['finished'] is None]

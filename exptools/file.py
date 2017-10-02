@@ -1,9 +1,9 @@
 '''Provide file management functions.'''
 
+__all__ = ['mkdirs', 'rmdirs', 'get_param_dir']
+
 import os
 import shutil
-
-__all__ = ['mkdirs', 'rmdirs', 'get_param_dir']
 
 def mkdirs(path, ignore_errors=True):
   '''Make directories recursively.'''

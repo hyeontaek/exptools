@@ -1,16 +1,16 @@
-'''Provides Runner.'''
+'''Provide the Runner class.'''
 
-from collections import namedtuple
+__all__ = ['Runner']
+
 import logging
 from threading import Lock, Condition, Thread
 import traceback
 import weakref
 import termcolor
-from .estimator import Estimator
-from .history import HistoryManager
-from .time import utcnow, diff_sec, format_sec
-
-__all__ = ['Runner']
+from exptools.estimator import Estimator
+from exptools.history import History
+from exptools.job import Job
+from exptools.time import diff_sec, format_sec, utcnow
 
 class RunnerState:
   '''Store the state of Runner.'''
@@ -24,11 +24,13 @@ class RunnerState:
     self.concurrency = 1.
 
   def reset(self):
-    '''Reset the job queue state.'''
+    '''Clear all jobs except active jobs.'''
     self.succeeded_jobs = []
     self.failed_jobs = []
-    # Keep active jobs because reset() does not kill them
-    #self.active_jobs = []
+    self.pending_jobs = []
+
+  def reset_pending(self):
+    '''Clear pending jobs.'''
     self.pending_jobs = []
 
   def clone(self):
@@ -51,25 +53,25 @@ class RunnerState:
     '''Format the job queue state in detail.'''
     output = f'Succeeded jobs ({len(self.succeeded_jobs)}):\n'
     for job in self.succeeded_jobs:
-      output += f'  {self.runner.format_job(job)} '
-      output += f'[elapsed: {self.runner.format_elapsed(job)}]\n'
+      output += f'  {job} '
+      output += f'[elapsed: {self.runner.format_elapsed_time(job)}]\n'
     output += '\n'
 
     output += f'Failed jobs ({len(self.failed_jobs)}):\n'
     for job in self.failed_jobs:
-      output += f'  {self.runner.format_job(job)} '
-      output += f'[elapsed: {self.runner.format_elapsed(job)}]\n'
+      output += f'  {job} '
+      output += f'[elapsed: {self.runner.format_elapsed_time(job)}]\n'
     output += '\n'
 
     output += f'Active jobs ({len(self.active_jobs)}):\n'
     for job in self.active_jobs:
-      output += f'  {self.runner.format_job(job)} '
-      output += f'[elapsed: {self.runner.format_elapsed(job)}]\n'
+      output += f'  {job} '
+      output += f'[elapsed: {self.runner.format_elapsed_time(job)}]\n'
     output += '\n'
 
     output += f'Pending jobs ({len(self.pending_jobs)}):\n'
     for job in self.pending_jobs:
-      output += f'  {self.runner.format_job(job)}\n'
+      output += f'  {job}\n'
     output += '\n'
 
     output += f'Concurrency: {self.concurrency}'
@@ -79,18 +81,16 @@ class RunnerState:
 class Runner:
   '''Run jobs with params.'''
 
-  job_type = namedtuple('job_type', ['job_id', 'param'])
-
-  def __init__(self, job_defs, init_resources=None, history_mgr=None):
-    self.job_defs = job_defs
+  def __init__(self, job_func=None, init_resources=None, hist=None):
+    self.job_func = job_func
     if init_resources is not None:
       self.resources = dict(init_resources)
     else:
       self.resources = {}
-    if history_mgr is not None:
-      self.history_mgr = history_mgr
+    if hist is not None:
+      self.hist = hist
     else:
-      self.history_mgr = HistoryManager(job_defs, path=None)
+      self.hist = History(path=None)
 
     self.lock = Lock()
     self.queue_update_cond = Condition(self.lock)
@@ -107,13 +107,17 @@ class Runner:
     self.running = False
     self.stopping = False
 
-    self.est = Estimator(history_mgr)
+    self.estimator = Estimator(hist)
 
     self.logger = logging.getLogger('exptools.Runner')
 
   def __del__(self):
     if self.running:
       self.stop()
+
+  def set_job_func(self, job_func):
+    '''Set the job function.'''
+    self.job_func = job_func
 
   def run(self):
     '''Run params.'''
@@ -146,15 +150,13 @@ class Runner:
           continue
 
         job = self._state.pending_jobs[0]
-        param = job.param
-        demand = self.job_defs[param[0]].demand(param)
 
-        if not self._is_available(demand):
+        if not self._is_available(job.param.demand):
           if not self._state.active_jobs:
             # Drop the job
             self._state.pending_jobs.pop(0)
 
-            self._failed_demand(job, demand)
+            self._failed_demand(job)
 
             self._check_empty_queue()
 
@@ -168,7 +170,7 @@ class Runner:
 
         self._state.pending_jobs.pop(0)
 
-        self._launch(job, param, demand)
+        self._launch(job)
 
         while self.joinable_job_t:
           self.joinable_job_t.pop().join()
@@ -194,7 +196,6 @@ class Runner:
 
   def wait(self, active_only=False):
     '''Wait for the runner to process all jobs.'''
-    # Wait for all jobs to finish
     while True:
       with self.lock:
         if active_only:
@@ -240,8 +241,7 @@ class Runner:
     self.logger.info('Stopped')
 
   def reset(self):
-    '''Reset the job queue state.'''
-
+    '''Clear all jobs except active jobs.'''
     with self.lock:
       self._state.reset()
 
@@ -260,11 +260,11 @@ class Runner:
     if not isinstance(params, list):
       params = [params]
     with self.lock:
-      new_jobs = [self.job_type(self.next_job_id + i, param) for i, param in enumerate(params)]
+      new_jobs = [Job(self.next_job_id + i, param) for i, param in enumerate(params)]
       job_ids = [job.job_id for job in new_jobs]
       self.next_job_id += len(params)
 
-      self._state.pending_jobs = self._dedup(self._state.pending_jobs + new_jobs)
+      self._state.pending_jobs = self._sort(self._dedup(self._state.pending_jobs + new_jobs))
       self.queue_update_cond.notify_all()
     return job_ids
 
@@ -278,60 +278,70 @@ class Runner:
           [job for job in self._state.pending_jobs if job.job_id not in job_ids]
       self.queue_update_cond.notify_all()
 
-  def _dedup(self, jobs):
-    '''Deduplicate jobs with params that share the same hash.'''
-    h_set = set()
+  def remove_all(self):
+    '''Remove all pending jobs.'''
+    with self.lock:
+      self._state.reset_pending()
+      self.queue_update_cond.notify_all()
+
+  @staticmethod
+  def _dedup(jobs):
+    '''Deduplicate jobs with params that share the same execution ID.'''
+    id_set = set()
 
     new_jobs = []
     for job in jobs:
-      param = job.param
-
-      param_hash = self.job_defs[param[0]].hash(param)
-      if param_hash not in h_set:
-        h_set.add(param_hash)
+      exec_id = job.param.exec_id
+      if exec_id not in id_set:
+        id_set.add(exec_id)
         new_jobs.append(job)
 
     return new_jobs
 
-  def _launch(self, job, param, demand):
-    '''Start the job with param in a per-param thread.'''
+  @staticmethod
+  def _sort(jobs):
+    '''Sort jobs based on their priority and job ID.'''
+    return sorted(jobs, key=Job.sort_key)
+
+  def _launch(self, job):
+    '''Start a job in a per-param thread.'''
     assert self.lock.locked() # pylint: disable=no-member
 
-    thread = Thread(target=self._run_param, args=(job, param, demand),
+    thread = Thread(target=self._job_main, args=(job,),
                     name=f'Runner.job-{job.job_id}')
 
-    self._take(demand)
+    self._take(job.param.demand)
     self._state.active_jobs.append(job)
     self.active_job_t[job.job_id] = thread
 
-    self.history_mgr.started(param)
-    self.logger.info(termcolor.colored(f'Started:   {self.format_job(job)}', 'blue'))
-    self.logger.info(self.est.format_estimated_time(self._state))
+    self.hist.started(job.param)
+    self.logger.info(termcolor.colored(f'Started:   {job}', 'blue'))
+    self.logger.info(self._format_estimated_time())
 
     thread.start()
 
-  def _run_param(self, job, param, demand):
-    '''Execute the job with param and wait for it to finish.'''
-    success = None
+  def _job_main(self, job):
+    '''Execute a job and wait for it to finish.'''
     exc = None
     try:
-      success = self.job_defs[param[0]].run(param)
-    except Exception:
+      self.job_func(job.param)
+    except Exception: # pylint: disable=broad-except
       exc = traceback.format_exc()
     finally:
       with self.lock:
-        self._return(demand)
+        self._return(job.param.demand)
 
         for i, active_job in enumerate(self._state.active_jobs):
           if job.job_id == active_job.job_id:
             del self._state.active_jobs[i]
             break
+        else:
+          raise RuntimeError(f'Missing active job for {job}')
+
         if exc is not None:
           self._failed_exception(job, exc)
-        elif success:
-          self._succeeded(job)
         else:
-          self._failed_result(job)
+          self._succeeded(job)
 
         self._check_empty_queue()
         self.queue_update_cond.notify_all()
@@ -339,17 +349,9 @@ class Runner:
         self.joinable_job_t.append(self.active_job_t[job.job_id])
         del self.active_job_t[job.job_id]
 
-  def format_param(self, param):
-    '''Format a param.'''
-    return f'{self.job_defs[param[0]].format(param)}'
-
-  def format_job(self, job):
-    '''Format a job.'''
-    return f'[{job.job_id}] {self.format_param(job.param)}'
-
-  def format_elapsed(self, job):
+  def format_elapsed_time(self, job):
     '''Format the elapsed time of a job.'''
-    hist_entry = self.history_mgr.get(job[1])
+    hist_entry = self.hist.get(job.param)
     started = hist_entry['started']
     finished = hist_entry['finished']
     if not started:
@@ -358,47 +360,55 @@ class Runner:
       return format_sec(diff_sec(utcnow(), started))
     return format_sec(diff_sec(finished, started))
 
+  def format_estimated_time(self, params=None, concurrency=None):
+    '''Format the estimated time to finish jobs.'''
+    state = self.state()
+
+    with self.lock:
+      if params is not None:
+        new_jobs = [Job(self.next_job_id + i, param) for i, param in enumerate(params)]
+        state.pending_jobs = self._sort(self._dedup(state.pending_jobs + new_jobs))
+      if concurrency is not None:
+        state.concurrency = concurrency
+
+    return self.estimator.format_estimated_time(state)
+
+  def _format_estimated_time(self):
+    '''Format the estimated time to finish jobs.'''
+    assert self.lock.locked() # pylint: disable=no-member
+    return self.estimator.format_estimated_time(self._state)
+
   def _succeeded(self, job):
     '''Report a succeeded job.'''
     assert self.lock.locked() # pylint: disable=no-member
-    self.history_mgr.finished(job.param, True)
+    self.hist.finished(job.param, True)
     self._state.succeeded_jobs.append(job)
     self.logger.info(termcolor.colored(
-        f'Succeeded: {self.format_job(job)} ' + \
-        f'[elapsed: {self.format_elapsed(job)}]', 'green'))
-    self.logger.info(self.est.format_estimated_time(self._state))
+        f'Succeeded: {job} ' + \
+        f'[elapsed: {self.format_elapsed_time(job)}]', 'green'))
+    self.logger.info(self._format_estimated_time())
 
-  def _failed_result(self, job):
-    '''Report a failed job due to a failed result.'''
-    assert self.lock.locked() # pylint: disable=no-member
-    self.history_mgr.finished(job.param, False)
-    self._state.failed_jobs.append(job)
-    self.logger.error(termcolor.colored(
-        f'Failed:   {self.format_job(job)} (fail returned) ' + \
-        f'[elapsed: {self.format_elapsed(job)}]', 'red'))
-    self.logger.info(self.est.format_estimated_time(self._state))
-
-  def _failed_demand(self, job, demand):
+  def _failed_demand(self, job):
     '''Report a failed job due to unsatisfiable demand.'''
     assert self.lock.locked() # pylint: disable=no-member
-    self.history_mgr.finished(job.param, False)
+    self.hist.finished(job.param, False)
     self._state.failed_jobs.append(job)
     self.logger.error(termcolor.colored(
-        f'Failed: {self.format_job(job)} (unable to satisfy demand: {demand})' + \
-        f'[elapsed: {self.format_elapsed(job)}]', 'red'))
-    self.logger.info(self.est.format_estimated_time(self._state))
+        f'Failed: {job} (unable to satisfy demand: {job.param.demand})' + \
+        f'[elapsed: {self.format_elapsed_time(job)}]', 'red'))
+    self.logger.info(self._format_estimated_time())
 
   def _failed_exception(self, job, exc):
-    '''Report a failed job due to an exception.'''
+    '''Report a failed job with an exception.'''
     assert self.lock.locked() # pylint: disable=no-member
-    self.history_mgr.finished(job.param, False)
+    self.hist.finished(job.param, False)
     self._state.failed_jobs.append(job)
     exc = '  ' + exc.rstrip().replace('\n', '\n  ')
     self.logger.error(termcolor.colored(
-        f'Failed:   {self.format_job(job)} (exception) ' + \
-        f'[elapsed: {self.format_elapsed(job)}]' + \
+        f'Failed:   {job} (exception) ' + \
+        f'[elapsed: {self.format_elapsed_time(job)}]' + \
         '\n' + exc, 'red'))
-    self.logger.info(self.est.format_estimated_time(self._state))
+    self.logger.info(self._format_estimated_time())
 
   def _check_empty_queue(self):
     assert self.lock.locked() # pylint: disable=no-member

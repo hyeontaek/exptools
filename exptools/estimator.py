@@ -1,16 +1,16 @@
-'''Provides Estimator.'''
+'''Provide Estimator.'''
+
+__all__ = ['Estimator']
 
 import datetime
 import termcolor
-from .time import utcnow, format_local, diff_sec, format_sec
-
-__all__ = ['Estimator']
+from exptools.time import diff_sec, format_local, format_sec, utcnow
 
 class Estimator:
   '''Estimate the remaining time.'''
 
-  def __init__(self, hist_mgr=None):
-    self.hist_mgr = hist_mgr
+  def __init__(self, hist=None):
+    self.hist = hist
 
   def estimate_remaining_time(self, runner_state):
     '''Estimate the remaining time using Runner's state.'''
@@ -29,8 +29,8 @@ class Estimator:
     unknown_count = 0
 
     for job in state.succeeded_jobs + state.failed_jobs + state.active_jobs + state.pending_jobs:
-      if self.hist_mgr is not None:
-        hist_entry = self.hist_mgr.get(job.param)
+      if self.hist is not None:
+        hist_entry = self.hist.get(job.param)
         if hist_entry['duration'] is not None:
           known_duration += hist_entry['duration']
           known_count += 1
@@ -46,8 +46,8 @@ class Estimator:
     known_done_duration = 0.
 
     for job in state.succeeded_jobs + state.failed_jobs:
-      if self.hist_mgr is not None:
-        hist_entry = self.hist_mgr.get(job.param)
+      if self.hist is not None:
+        hist_entry = self.hist.get(job.param)
         if hist_entry['duration'] is not None:
           known_done_duration += hist_entry['duration']
 
@@ -55,8 +55,8 @@ class Estimator:
     known_active_duration = 0.
 
     for job in state.active_jobs:
-      if self.hist_mgr is not None:
-        hist_entry = self.hist_mgr.get(job.param)
+      if self.hist is not None:
+        hist_entry = self.hist.get(job.param)
         if hist_entry['started'] is not None:
           known_active_duration += diff_sec(now, hist_entry['started'])
 
