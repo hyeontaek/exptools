@@ -148,11 +148,10 @@ class History:
         ])
     data = list(params)
     for item in data:
-      exec_id = param.exec_id
+      exec_id = item.exec_id
       hist_data = self.history.get(exec_id, stub)
-      data.update({'_' + key: value for key, value in hist_data.items()})
+      item.update({'_' + key: value for key, value in hist_data.items()})
     return pd.DataFrame(data, columns=data[0].keys())
-
 
   def is_finished(self, param):
     '''Check if a param finished.'''
