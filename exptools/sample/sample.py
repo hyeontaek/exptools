@@ -1,5 +1,6 @@
 '''Example experiment definition.'''
 
+import logging
 import sys
 import time
 import pandas as pd
@@ -36,8 +37,11 @@ init_resources = {'concurrency': 2, 'ps': 2, 'worker': 6}
 
 hist_mgr = HistoryManager(job_defs)
 
+logging_fmt = '%(asctime)s %(name)s %(levelname)-8s %(message)s'
+logging.basicConfig(format=logging_fmt, level=logging.INFO, stream=sys.__stderr__)
+
 def new_runner():
   '''Create and start a new runner.'''
-  runner = Runner(job_defs, init_resources, hist_mgr, sys.__stdout__)
+  runner = Runner(job_defs, init_resources, hist_mgr)
   runner.start()
   return runner
