@@ -40,6 +40,18 @@ class Param(OrderedDict):
     param_str = json.dumps(filtered_param, sort_keys=True)
     return self._hash_func(param_str.encode('utf-8')).hexdigest()[:16]
 
+  def with_new_priority(self, new_priority):
+    '''Return a new parameter with a new priority.'''
+    data = OrderedDict(self)
+    data['_priority'] = new_priority
+    return Param(data)
+
+  def with_adjusted_priority(self, priority_delta):
+    '''Return a new parameter with an adjusted priority.'''
+    data = OrderedDict(self)
+    data['_priority'] = self.priority + priority_delta
+    return Param(data)
+
   def __str__(self):
     '''Format a parameter.'''
     return self.name

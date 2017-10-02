@@ -10,6 +10,7 @@ import termcolor
 from exptools.estimator import Estimator
 from exptools.history import History
 from exptools.job import Job
+from exptools.param import Param
 from exptools.time import diff_sec, format_sec, utcnow
 
 class RunnerState:
@@ -179,7 +180,7 @@ class Runner:
     '''Start the runner.'''
     assert not self.running
 
-    self.logger.info('Starting')
+    self.logger.info('Started Runner')
 
     with self.lock:
       self.running = True
@@ -238,7 +239,7 @@ class Runner:
 
     self.stopping = False
 
-    self.logger.info('Stopped')
+    self.logger.info('Stopped Runner')
 
   def reset(self):
     '''Clear all jobs except active jobs.'''
@@ -255,17 +256,23 @@ class Runner:
     current_state = self.state()
     return bool(current_state.active_jobs or current_state.pending_jobs)
 
-  def add(self, params):
-    '''Add new params to the job queue.  Duplicate params are ignored.'''
-    if not isinstance(params, list):
+  def add(self, params, keep_newer=True):
+    '''Add new params to the job queue with optionally a new priority.
+    Duplicate params with the same execution ID in the pending jobs are ignored.
+    New params are kept if keep_newer is True; old params are kept otherwise.'''
+    if isinstance(params, Param):
       params = [params]
     with self.lock:
       new_jobs = [Job(self.next_job_id + i, param) for i, param in enumerate(params)]
       job_ids = [job.job_id for job in new_jobs]
       self.next_job_id += len(params)
 
-      self._state.pending_jobs = self._sort(self._dedup(self._state.pending_jobs + new_jobs))
+      prev_pending_count = len(self._state.pending_jobs)
+      self._state.pending_jobs = \
+          self._sort(self._dedup(self._state.pending_jobs + new_jobs, keep_newer))
+      new_pending_count = len(self._state.pending_jobs)
       self.queue_update_cond.notify_all()
+    self.logger.info(f'Added {new_pending_count - prev_pending_count} jobs')
     return job_ids
 
   def remove(self, job_ids):
@@ -274,27 +281,39 @@ class Runner:
       job_ids = [job_ids]
     job_ids = set(job_ids)
     with self.lock:
+      prev_pending_count = len(self._state.pending_jobs)
       self._state.pending_jobs = \
           [job for job in self._state.pending_jobs if job.job_id not in job_ids]
+      new_pending_count = len(self._state.pending_jobs)
       self.queue_update_cond.notify_all()
+    self.logger.info(f'Removed {prev_pending_count - new_pending_count} jobs')
 
   def remove_all(self):
     '''Remove all pending jobs.'''
     with self.lock:
+      prev_pending_count = len(self._state.pending_jobs)
       self._state.reset_pending()
+      new_pending_count = len(self._state.pending_jobs)
       self.queue_update_cond.notify_all()
+    self.logger.info(f'Removed {prev_pending_count - new_pending_count} jobs')
 
   @staticmethod
-  def _dedup(jobs):
+  def _dedup(jobs, keep_newer):
     '''Deduplicate jobs with params that share the same execution ID.'''
-    id_set = set()
+    id_to_loc = {}
 
     new_jobs = []
     for job in jobs:
       exec_id = job.param.exec_id
-      if exec_id not in id_set:
-        id_set.add(exec_id)
+      if exec_id not in id_to_loc:
+        id_to_loc[exec_id] = len(new_jobs)
         new_jobs.append(job)
+      else:
+        if keep_newer and new_jobs[id_to_loc[exec_id]].param.param_id != job.param.param_id:
+          # Replace an existing param with a new param,
+          # but keep the old param if it is identical to the new param
+          # (e.g., no priority changes)
+          new_jobs[id_to_loc[exec_id]] = job
 
     return new_jobs
 
@@ -367,7 +386,8 @@ class Runner:
     with self.lock:
       if params is not None:
         new_jobs = [Job(self.next_job_id + i, param) for i, param in enumerate(params)]
-        state.pending_jobs = self._sort(self._dedup(state.pending_jobs + new_jobs))
+        state.pending_jobs = \
+            self._sort(self._dedup(state.pending_jobs + new_jobs, keep_newer=False))
       if concurrency is not None:
         state.concurrency = concurrency
 
