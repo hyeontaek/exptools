@@ -318,7 +318,6 @@ class Runner:
       success = self.job_defs[param[0]].run(param)
     except Exception:
       exc = traceback.format_exc()
-      raise
     finally:
       with self.lock:
         self._return(demand)
