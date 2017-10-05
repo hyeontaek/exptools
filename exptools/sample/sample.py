@@ -6,22 +6,22 @@ import sys
 import pandas as pd
 import matplotlib.pyplot as plt
 from exptools import Runner, History
-import exptools.sample.job
+import exptools.sample.cluster
 import exptools.sample.param
+import exptools.sample.work
 
 logging_fmt = '%(asctime)s %(name)s %(levelname)-8s %(message)s'
 logging.basicConfig(format=logging_fmt, level=logging.INFO, stream=sys.__stderr__)
 
-init_resources = {'concurrency': 2, 'ps': 2, 'worker': 6}
-
 hist = History()
 
-runner = Runner(exptools.sample.job.job_func, init_resources, hist)
+runner = Runner(hist)
 runner.start()
 
-def get_all_params():
-  '''Reset the job function and return all parameters.'''
-  importlib.reload(exptools.sample.job)
+cluster = exptools.sample.cluster.get_cluster()
+
+def load():
+  '''Reset the work and return all parameters.'''
   importlib.reload(exptools.sample.param)
-  runner.set_job_func(exptools.sample.job.job_func)
-  return exptools.sample.param.enum_params()
+  importlib.reload(exptools.sample.work)
+  return exptools.sample.work.SleepWork(cluster), exptools.sample.param.enum_params()

@@ -19,6 +19,6 @@ def rmdirs(path, ignore_errors=True):
   '''Remove directories recursively.'''
   shutil.rmtree(path, ignore_errors=ignore_errors)
 
-def get_param_dir(prefix, job_defs, param):
-  '''Get a path for param.'''
-  return os.path.join(prefix, job_defs[param[0]].hash(param))
+def get_param_dir(prefix, param):
+  '''Get a path for a parameter.'''
+  return prefix + param.exec_id

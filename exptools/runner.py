@@ -12,6 +12,7 @@ from exptools.history import History
 from exptools.job import Job
 from exptools.param import Param
 from exptools.time import diff_sec, format_sec, utcnow
+from exptools.work import ResourceError, Work
 
 class RunnerState:
   '''Store the state of Runner.'''
@@ -82,12 +83,7 @@ class RunnerState:
 class Runner:
   '''Run jobs with params.'''
 
-  def __init__(self, job_func=None, init_resources=None, hist=None):
-    self.job_func = job_func
-    if init_resources is not None:
-      self.resources = dict(init_resources)
-    else:
-      self.resources = {}
+  def __init__(self, hist=None):
     if hist is not None:
       self.hist = hist
     else:
@@ -115,10 +111,6 @@ class Runner:
   def __del__(self):
     if self.running:
       self.stop()
-
-  def set_job_func(self, job_func):
-    '''Set the job function.'''
-    self.job_func = job_func
 
   def run(self):
     '''Run params.'''
@@ -150,28 +142,28 @@ class Runner:
           queue_update_cond.wait()
           continue
 
-        job = self._state.pending_jobs[0]
+        job = self._state.pending_jobs.pop(0)
 
-        if not self._is_available(job.param.demand):
+        try:
+          setup_state = job.work.setup(job.param)
+        except ResourceError:
           if not self._state.active_jobs:
-            # Drop the job
-            self._state.pending_jobs.pop(0)
-
-            self._failed_demand(job)
+            # Drop the job if there was no active jobs
+            exc = traceback.format_exc()
+            self._failed_resource_error(job, exc)
 
             self._check_empty_queue()
-
             self.queue_update_cond.notify_all()
           else:
-            # Retry when some job finishes (and hopefully returns resources)
+            # Retry when some job finishes
+            self._state.pending_jobs.insert(0, job)
+
             queue_update_cond = self.queue_update_cond
             del self
             queue_update_cond.wait()
           continue
 
-        self._state.pending_jobs.pop(0)
-
-        self._launch(job)
+        self._launch(job, setup_state)
 
         while self.joinable_job_t:
           self.joinable_job_t.pop().join()
@@ -256,14 +248,19 @@ class Runner:
     current_state = self.state()
     return bool(current_state.active_jobs or current_state.pending_jobs)
 
-  def add(self, params, keep_newer=True):
+  def add(self, work_list, params, keep_newer=True):
     '''Add new params to the job queue with optionally a new priority.
     Duplicate params with the same execution ID in the pending jobs are ignored.
     New params are kept if keep_newer is True; old params are kept otherwise.'''
     if isinstance(params, Param):
       params = [params]
+    if isinstance(work_list, Work):
+      work_list = [work_list] * len(params)
+
+    assert len(work_list) == len(params)
+
     with self.lock:
-      new_jobs = [Job(self.next_job_id + i, param) for i, param in enumerate(params)]
+      new_jobs = [Job(self.next_job_id + i, work_list[i], params[i]) for i in range(len(params))]
       job_ids = [job.job_id for job in new_jobs]
       self.next_job_id += len(params)
 
@@ -322,14 +319,13 @@ class Runner:
     '''Sort jobs based on their priority and job ID.'''
     return sorted(jobs, key=Job.sort_key)
 
-  def _launch(self, job):
+  def _launch(self, job, work_state):
     '''Start a job in a per-param thread.'''
     assert self.lock.locked() # pylint: disable=no-member
 
-    thread = Thread(target=self._job_main, args=(job,),
+    thread = Thread(target=self._job_main, args=(job, work_state),
                     name=f'Runner.job-{job.job_id}')
 
-    self._take(job.param.demand)
     self._state.active_jobs.append(job)
     self.active_job_t[job.job_id] = thread
 
@@ -339,17 +335,15 @@ class Runner:
 
     thread.start()
 
-  def _job_main(self, job):
+  def _job_main(self, job, work_state):
     '''Execute a job and wait for it to finish.'''
     exc = None
     try:
-      self.job_func(job.param)
+      job.work.run(job.param, work_state)
     except Exception: # pylint: disable=broad-except
       exc = traceback.format_exc()
     finally:
       with self.lock:
-        self._return(job.param.demand)
-
         for i, active_job in enumerate(self._state.active_jobs):
           if job.job_id == active_job.job_id:
             del self._state.active_jobs[i]
@@ -368,6 +362,8 @@ class Runner:
         self.joinable_job_t.append(self.active_job_t[job.job_id])
         del self.active_job_t[job.job_id]
 
+        job.work.cleanup(job.param, work_state)
+
   def format_elapsed_time(self, job):
     '''Format the elapsed time of a job.'''
     hist_entry = self.hist.get(job.param)
@@ -379,13 +375,24 @@ class Runner:
       return format_sec(diff_sec(utcnow(), started))
     return format_sec(diff_sec(finished, started))
 
-  def format_estimated_time(self, params=None, concurrency=None):
+  def format_estimated_time(self, work_list=None, params=None, concurrency=None):
     '''Format the estimated time to finish jobs.'''
     state = self.state()
 
+    if work_list is None:
+      work_list = []
+    if params is None:
+      params = []
+    if isinstance(params, Param):
+      params = [params]
+    if isinstance(work_list, Work):
+      work_list = [work_list] * len(params)
+
+    assert len(work_list) == len(params)
+
     with self.lock:
       if params is not None:
-        new_jobs = [Job(self.next_job_id + i, param) for i, param in enumerate(params)]
+        new_jobs = [Job(self.next_job_id + i, work_list[i], params[i]) for i in range(len(params))]
         state.pending_jobs = \
             self._sort(self._dedup(state.pending_jobs + new_jobs, keep_newer=False))
       if concurrency is not None:
@@ -408,14 +415,15 @@ class Runner:
         f'[elapsed: {self.format_elapsed_time(job)}]', 'green'))
     self.logger.info(self._format_estimated_time())
 
-  def _failed_demand(self, job):
-    '''Report a failed job due to unsatisfiable demand.'''
+  def _failed_resource_error(self, job, exc):
+    '''Report a failed job due to a resource error.'''
     assert self.lock.locked() # pylint: disable=no-member
     self.hist.finished(job.param, False)
     self._state.failed_jobs.append(job)
     self.logger.error(termcolor.colored(
-        f'Failed: {job} (unable to satisfy demand: {job.param.demand})' + \
-        f'[elapsed: {self.format_elapsed_time(job)}]', 'red'))
+        f'Failed: {job} (resource error)' + \
+        f'[elapsed: {self.format_elapsed_time(job)}]' + \
+        '\n' + exc, 'red'))
     self.logger.info(self._format_estimated_time())
 
   def _failed_exception(self, job, exc):
@@ -434,30 +442,6 @@ class Runner:
     assert self.lock.locked() # pylint: disable=no-member
     if not (self._state.active_jobs or self._state.pending_jobs):
       self.logger.warning('Job queue empty')
-
-  def _is_available(self, demand):
-    '''Check if required resources are available.'''
-    assert self.lock.locked() # pylint: disable=no-member
-
-    for res, req in demand.items():
-      if self.resources[res] < req:
-        return False
-    return True
-
-  def _take(self, demand):
-    '''Acquire required resources.'''
-    assert self.lock.locked() # pylint: disable=no-member
-
-    for res, req in demand.items():
-      assert self.resources[res] >= req
-      self.resources[res] -= req
-
-  def _return(self, demand):
-    '''Release required resources.'''
-    assert self.lock.locked() # pylint: disable=no-member
-
-    for res, req in demand.items():
-      self.resources[res] += req
 
   # pylint: disable=protected-access
   @staticmethod

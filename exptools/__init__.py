@@ -9,3 +9,4 @@ from exptools.param import *
 from exptools.process import *
 from exptools.runner import *
 from exptools.time import *
+from exptools.work import *

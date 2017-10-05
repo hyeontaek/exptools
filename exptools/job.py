@@ -5,13 +5,14 @@ __all__ = ['Job']
 class Job:
   '''Represent a job.'''
 
-  def __init__(self, job_id, param):
+  def __init__(self, job_id, work, param):
     self.job_id = job_id
+    self.work = work
     self.param = param
 
   def __str__(self):
     '''Format a job.'''
-    return f'[{self.param.priority}/{self.job_id}] {self.param}'
+    return f'[{self.param.priority}/{self.job_id}] {self.work} {self.param}'
 
   def sort_key(self):
     '''Return a sort key.'''
