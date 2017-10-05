@@ -6,7 +6,6 @@ class SleepWork(exptools.Work):
   '''Define work to perform.'''
 
   def __init__(self, cluster):
-    super().__init__()
     self.cluster = cluster
     self.logger = logging.getLogger('exptools.sample.SleepWork')
 
@@ -17,12 +16,12 @@ class SleepWork(exptools.Work):
   def setup(self, param):
     '''Set up to run a parameter.'''
     req = {'concurrency': 1, 'ps': 1, 'worker': 2}
-    with self.lock:
+    with self.cluster[0]:
       for key in req:
-        if self.cluster[key] < req[key]:
+        if self.cluster[1][key] < req[key]:
           raise exptools.ResourceError()
       for key in req:
-        self.cluster[key] -= req[key]
+        self.cluster[1][key] -= req[key]
     self.logger.info(f'Taken: {req}')
     return {'holding': req}
 
@@ -35,7 +34,7 @@ class SleepWork(exptools.Work):
   def cleanup(self, param, work_state):
     '''Clean up.'''
     req = work_state['holding']
-    with self.lock:
+    with self.cluster[0]:
       for key in req:
-        self.cluster[key] += req[key]
+        self.cluster[1][key] += req[key]
       self.logger.info(f'Returned: {req}')
