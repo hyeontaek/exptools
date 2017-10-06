@@ -91,6 +91,17 @@ class History:
     with self.lock:
       return dict(self.history.get(param.exec_id, stub))
 
+  def get_by_exec_id(self, exec_id):
+    '''Get param's history data.'''
+    stub = OrderedDict([
+        ('started', None),
+        ('finished', None),
+        ('duration', None),
+        ('success', None),
+        ])
+    with self.lock:
+      return dict(self.history.get(exec_id, stub))
+
   def add(self, param, hist_data, defer_dump=False):
     '''Add a param's history data manually.'''
     exec_id = param.exec_id
