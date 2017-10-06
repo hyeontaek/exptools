@@ -1,6 +1,6 @@
 '''Provide process execution functions.'''
 
-__all__ = ['wait_for_procs', 'kill_procs', 'run_ssh_cmd']
+__all__ = ['wait_for_procs', 'all_success_returncode', 'kill_procs', 'run_ssh_cmd']
 
 import logging
 import subprocess
@@ -11,6 +11,7 @@ def wait_for_procs(procs, timeout=None):
   wait_start = time.time()
   success = True
   pending = [True] * len(procs)
+  returncode_list = [None] * len(procs)
 
   while any(pending):
     for i, proc in enumerate(procs):
@@ -21,6 +22,7 @@ def wait_for_procs(procs, timeout=None):
         # check the status every minute
         if proc.wait(timeout=60) == 0:
           pending[i] = False
+          returncode_list[i] = proc.returncode
         else:
           logging.getLogger('exptools.wait_for_procs').error('Failed execution')
           success = False
@@ -36,7 +38,14 @@ def wait_for_procs(procs, timeout=None):
           pending = [False] * len(procs)
           break
 
-  return success
+  return success, returncode_list
+
+def all_success_returncode(returncode_list):
+  '''Check if all of the returncode indicates a sucess code.'''
+  for returncode in returncode_list:
+    if returncode != 0:
+      return False
+  return True
 
 def kill_procs(procs):
   '''Forcefully kill processes.'''
