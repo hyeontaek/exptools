@@ -2,6 +2,7 @@
 
 __all__ = ['wait_for_procs', 'kill_procs', 'run_ssh_cmd']
 
+import logging
 import subprocess
 import time
 import traceback
@@ -22,7 +23,7 @@ def wait_for_procs(procs, timeout=None):
         if proc.wait(timeout=60) == 0:
           pending[i] = False
         else:
-          print('Failed execution')
+          logging.getLogger('exptools.wait_for_procs').error('Failed execution')
           success = False
           pending = [False] * len(procs)
           break
@@ -30,7 +31,7 @@ def wait_for_procs(procs, timeout=None):
       except subprocess.TimeoutExpired:
         if timeout is not None and time.time() - wait_start > timeout:
           # too long run time; give up
-          print('Timeout after %d seconds' % (time.time() - wait_start))
+          logging.getLogger('exptools.wait_for_procs').error('Timeout after %d seconds' % (time.time() - wait_start))
           success = False
           pending = [False] * len(procs)
           break
@@ -43,7 +44,7 @@ def kill_procs(procs):
     try:
       proc.kill()
     except subprocess.SubprocessError:
-      traceback.print_exc()
+      logging.getLogger('exptools.kill_procs').exception('Exception while killing processes')
 
 def run_ssh_cmd(host, cmd, **kwargs):
   '''Run a remote command using ssh.'''
