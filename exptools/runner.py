@@ -109,7 +109,7 @@ class Runner:
     self.logger = logging.getLogger('exptools.Runner')
 
   def __del__(self):
-    self.killall()
+    self.kill_all()
 
     if self.running:
       self.stop()
@@ -313,7 +313,7 @@ class Runner:
         if job.job_id in job_ids:
           job.work.kill(job)
 
-  def killall(self):
+  def kill_all(self):
     '''Kill all active jobs.'''
     with self.lock:
       for job in self._state.active_jobs:
