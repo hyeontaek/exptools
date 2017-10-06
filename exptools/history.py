@@ -49,16 +49,15 @@ class History:
     with self.lock:
       if exec_id not in self.history:
         self.history[exec_id] = OrderedDict([
-            ('started', now),
+            ('started', None),
             ('finished', None),
             ('duration', None),
             ('success', None),
             ])
-      else:
-        self.history[exec_id]['started'] = now
-        self.history[exec_id]['finished'] = None
-        # Keep duration for Estimator
-        self.history[exec_id]['success'] = None
+      self.history[exec_id]['started'] = now
+      self.history[exec_id]['finished'] = None
+      # Keep duration for Estimator
+      self.history[exec_id]['success'] = None
       if not defer_dump:
         self._dump()
 
@@ -67,6 +66,13 @@ class History:
     exec_id = param.exec_id
     now = utcnow()
     with self.lock:
+      if exec_id not in self.history:
+        self.history[exec_id] = OrderedDict([
+            ('started', None),
+            ('finished', None),
+            ('duration', None),
+            ('success', None),
+            ])
       self.history[exec_id]['finished'] = now
       self.history[exec_id]['duration'] = \
           diff_sec(now, self.history[exec_id]['started'])
