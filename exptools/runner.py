@@ -162,6 +162,13 @@ class Runner:
             del self
             queue_update_cond.wait()
           continue
+        except Exception: # pylint: disable=broad-except
+          # Drop the job
+          exc = traceback.format_exc()
+          self._failed_exception(job, exc)
+
+          self._check_empty_queue()
+          self.queue_update_cond.notify_all()
 
         self._launch(job, setup_state)
 
