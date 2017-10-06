@@ -3,7 +3,7 @@
 __all__ = ['ResourceError', 'Work']
 
 class ResourceError(RuntimeError):
-  '''An exception that indicates required resources are unavailable to run a parameter.'''
+  '''An exception that indicates required resources are unavailable to run a job.'''
   pass
 
 class Work:
@@ -13,21 +13,21 @@ class Work:
     return 'Work'
 
   # pylint: disable=no-self-use, unused-argument
-  def setup(self, param):
-    '''Set up to run a parameter.'''
+  def setup(self, job):
+    '''Set up to run a job.'''
     return None
 
   # pylint: disable=no-self-use, unused-argument
-  def run(self, param, work_state):
-    '''Run a parameter.'''
+  def run(self, job):
+    '''Run a job.'''
     pass
 
   # pylint: disable=no-self-use, unused-argument
-  def kill(self, param, work_state):
-    '''Kill processes running a parameter.'''
+  def kill(self, job):
+    '''Kill processes running a job.'''
     pass
 
   # pylint: disable=no-self-use, unused-argument
-  def cleanup(self, param, work_state):
+  def cleanup(self, job):
     '''Clean up.'''
     pass

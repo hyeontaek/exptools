@@ -13,8 +13,8 @@ class SleepWork(exptools.Work):
     return 'SleepWork'
 
   # pylint: disable=unused-argument
-  def setup(self, param):
-    '''Set up to run a parameter.'''
+  def setup(self, job):
+    '''Set up to run a job.'''
     req = {'concurrency': 1, 'ps': 1, 'worker': 2}
     with self.cluster[0]:
       for key in req:
@@ -23,17 +23,17 @@ class SleepWork(exptools.Work):
       for key in req:
         self.cluster[1][key] -= req[key]
     self.logger.info(f'Taken: {req}')
-    return {'holding': req}
+    job.state['holding'] = req
 
   # pylint: disable=no-self-use, unused-argument
-  def run(self, param, work_state):
-    '''Run a parameter.'''
-    time.sleep(1 + param['i'] * 0.1)
+  def run(self, job):
+    '''Run a job.'''
+    time.sleep(1 + job.param['i'] * 0.1)
 
   # pylint: disable=unused-argument
-  def cleanup(self, param, work_state):
+  def cleanup(self, job):
     '''Clean up.'''
-    req = work_state['holding']
+    req = job.state.get('holding', {})
     with self.cluster[0]:
       for key in req:
         self.cluster[1][key] += req[key]

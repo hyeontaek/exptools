@@ -100,7 +100,6 @@ class Runner:
     self.concurrency_update_t = None
     self.active_job_t = {}
     self.joinable_job_t = []
-    self.work_state = {}
 
     self.running = False
     self.stopping = False
@@ -110,6 +109,8 @@ class Runner:
     self.logger = logging.getLogger('exptools.Runner')
 
   def __del__(self):
+    self.killall()
+
     if self.running:
       self.stop()
 
@@ -146,7 +147,7 @@ class Runner:
         job = self._state.pending_jobs.pop(0)
 
         try:
-          setup_state = job.work.setup(job.param)
+          setup_state = job.work.setup(job)
         except ResourceError:
           if not self._state.active_jobs:
             # Drop the job if there was no active jobs
@@ -310,13 +311,13 @@ class Runner:
     with self.lock:
       for job in self._state.active_jobs:
         if job.job_id in job_ids:
-          job.work.kill(job.param, self.work_state[job.job_id])
+          job.work.kill(job)
 
   def killall(self):
     '''Kill all active jobs.'''
     with self.lock:
       for job in self._state.active_jobs:
-        job.work.kill(job.param, self.work_state[job.job_id])
+        job.work.kill(job)
 
   @staticmethod
   def _dedup(jobs, keep_newer):
@@ -343,16 +344,15 @@ class Runner:
     '''Sort jobs based on their priority and job ID.'''
     return sorted(jobs, key=Job.sort_key)
 
-  def _launch(self, job, work_state):
+  def _launch(self, job):
     '''Start a job in a per-param thread.'''
     assert self.lock.locked() # pylint: disable=no-member
 
-    thread = Thread(target=self._job_main, args=(job, work_state),
+    thread = Thread(target=self._job_main, args=(job,),
                     name=f'Runner.job-{job.job_id}')
 
     self._state.active_jobs.append(job)
     self.active_job_t[job.job_id] = thread
-    self.work_state[job.job_id] = work_state
 
     self.hist.started(job.param)
     self.logger.info(termcolor.colored(f'Started:   {job}', 'blue'))
@@ -360,11 +360,11 @@ class Runner:
 
     thread.start()
 
-  def _job_main(self, job, work_state):
+  def _job_main(self, job):
     '''Execute a job and wait for it to finish.'''
     exc = None
     try:
-      job.work.run(job.param, work_state)
+      job.work.run(job)
     except Exception: # pylint: disable=broad-except
       exc = traceback.format_exc()
     finally:
@@ -386,9 +386,8 @@ class Runner:
 
         self.joinable_job_t.append(self.active_job_t[job.job_id])
         del self.active_job_t[job.job_id]
-        del self.work_state[job.job_id]
 
-        job.work.cleanup(job.param, work_state)
+        job.work.cleanup(job)
 
   def format_elapsed_time(self, job):
     '''Format the elapsed time of a job.'''
