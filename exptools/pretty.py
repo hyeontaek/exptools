@@ -15,16 +15,20 @@ def pformat(params, verbose=False):
   # single parameter
   if isinstance(params, Param):
     param = params
-    if verbose:
-      param = list(param.items())
-    return pp.pformat(param)
+    if not verbose:
+      line = f'{param.exec_id} {param.name}'
+    else:
+      line = f'{param.exec_id} {pp.pformat(param)}'
+    return line
 
   # parameter list
   params = list(params)
   if isinstance(params, list):
-    if verbose:
-      params = [list(param.items()) for param in params]
-    return pp.pformat(params)
+    if not verbose:
+      lines = [f'{param.exec_id} {param.name}' for param in params]
+    else:
+      lines = [f'{param.exec_id} {pp.pformat(param)}' for param in params]
+    return '\n'.join(lines)
 
   # fall back
   return pp.pformat(org_params)
