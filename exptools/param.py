@@ -55,3 +55,7 @@ class Param(OrderedDict):
   def __str__(self):
     '''Format a parameter.'''
     return self.name
+
+  def __add__(self, p):
+    '''Return a new parameter that combines two parameters.'''
+    return type(self)(list(self.items()) + list(p.items()))
