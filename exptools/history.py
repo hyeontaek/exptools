@@ -182,15 +182,40 @@ class History:
           self.history[exec_id]['finished'] is None
 
   def omit_unfinished(self, params):
-    '''Get parameters that finished.'''
+    '''Omit parameters that has not finished.'''
     empty = {'finished': None}
     with self.lock:
       return [param for param in params \
               if self.history.get(param.exec_id, empty)['finished'] is not None]
 
   def omit_finished(self, params):
-    '''Omit parameters that finished.'''
+    '''Omit parameters that has finished.'''
     empty = {'finished': None}
     with self.lock:
       return [param for param in params \
               if self.history.get(param.exec_id, empty)['finished'] is None]
+
+  def is_succeeded(self, param):
+    '''Check if a parameter succeeded.'''
+    return not self.is_failed(param)
+
+  def is_failed(self, param):
+    '''Check if a paramter did not succeed.'''
+    exec_id = param.exec_id
+    with self.lock:
+      return exec_id in self.history and \
+          not self.history[exec_id]['success']
+
+  def omit_failed(self, params):
+    '''Omit parameters that has not succeeded.'''
+    empty = {'success': None}
+    with self.lock:
+      return [param for param in params \
+              if self.history.get(param.exec_id, empty)['success']]
+
+  def omit_succeeded(self, params):
+    '''Omit parameters that has succeeded.'''
+    empty = {'success': None}
+    with self.lock:
+      return [param for param in params \
+              if not self.history.get(param.exec_id, empty)['success']]
