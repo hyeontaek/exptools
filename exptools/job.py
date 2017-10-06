@@ -12,7 +12,7 @@ class Job:
 
   def __str__(self):
     '''Format a job.'''
-    return f'[{self.param.priority}/{self.job_id}] {self.work} {self.param}'
+    return f'[{self.param.priority}/{self.job_id}] {self.work} {self.param.exec_id}:{self.param}'
 
   def sort_key(self):
     '''Return a sort key.'''
