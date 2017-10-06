@@ -147,7 +147,7 @@ class Runner:
         job = self._state.pending_jobs.pop(0)
 
         try:
-          setup_state = job.work.setup(job)
+          job.work.setup(job)
         except ResourceError:
           if not self._state.active_jobs:
             # Drop the job if there was no active jobs
@@ -172,7 +172,7 @@ class Runner:
           self._check_empty_queue()
           self.queue_update_cond.notify_all()
 
-        self._launch(job, setup_state)
+        self._launch(job)
 
         while self.joinable_job_t:
           self.joinable_job_t.pop().join()
