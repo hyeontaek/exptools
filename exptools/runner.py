@@ -81,7 +81,7 @@ class RunnerState:
     return output
 
 class Runner:
-  '''Run jobs with params.'''
+  '''Run jobs with parameters.'''
 
   def __init__(self, hist=None):
     if hist is not None:
@@ -115,7 +115,7 @@ class Runner:
       self.stop()
 
   def run(self):
-    '''Run params.'''
+    '''Run parameters.'''
     assert not self.stopping
     assert not self.running
 
@@ -253,14 +253,45 @@ class Runner:
       return self._state.clone()
 
   def pending(self):
-    '''Return True if any param is running/to be run.'''
+    '''Return True if any parameter is running/to be run.'''
     current_state = self.state()
     return bool(current_state.active_jobs or current_state.pending_jobs)
 
-  def add(self, work_list, params, keep_newer=True):
-    '''Add new params to the job queue with optionally a new priority.
-    Duplicate params with the same execution ID in the pending jobs are ignored.
-    New params are kept if keep_newer is True; old params are kept otherwise.'''
+  def omit_active(self, params):
+    '''Return a list of parameters that do not appear in active jobs.'''
+    if isinstance(params, Param):
+      params = [params]
+
+    existing_exec_ids = set()
+    new_params = []
+    with self.lock:
+      for job in self._state.active_jobs:
+        existing_exec_ids.add(job.param.exec_id)
+
+      for param in params:
+        if param.exec_id not in existing_exec_ids:
+          new_params.append(param)
+    return new_params
+
+  def omit_pending(self, params):
+    '''Return a list of parameters that do not appear in pending jobs.'''
+    if isinstance(params, Param):
+      params = [params]
+
+    existing_exec_ids = set()
+    new_params = []
+    with self.lock:
+      for job in self._state.pending_jobs:
+        existing_exec_ids.add(job.param.exec_id)
+
+      for param in params:
+        if param.exec_id not in existing_exec_ids:
+          new_params.append(param)
+    return new_params
+
+  def add(self, work_list, params):
+    '''Add new parameters to the job queue with optionally a new priority.
+    New parameters supercede existing parameters found in pending jobs.'''
     if isinstance(params, Param):
       params = [params]
     if isinstance(work_list, Work):
@@ -275,7 +306,7 @@ class Runner:
 
       prev_pending_count = len(self._state.pending_jobs)
       self._state.pending_jobs = \
-          self._sort(self._dedup(self._state.pending_jobs + new_jobs, keep_newer))
+          self._sort(self._dedup(self._state.pending_jobs + new_jobs))
       new_pending_count = len(self._state.pending_jobs)
       self.queue_update_cond.notify_all()
     self.logger.info(f'Added {new_pending_count - prev_pending_count} jobs')
@@ -320,8 +351,8 @@ class Runner:
         job.work.kill(job)
 
   @staticmethod
-  def _dedup(jobs, keep_newer):
-    '''Deduplicate jobs with params that share the same execution ID.'''
+  def _dedup(jobs):
+    '''Deduplicate jobs with parameters that share the same execution ID.'''
     id_to_loc = {}
 
     new_jobs = []
@@ -331,7 +362,7 @@ class Runner:
         id_to_loc[exec_id] = len(new_jobs)
         new_jobs.append(job)
       else:
-        if keep_newer and new_jobs[id_to_loc[exec_id]].param.param_id != job.param.param_id:
+        if new_jobs[id_to_loc[exec_id]].param.param_id != job.param.param_id:
           # Replace an existing param with a new param,
           # but keep the old param if it is identical to the new param
           # (e.g., no priority changes)
@@ -345,7 +376,7 @@ class Runner:
     return sorted(jobs, key=Job.sort_key)
 
   def _launch(self, job):
-    '''Start a job in a per-param thread.'''
+    '''Start a job in a new thread.'''
     assert self.lock.locked() # pylint: disable=no-member
 
     thread = Thread(target=self._job_main, args=(job,),
@@ -419,7 +450,7 @@ class Runner:
       if params is not None:
         new_jobs = [Job(self.next_job_id + i, work_list[i], params[i]) for i in range(len(params))]
         state.pending_jobs = \
-            self._sort(self._dedup(state.pending_jobs + new_jobs, keep_newer=False))
+            self._sort(self._dedup(state.pending_jobs + new_jobs))
       if concurrency is not None:
         state.concurrency = concurrency
 

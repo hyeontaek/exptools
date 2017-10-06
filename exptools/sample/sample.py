@@ -5,7 +5,7 @@ import logging
 import sys
 import pandas as pd
 import matplotlib.pyplot as plt
-from exptools import Runner, History
+from exptools import Runner, History, pprint
 import exptools.sample.cluster
 import exptools.sample.param
 import exptools.sample.work

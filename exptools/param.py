@@ -38,13 +38,13 @@ class Param(OrderedDict):
     return base64.urlsafe_b64encode(
         self._hash_func(param_str.encode('utf-8'), digest_size=21).digest()).decode('utf-8')
 
-  def with_new_priority(self, new_priority):
+  def new_priority(self, new_priority):
     '''Return a new parameter with a new priority.'''
     data = OrderedDict(self)
     data['_priority'] = new_priority
     return Param(data)
 
-  def with_adjusted_priority(self, priority_delta):
+  def adjusted_priority(self, priority_delta):
     '''Return a new parameter with an adjusted priority.'''
     data = OrderedDict(self)
     data['_priority'] = self.priority + priority_delta
