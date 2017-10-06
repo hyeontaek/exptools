@@ -18,11 +18,6 @@ class Param(OrderedDict):
     return self.get('_name', super().__str__())
 
   @property
-  def demand(self):
-    '''Return the demand.'''
-    return self.get('_demand', self._empty_dict)
-
-  @property
   def priority(self):
     '''Return the priority.'''
     return self.get('_priority', 0)
