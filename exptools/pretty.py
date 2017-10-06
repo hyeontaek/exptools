@@ -18,7 +18,7 @@ def pformat(params, verbose=False):
     if not verbose:
       line = f'{param.exec_id} {param.name}'
     else:
-      line = f'{param.exec_id} {pp.pformat(param)}'
+      line = f'{param.exec_id}:\n  {pp.pformat(param)}'
     return line
 
   # parameter list
@@ -27,7 +27,7 @@ def pformat(params, verbose=False):
     if not verbose:
       lines = [f'{param.exec_id} {param.name}' for param in params]
     else:
-      lines = [f'{param.exec_id} {pp.pformat(param)}' for param in params]
+      lines = [f'{param.exec_id}:\n  {pp.pformat(param)}' for param in params]
     return '\n'.join(lines)
 
   # fall back
