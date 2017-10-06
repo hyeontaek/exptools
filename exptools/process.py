@@ -5,7 +5,6 @@ __all__ = ['wait_for_procs', 'kill_procs', 'run_ssh_cmd']
 import logging
 import subprocess
 import time
-import traceback
 
 def wait_for_procs(procs, timeout=None):
   '''Wait for processes to terminate.'''
@@ -31,7 +30,8 @@ def wait_for_procs(procs, timeout=None):
       except subprocess.TimeoutExpired:
         if timeout is not None and time.time() - wait_start > timeout:
           # too long run time; give up
-          logging.getLogger('exptools.wait_for_procs').error('Timeout after %d seconds' % (time.time() - wait_start))
+          logging.getLogger('exptools.wait_for_procs')\
+              .error('Timeout after %d seconds', time.time() - wait_start)
           success = False
           pending = [False] * len(procs)
           break

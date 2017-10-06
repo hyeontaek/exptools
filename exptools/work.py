@@ -23,6 +23,11 @@ class Work:
     pass
 
   # pylint: disable=no-self-use, unused-argument
+  def kill(self, param, work_state):
+    '''Kill processes running a parameter.'''
+    pass
+
+  # pylint: disable=no-self-use, unused-argument
   def cleanup(self, param, work_state):
     '''Clean up.'''
     pass

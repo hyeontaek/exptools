@@ -100,6 +100,7 @@ class Runner:
     self.concurrency_update_t = None
     self.active_job_t = {}
     self.joinable_job_t = []
+    self.work_state = {}
 
     self.running = False
     self.stopping = False
@@ -301,6 +302,22 @@ class Runner:
       self.queue_update_cond.notify_all()
     self.logger.info(f'Removed {prev_pending_count - new_pending_count} jobs')
 
+  def kill(self, job_ids):
+    '''Kill active jobs.'''
+    if isinstance(job_ids, int):
+      job_ids = [job_ids]
+    job_ids = set(job_ids)
+    with self.lock:
+      for job in self._state.active_jobs:
+        if job.job_id in job_ids:
+          job.work.kill(job.param, self.work_state[job.job_id])
+
+  def killall(self):
+    '''Kill all active jobs.'''
+    with self.lock:
+      for job in self._state.active_jobs:
+        job.work.kill(job.param, self.work_state[job.job_id])
+
   @staticmethod
   def _dedup(jobs, keep_newer):
     '''Deduplicate jobs with params that share the same execution ID.'''
@@ -335,6 +352,7 @@ class Runner:
 
     self._state.active_jobs.append(job)
     self.active_job_t[job.job_id] = thread
+    self.work_state[job.job_id] = work_state
 
     self.hist.started(job.param)
     self.logger.info(termcolor.colored(f'Started:   {job}', 'blue'))
@@ -368,6 +386,7 @@ class Runner:
 
         self.joinable_job_t.append(self.active_job_t[job.job_id])
         del self.active_job_t[job.job_id]
+        del self.work_state[job.job_id]
 
         job.work.cleanup(job.param, work_state)
 
