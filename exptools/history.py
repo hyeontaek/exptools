@@ -151,14 +151,14 @@ class History:
       history_df = pd.DataFrame(data, columns=['started', 'finished', 'duration', 'success'])
       if time == 'utc':
         history_df['started'] = history_df['started']\
-            .map(lambda v: format_utc(v) if v is not pd.isnull(v) else None)
+            .map(lambda v: format_utc(v) if not pd.isnull(v) else None)
         history_df['finished'] = history_df['finished']\
-            .map(lambda v: format_utc(v) if v is not pd.isnull(v) else None)
+            .map(lambda v: format_utc(v) if not pd.isnull(v) else None)
       elif time == 'local':
         history_df['started'] = history_df['started']\
-            .map(lambda v: format_local(v) if v is not pd.isnull(v) else None)
+            .map(lambda v: format_local(v) if not pd.isnull(v) else None)
         history_df['finished'] = history_df['finished']\
-            .map(lambda v: format_local(v) if v is not pd.isnull(v) else None)
+            .map(lambda v: format_local(v) if not pd.isnull(v) else None)
       elif time != 'datetime':
         assert False, f'Unsupported timezone: {time}'
       return history_df
