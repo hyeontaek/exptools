@@ -6,6 +6,7 @@ from collections import OrderedDict
 from threading import Lock
 import os
 import pickle
+from exptools.param import Param
 from exptools.time import diff_sec, format_local, format_utc, utcnow
 
 class History:
@@ -80,6 +81,12 @@ class History:
       if not defer_dump:
         self._dump()
 
+  @staticmethod
+  def _exec_id(param_or_exec_id):
+    if isinstance(param_or_exec_id, Param):
+      return param_or_exec_id.exec_id
+    return param_or_exec_id
+
   def get_all(self):
     '''Get all history data.'''
     with self.lock:
@@ -94,49 +101,40 @@ class History:
         ('success', None),
         ])
     with self.lock:
-      return dict(self.history.get(param.exec_id, stub))
+      return dict(self.history.get(self._exec_id(param), stub))
 
-  def get_by_exec_id(self, exec_id):
-    '''Get a parameter's history data.'''
-    stub = OrderedDict([
-        ('started', None),
-        ('finished', None),
-        ('duration', None),
-        ('success', None),
-        ])
-    with self.lock:
-      return dict(self.history.get(exec_id, stub))
-
-  def add(self, param, hist_data, defer_dump=False):
+  def add(self, param_or_exec_id, hist_data, defer_dump=False):
     '''Add a parameter's history data manually.'''
-    exec_id = param.exec_id
+    exec_id = self._exec_id(param_or_exec_id)
     with self.lock:
       self.history[exec_id] = hist_data
       if not defer_dump:
         self._dump()
 
-  def remove(self, param, defer_dump=False):
+  def remove(self, param_or_exec_id, defer_dump=False):
     '''Remove a parameter's history data manually.'''
-    exec_id = param.exec_id
+    exec_id = self._exec_id(param_or_exec_id)
     with self.lock:
       del self.history[exec_id]
       if not defer_dump:
         self._dump()
 
-  def prune_absent(self, params, defer_dump=False):
+  def prune_absent(self, param_or_exec_ids, defer_dump=False):
     '''Remove history entries that are absent in parameters.'''
     with self.lock:
-      valid_exec_ids = set([param.exec_id for param in params])
+      valid_exec_ids = set([self._exec_id(param_or_exec_id)
+                            for param_or_exec_id in param_or_exec_ids])
 
-      self.history = {key: value for key, value in self.history.items() if key in valid_exec_ids}
+      self.history = {exec_id: hist_entry
+                      for exec_id, hist_entry in self.history.items() if exec_id in valid_exec_ids}
       if not defer_dump:
         self._dump()
 
-  def reset_finished(self, params, defer_dump=False):
+  def reset_finished(self, param_or_exec_ids, defer_dump=False):
     '''Remove finished data for parameters.'''
     with self.lock:
-      for param in params:
-        exec_id = param.exec_id
+      for param_or_exec_id in param_or_exec_ids:
+        exec_id = self._exec_id(param_or_exec_id)
         if exec_id in self.history:
           self.history[exec_id]['finished'] = None
       if not defer_dump:
@@ -145,21 +143,22 @@ class History:
   def get_df(self, time='datetime'):
     '''Return a dataframe for history data.'''
     import pandas as pd
-    data = list(self.history.values())
-    history_df = pd.DataFrame(data, columns=['started', 'finished', 'duration', 'success'])
-    if time == 'utc':
-      history_df['started'] = history_df['started']\
-          .map(lambda v: format_utc(v) if v is not None else v)
-      history_df['finished'] = history_df['finished']\
-          .map(lambda v: format_utc(v) if v is not None else v)
-    elif time == 'local':
-      history_df['started'] = history_df['started']\
-          .map(lambda v: format_local(v) if v is not None else v)
-      history_df['finished'] = history_df['finished']\
-          .map(lambda v: format_local(v) if v is not None else v)
-    else:
-      assert False, 'Unsupported timezone'
-    return history_df
+    with self.lock:
+      data = list(self.history.values())
+      history_df = pd.DataFrame(data, columns=['started', 'finished', 'duration', 'success'])
+      if time == 'utc':
+        history_df['started'] = history_df['started']\
+            .map(lambda v: format_utc(v) if v is not None else v)
+        history_df['finished'] = history_df['finished']\
+            .map(lambda v: format_utc(v) if v is not None else v)
+      elif time == 'local':
+        history_df['started'] = history_df['started']\
+            .map(lambda v: format_local(v) if v is not None else v)
+        history_df['finished'] = history_df['finished']\
+            .map(lambda v: format_local(v) if v is not None else v)
+      else:
+        assert False, 'Unsupported timezone'
+      return history_df
 
   def get_joined_df(self, params):
     '''Return a dataframe that joins parameters and history data on exec_id.'''
@@ -170,59 +169,59 @@ class History:
         ('duration', None),
         ('success', None),
         ])
-    data = list(params)
-    for item in data:
-      exec_id = item.exec_id
-      hist_data = self.history.get(exec_id, stub)
-      item.update({'_' + key: value for key, value in hist_data.items()})
-    return pd.DataFrame(data, columns=['started', 'finished', 'duration', 'success'])
+    with self.lock:
+      data = list(params)
+      for param in data:
+        hist_data = self.history.get(param.exec_id, stub)
+        param.update({'_' + key: value for key, value in hist_data.items()})
+      return pd.DataFrame(data, columns=['started', 'finished', 'duration', 'success'])
 
-  def is_finished(self, param):
+  def is_finished(self, param_or_exec_id):
     '''Check if a parameter finished.'''
-    return not self.is_unfinished(param)
+    return not self.is_unfinished(param_or_exec_id)
 
-  def is_unfinished(self, param):
+  def is_unfinished(self, param_or_exec_id):
     '''Check if a paramter did not finish.'''
-    exec_id = param.exec_id
+    exec_id = self._exec_id(param_or_exec_id)
     with self.lock:
       return exec_id in self.history and \
           self.history[exec_id]['finished'] is None
 
-  def omit_unfinished(self, params):
+  def omit_unfinished(self, param_or_exec_ids):
     '''Omit parameters that has not finished.'''
     empty = {'finished': None}
     with self.lock:
-      return [param for param in params \
-              if self.history.get(param.exec_id, empty)['finished'] is not None]
+      return [param_or_exec_id for param_or_exec_id in param_or_exec_ids \
+              if self.history.get(self._exec_id(param_or_exec_id), empty)['finished'] is not None]
 
-  def omit_finished(self, params):
+  def omit_finished(self, param_or_exec_ids):
     '''Omit parameters that has finished.'''
     empty = {'finished': None}
     with self.lock:
-      return [param for param in params \
-              if self.history.get(param.exec_id, empty)['finished'] is None]
+      return [param_or_exec_id for param_or_exec_id in param_or_exec_ids \
+              if self.history.get(self._exec_id(param_or_exec_id), empty)['finished'] is None]
 
-  def is_succeeded(self, param):
+  def is_succeeded(self, param_or_exec_id):
     '''Check if a parameter succeeded.'''
-    return not self.is_failed(param)
+    return not self.is_failed(param_or_exec_id)
 
-  def is_failed(self, param):
+  def is_failed(self, param_or_exec_id):
     '''Check if a paramter did not succeed.'''
-    exec_id = param.exec_id
+    exec_id = self._exec_id(param_or_exec_id)
     with self.lock:
       return exec_id in self.history and \
           not self.history[exec_id]['success']
 
-  def omit_failed(self, params):
+  def omit_failed(self, param_or_exec_ids):
     '''Omit parameters that has not succeeded.'''
     empty = {'success': None}
     with self.lock:
-      return [param for param in params \
-              if self.history.get(param.exec_id, empty)['success']]
+      return [param_or_exec_id for param_or_exec_id in param_or_exec_ids \
+              if self.history.get(self._exec_id(param_or_exec_id), empty)['success']]
 
-  def omit_succeeded(self, params):
+  def omit_succeeded(self, param_or_exec_ids):
     '''Omit parameters that has succeeded.'''
     empty = {'success': None}
     with self.lock:
-      return [param for param in params \
-              if not self.history.get(param.exec_id, empty)['success']]
+      return [param_or_exec_id for param_or_exec_id in param_or_exec_ids \
+              if not self.history.get(self._exec_id(param_or_exec_id), empty)['success']]
