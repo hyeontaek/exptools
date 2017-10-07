@@ -37,6 +37,7 @@ setup(
     packages=find_packages(),
 
     install_requires=[
+      'base58',
       'pytz',
       'tzlocal',
       'termcolor',
