@@ -144,14 +144,16 @@ class History:
     history_df = pd.DataFrame(data, columns=['started', 'finished', 'duration', 'success'])
     if time == 'utc':
       history_df['started'] = history_df['started']\
-          .map(lambda v: format_utc(v) if v else v)
+          .map(lambda v: format_utc(v) if v is not None else v)
       history_df['finished'] = history_df['finished']\
-          .map(lambda v: format_utc(v) if v else v)
+          .map(lambda v: format_utc(v) if v is not None else v)
     elif time == 'local':
       history_df['started'] = history_df['started']\
-          .map(lambda v: format_local(v) if v else v)
+          .map(lambda v: format_local(v) if v is not None else v)
       history_df['finished'] = history_df['finished']\
-          .map(lambda v: format_local(v) if v else v)
+          .map(lambda v: format_local(v) if v is not None else v)
+    else:
+      assert False, 'Unsupported timezone'
     return history_df
 
   def get_joined_df(self, params):
