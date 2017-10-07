@@ -75,8 +75,11 @@ class History:
             ('success', None),
             ])
       self.history[exec_id]['finished'] = now
-      self.history[exec_id]['duration'] = \
-          diff_sec(now, self.history[exec_id]['started'])
+      if self.history[exec_id]['started'] is not None:
+        self.history[exec_id]['duration'] = \
+            diff_sec(now, self.history[exec_id]['started'])
+      else:
+        self.history[exec_id]['duration'] = None
       self.history[exec_id]['success'] = success
       if not defer_dump:
         self._dump()
