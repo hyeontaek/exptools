@@ -141,7 +141,7 @@ class History:
     '''Return a dataframe for history data.'''
     import pandas as pd
     data = list(self.history.values())
-    history_df = pd.DataFrame(data, columns=data[0].keys())
+    history_df = pd.DataFrame(data, columns=['started', 'finished', 'duration', 'success'])
     if time == 'utc':
       history_df['started'] = history_df['started']\
           .map(lambda v: format_utc(v) if v else v)
@@ -168,7 +168,7 @@ class History:
       exec_id = item.exec_id
       hist_data = self.history.get(exec_id, stub)
       item.update({'_' + key: value for key, value in hist_data.items()})
-    return pd.DataFrame(data, columns=data[0].keys())
+    return pd.DataFrame(data, columns=['started', 'finished', 'duration', 'success'])
 
   def is_finished(self, param):
     '''Check if a parameter finished.'''
