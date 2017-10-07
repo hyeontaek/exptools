@@ -156,8 +156,8 @@ class History:
             .map(lambda v: format_local(v) if v is not None else v)
         history_df['finished'] = history_df['finished']\
             .map(lambda v: format_local(v) if v is not None else v)
-      else:
-        assert False, 'Unsupported timezone'
+      elif time != 'datetime':
+        assert False, f'Unsupported timezone: {time}'
       return history_df
 
   def get_joined_df(self, params):
