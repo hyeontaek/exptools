@@ -400,12 +400,20 @@ class Runner:
       exc = traceback.format_exc()
     finally:
       with self.lock:
+        try:
+          job.work.cleanup(job)
+        except Exception: # pylint: disable=broad-except
+          if exc is None:
+            exc = traceback.format_exc()
+          else:
+            exc = traceback.format_exc() + '\n' + exc
+
         for i, active_job in enumerate(self._state.active_jobs):
           if job.job_id == active_job.job_id:
             del self._state.active_jobs[i]
             break
         else:
-          raise RuntimeError(f'Missing active job for {job}')
+          raise RuntimeError(f'Bug: missing active job for {job}')
 
         if exc is not None:
           self._failed_exception(job, exc)
@@ -417,8 +425,6 @@ class Runner:
 
         self.joinable_job_t.append(self.active_job_t[job.job_id])
         del self.active_job_t[job.job_id]
-
-        job.work.cleanup(job)
 
   def format_elapsed_time(self, job):
     '''Format the elapsed time of a job.'''
