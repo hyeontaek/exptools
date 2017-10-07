@@ -143,6 +143,16 @@ class History:
       if not defer_dump:
         self._dump()
 
+  def reset_success(self, param_or_exec_ids, defer_dump=False):
+    '''Remove success data for parameters.'''
+    with self.lock:
+      for param_or_exec_id in param_or_exec_ids:
+        exec_id = self._exec_id(param_or_exec_id)
+        if exec_id in self.history:
+          self.history[exec_id]['success'] = None
+      if not defer_dump:
+        self._dump()
+
   def get_df(self, time='datetime'):
     '''Return a dataframe for history data.'''
     import pandas as pd
