@@ -32,9 +32,9 @@ class Estimator:
       if hist_entry['duration'] is not None:
         known_duration += hist_entry['duration']
         known_count += 1
-      elif hist_entry['started'] is not None:
-        known_duration += diff_sec(now, hist_entry['started'])
-        known_count += 1
+      #elif hist_entry['started'] is not None:
+      #  known_duration += diff_sec(now, hist_entry['started'])
+      #  known_count += 1
 
     avg_duration = known_duration / max(known_count, 1)
 
