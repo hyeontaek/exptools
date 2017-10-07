@@ -173,10 +173,12 @@ class History:
         ('success', None),
         ])
     with self.lock:
-      data = list(params)
-      for param in data:
+      data = []
+      for param in params:
         hist_data = self.history.get(param.exec_id, stub)
-        param.update({'_' + key: value for key, value in hist_data.items()})
+        joined_param = OrderedDict(param)
+        joined_param.update({'_' + key: value for key, value in hist_data.items()})
+        data.append(joined_param)
       return pd.DataFrame(data, columns=['started', 'finished', 'duration', 'success'])
 
   def is_finished(self, param_or_exec_id):
