@@ -80,6 +80,11 @@ class History:
       if not defer_dump:
         self._dump()
 
+  def get_all(self):
+    '''Get all history data.'''
+    with self.lock:
+      return {exec_id: self.history[exec_id] for exec_id in self.history}
+
   def get(self, param):
     '''Get a parameter's history data.'''
     stub = OrderedDict([

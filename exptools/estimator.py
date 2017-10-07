@@ -22,47 +22,45 @@ class Estimator:
     concurrency = max(1., min(runner_state.concurrency,
                               len(state.active_jobs) + len(state.pending_jobs)))
 
-    # Obtain known duration/count and unknown count
+    hist_data = self.hist.get_all()
+
+    # Estimate average per-job duration
     known_duration = 0.
     known_count = 0
 
-    unknown_count = 0
+    for hist_entry in hist_data.values():
+      if hist_entry['duration'] is not None:
+        known_duration += hist_entry['duration']
+        known_count += 1
+      elif hist_entry['started'] is not None:
+        known_duration += diff_sec(now, hist_entry['started'])
+        known_count += 1
 
-    for job in state.succeeded_jobs + state.failed_jobs + state.active_jobs + state.pending_jobs:
-      if self.hist is not None:
-        hist_entry = self.hist.get(job.param)
-        if hist_entry['duration'] is not None:
-          known_duration += hist_entry['duration']
-          known_count += 1
-        else:
-          unknown_count += 1
-      else:
-        unknown_count += 1
+    avg_duration = known_duration / max(known_count, 1)
 
-    # Interpolate known duration to estimate total duration
-    interpolated_duration = known_duration / max(known_count, 1) * (known_count + unknown_count)
-
-    # Obtain done jobs' duration
-    known_done_duration = 0.
-
-    for job in state.succeeded_jobs + state.failed_jobs:
-      if self.hist is not None:
-        hist_entry = self.hist.get(job.param)
-        if hist_entry['duration'] is not None:
-          known_done_duration += hist_entry['duration']
-
-    # Obtain active jobs' duration
-    known_active_duration = 0.
-
+    # Calculate active jobs' remaining time
+    remaining_duration = 0.
     for job in state.active_jobs:
-      if self.hist is not None:
-        hist_entry = self.hist.get(job.param)
-        if hist_entry['started'] is not None:
-          known_active_duration += diff_sec(now, hist_entry['started'])
+      hist_entry = self.hist.get(job.param)
 
-    # Estimate remaining duration
-    remaining_duration = (interpolated_duration - known_done_duration - known_active_duration)
-    remaining_duration = max(0., remaining_duration)
+      if hist_entry['started'] is None:
+        started = now
+      else:
+        started = hist_entry['started']
+
+      if hist_entry['duration'] is None:
+        remaining_duration += max(avg_duration - diff_sec(now, started), 0.)
+      else:
+        remaining_duration += max(hist_entry['duration'] - diff_sec(now, started), 0.)
+
+    # Calculate pending jobs' remaining time
+    for job in state.pending_jobs:
+      hist_entry = self.hist.get(job.param)
+
+      if hist_entry['duration'] is None:
+        remaining_duration += avg_duration
+      else:
+        remaining_duration += hist_entry['duration']
 
     # Take into account concurrency
     remaining_time = remaining_duration / concurrency
