@@ -6,6 +6,7 @@ dependencies:
 - termcolor
 - pandas
 - pip:
+  - base58
   - tzlocal
 - wheel
 - pylint
