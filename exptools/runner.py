@@ -55,25 +55,35 @@ class RunnerState:
     '''Format the job queue state in detail.'''
     output = f'Succeeded jobs ({len(self.succeeded_jobs)}):\n'
     for job in self.succeeded_jobs:
-      output += f'  {job} '
+      output += f'  {job}  '
       output += f'[elapsed: {self.runner.format_elapsed_time(job)}]\n'
     output += '\n'
 
     output += f'Failed jobs ({len(self.failed_jobs)}):\n'
     for job in self.failed_jobs:
-      output += f'  {job} '
+      output += f'  {job}  '
       output += f'[elapsed: {self.runner.format_elapsed_time(job)}]\n'
     output += '\n'
 
+    partial_state = self.clone()
+    partial_state.active_jobs.clear()
+    partial_state.pending_jobs.clear()
+
     output += f'Active jobs ({len(self.active_jobs)}):\n'
     for job in self.active_jobs:
-      output += f'  {job} '
-      output += f'[elapsed: {self.runner.format_elapsed_time(job)}]\n'
+      partial_state.active_jobs.append(job)
+      output += f'  {job}  '
+      output += f'[elapsed: {self.runner.format_elapsed_time(job)}] '
+      output += f'[remaining: {self.runner.format_remaining_time(partial_state)}]\n'
     output += '\n'
 
     output += f'Pending jobs ({len(self.pending_jobs)}):\n'
     for job in self.pending_jobs:
-      output += f'  {job}\n'
+      partial_state.pending_jobs.append(job)
+      output += f'  {job}  '
+      output += f'[duration: {self.runner.format_elapsed_time(job)}] '
+      output += f'[remaining: {self.runner.format_remaining_time(partial_state)}]\n'
+
     output += '\n'
 
     output += f'Concurrency: {self.concurrency}'
@@ -441,8 +451,14 @@ class Runner:
       return format_sec(diff_sec(utcnow(), started))
     return format_sec(diff_sec(finished, started))
 
+  def format_remaining_time(self, state=None):
+    '''Format the elapsed time of jobs in the state.'''
+    if state is None:
+      state = self.state()
+    return format_sec(self.estimator.estimate_remaining_time(state))
+
   def format_estimated_time(self, work_list=None, params=None, concurrency=None):
-    '''Format the estimated time to finish jobs.'''
+    '''Format the estimated time to finish jobs with new parameters.'''
     state = self.state()
 
     if work_list is None:
