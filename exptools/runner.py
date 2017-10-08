@@ -308,6 +308,10 @@ class Runner:
       self._state.pending_jobs = \
           self._sort(self._dedup(self._state.pending_jobs + new_jobs))
       new_pending_count = len(self._state.pending_jobs)
+
+      new_pending_ids = set([job.job_id for job in self._state.pending_jobs])
+      job_ids = [job_id for job_id in job_ids if job_id in new_pending_ids]
+
       self.queue_update_cond.notify_all()
     self.logger.info(f'Added {new_pending_count - prev_pending_count} jobs')
     return job_ids
