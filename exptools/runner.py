@@ -81,7 +81,7 @@ class RunnerState:
     for job in self.pending_jobs:
       partial_state.pending_jobs.append(job)
       output += f'  {job}  '
-      output += f'[duration: {self.runner.format_elapsed_time(job)}] '
+      output += f'[duration: {self.runner.format_duration(job)}] '
       output += f'[remaining: {self.runner.format_remaining_time(partial_state)}]\n'
 
     output += '\n'
@@ -450,6 +450,14 @@ class Runner:
     if not finished:
       return format_sec(diff_sec(utcnow(), started))
     return format_sec(diff_sec(finished, started))
+
+  def format_duration(self, job):
+    '''Format the duration of a job.'''
+    hist_entry = self.hist.get(job.param)
+    duration = hist_entry['duration']
+    if not duration:
+      return format_sec(0.)
+    return format_sec(duration)
 
   def format_remaining_time(self, state=None):
     '''Format the elapsed time of jobs in the state.'''
