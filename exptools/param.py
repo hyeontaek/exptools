@@ -27,16 +27,18 @@ class Param(OrderedDict):
   def param_id(self):
     '''Return the parameter ID of a parameter.'''
     param_str = json.dumps(self, sort_keys=True)
+    # Skip first few bytes because they are typically skewed to a few characters in base58
     return base58.b58encode(
-        self._hash_func(param_str.encode('utf-8')).digest())[:20]
+        self._hash_func(param_str.encode('utf-8')).digest())[3:3+20]
 
   @property
   def exec_id(self):
     '''Return the execution ID of a parameter.'''
     filtered_param = {key: value for key, value in self.items() if not key.startswith('_')}
     param_str = json.dumps(filtered_param, sort_keys=True)
+    # Skip first few bytes because they are typically skewed to a few characters in base58
     return base58.b58encode(
-        self._hash_func(param_str.encode('utf-8')).digest())[:20]
+        self._hash_func(param_str.encode('utf-8')).digest())[3:3+20]
 
   def new_priority(self, new_priority):
     '''Return a new parameter with a new priority.'''
