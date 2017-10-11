@@ -5,9 +5,12 @@ dependencies:
 - pytz
 - termcolor
 - pandas
+- requests
+- werkzeug
 - pip:
   - base58
   - tzlocal
+  - json-rpc
 - wheel
 - pylint
 - pytest

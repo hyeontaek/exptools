@@ -8,6 +8,7 @@ from exptools.job import *
 from exptools.param import *
 from exptools.process import *
 from exptools.pretty import *
+from exptools.rpc import *
 from exptools.runner import *
 from exptools.time import *
 from exptools.work import *

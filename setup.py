@@ -42,6 +42,9 @@ setup(
       'tzlocal',
       'termcolor',
       'pandas',
+      'requests',
+      'json-rpc',
+      'werkzeug',
       ],
 
     extras_require={
