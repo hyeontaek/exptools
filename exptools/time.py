@@ -9,6 +9,7 @@ __all__ = [
     'format_sec']
 
 import datetime
+
 import pytz
 import tzlocal
 
@@ -30,19 +31,19 @@ def as_local(time):
 
 def format_utc(time):
   '''Format a time in UTC.'''
-  return as_utc(time).strftime('%Y-%m-%d %H:%M:%S')
+  return as_utc(time).strftime('%Y-%m-%d %H:%M:%S.%f')
 
 def format_local(time):
   '''Format a time in the local timezone.'''
-  return as_local(time).strftime('%Y-%m-%d %H:%M:%S')
+  return as_local(time).strftime('%Y-%m-%d %H:%M:%S.%f')
 
 def parse_utc(time):
   '''Parse a UTC time.'''
-  return datetime.datetime.strptime(time, '%Y-%m-%d %H:%M:%S').replace(tzinfo=pytz.utc)
+  return datetime.datetime.strptime(time, '%Y-%m-%d %H:%M:%S.%f').replace(tzinfo=pytz.utc)
 
 def parse_local(time):
   '''Parse a local time.'''
-  return datetime.datetime.strptime(time, '%Y-%m-%d %H:%M:%S')\
+  return datetime.datetime.strptime(time, '%Y-%m-%d %H:%M:%S.%f')\
       .replace(tzinfo=tzlocal.get_localzone())
 
 def diff_sec(time1, time2):

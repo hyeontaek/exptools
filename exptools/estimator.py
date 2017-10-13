@@ -3,7 +3,9 @@
 __all__ = ['Estimator']
 
 import datetime
+
 import termcolor
+
 from exptools.time import diff_sec, format_local, format_sec, utcnow
 
 class Estimator:

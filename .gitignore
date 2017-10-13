@@ -1,6 +1,7 @@
 __pycache__
 /exptools/sample/.ipynb_checkpoints
-/exptools/sample/hist.dat
+secret.dat
+history.dat
 /build
 /dist
 /exptools.egg-info

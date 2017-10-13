@@ -3,9 +3,8 @@
 __all__ = ['pformat', 'pprint']
 
 from pprint import PrettyPrinter
-from exptools.param import Param
 
-pp = PrettyPrinter()
+_PP = PrettyPrinter()
 
 def pformat(params, verbose=False):
   '''Pretty-format parameters.'''
@@ -13,12 +12,12 @@ def pformat(params, verbose=False):
   org_params = params
 
   # single parameter
-  if isinstance(params, Param):
+  if isinstance(params, dict):
     param = params
     if not verbose:
       line = f'{param.exec_id}  {param.name}'
     else:
-      line = f'{param.exec_id}:\n  {pp.pformat(param)}'
+      line = f'{param.exec_id}:\n  {_PP.pformat(param)}'
     return line
 
   # parameter list
@@ -27,12 +26,12 @@ def pformat(params, verbose=False):
     if not verbose:
       lines = [f'{param.exec_id}  {param.name}' for param in params]
     else:
-      lines = [f'{param.exec_id}:\n  {pp.pformat(param)}' for param in params]
+      lines = [f'{param.exec_id}:\n  {_PP.pformat(param)}' for param in params]
     return '\n'.join(lines)
 
   # fall back
-  return pp.pformat(org_params)
-  
+  return _PP.pformat(org_params)
+
 def pprint(params, stream=None, *args, **kwargs):
   '''Pretty-print parameters.'''
   if stream is None:

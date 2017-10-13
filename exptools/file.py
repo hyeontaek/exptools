@@ -4,7 +4,8 @@ __all__ = ['mkdirs', 'rmdirs', 'get_param_dir']
 
 import os
 import shutil
-from exptools.param import Param
+
+from exptools.param import get_exec_id
 
 def mkdirs(path, ignore_errors=True):
   '''Make directories recursively.'''
@@ -22,6 +23,6 @@ def rmdirs(path, ignore_errors=True):
 
 def get_param_dir(prefix, param_or_exec_id):
   '''Get a path for a parameter.'''
-  if isinstance(param_or_exec_id, Param):
-    return prefix + param_or_exec_id.exec_id
-  return prefix + param_or_exec_id
+  if isinstance(param_or_exec_id, str):
+    return prefix + param_or_exec_id
+  return prefix + get_exec_id(param_or_exec_id)

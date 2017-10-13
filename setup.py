@@ -37,14 +37,12 @@ setup(
     packages=find_packages(),
 
     install_requires=[
+      'aiofiles',
       'base58',
       'pytz',
-      'tzlocal',
       'termcolor',
-      'pandas',
-      'requests',
-      'json-rpc',
-      'werkzeug',
+      'tzlocal',
+      'websockets',
       ],
 
     extras_require={
@@ -57,6 +55,7 @@ setup(
         'sample': [
           'jupyter',
           'matplotlib',
+          'pandas',
           ],
     },
 

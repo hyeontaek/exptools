@@ -4,16 +4,15 @@ channels:
 dependencies:
 - pytz
 - termcolor
-- pandas
-- requests
-- werkzeug
 - pip:
+  - aiofiles
   - base58
   - tzlocal
-  - json-rpc
+  - websockets
 - wheel
 - pylint
 - pytest
 - pytest-cov
 - jupyter
 - matplotlib
+- pandas
