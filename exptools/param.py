@@ -1,6 +1,10 @@
 '''Provide the Param class.'''
 
-__all__ = ['get_param_id', 'get_param_ids', 'get_exec_id', 'get_exec_ids']
+__all__ = [
+    'get_param_id', 'get_param_ids',
+    'get_exec_id', 'get_exec_ids',
+    'get_name', 'get_names',
+    ]
 
 import hashlib
 import json
@@ -31,3 +35,11 @@ def get_exec_id(param):
 def get_exec_ids(params):
   '''Return the execution IDs of parameters.'''
   return [get_exec_id(param) for param in params]
+
+def get_name(param):
+  '''Return the name of a parameter.'''
+  return param.get('_name', str(param))
+
+def get_names(params):
+  '''Return the names of parameters.'''
+  return [get_name(param) for param in params]

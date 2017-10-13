@@ -152,7 +152,11 @@ class Queue:
           self.finished_jobs.append(job)
           del self.started_jobs[i]
 
-          self.logger.info(f'Finished job {job_id} (succeeded={succeeded})')
+          if succeeded:
+            self.logger.info(f'Finished job {job_id} (succeeded)')
+          else:
+            self.logger.warning(f'Finished job {job_id} (FAILED)')
+          self._check_empty()
           self.lock.notify_all()
           return True
     return False
@@ -174,6 +178,7 @@ class Queue:
       self.finished_jobs = []
       self.queued_jobs = []
       self.logger.info(f'Cleared jobs')
+      self._check_empty()
       self.lock.notify_all()
 
   @rpc_export_function
@@ -188,6 +193,7 @@ class Queue:
         self.finished_jobs = [job for job in self.finished_jobs if job['id'] not in job_ids]
       new_count = len(self.finished_jobs)
       self.logger.info(f'Removed {prev_count - new_count} finished jobs')
+      self._check_empty()
       self.lock.notify_all()
 
   @rpc_export_function
@@ -202,7 +208,13 @@ class Queue:
         self.queued_jobs = [job for job in self.queued_jobs if job['id'] not in job_ids]
       new_count = len(self.queued_jobs)
       self.logger.info(f'Removed {prev_count - new_count} queued jobs')
+      self._check_empty()
       self.lock.notify_all()
+
+  def _check_empty(self):
+    assert self.lock.locked()
+    if not self.started_jobs and not self.queued_jobs:
+      self.logger.info('Queue empty')
 
   async def update_concurrency(self):
     '''Update the current concurrency.'''

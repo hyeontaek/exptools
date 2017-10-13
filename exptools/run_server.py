@@ -18,6 +18,9 @@ def run_server():
   logging_fmt = '%(asctime)s %(name)s %(levelname)-8s %(message)s'
   logging.basicConfig(format=logging_fmt, level=logging.INFO)
 
+  # less verbose websockets messages
+  logging.getLogger('websockets.protocol').setLevel(logging.WARNING)
+
   logger = logging.getLogger('exptools.run_server')
 
   parser = argparse.ArgumentParser(description='Run an exptools RPC server.')

@@ -10,54 +10,6 @@ import signal
 
 from exptools.rpc_helper import rpc_export_function
 
-#  def __str__(self):
-#    '''Format the job queue state.'''
-#    return f'succeeded_jobs={self.succeeded_jobs}, failed_jobs={self.failed_jobs}, ' + \
-#           f'active_jobs={self.active_jobs}, pending_jobs={self.pending_jobs}, ' + \
-#           f'concurrency={self.concurrency}'
-#
-#  def format(self):
-#    '''Format the job queue state in detail.'''
-#    output = f'Succeeded jobs ({len(self.succeeded_jobs)}):\n'
-#    for job in self.succeeded_jobs:
-#      output += f'  {job}  '
-#      output += f'[elapsed: {self.runner.format_elapsed_time(job)}]\n'
-#    output += '\n'
-#
-#    output += f'Failed jobs ({len(self.failed_jobs)}):\n'
-#    for job in self.failed_jobs:
-#      output += f'  {job}  '
-#      output += f'[elapsed: {self.runner.format_elapsed_time(job)}]\n'
-#    output += '\n'
-#
-#    partial_state = self.clone()
-#    partial_state.active_jobs.clear()
-#    partial_state.pending_jobs.clear()
-#
-#    output += f'Active jobs ({len(self.active_jobs)}):\n'
-#    for job in self.active_jobs:
-#      partial_state.active_jobs.append(job)
-#      output += f'  {job}  '
-#      output += f'[elapsed: {self.runner.format_elapsed_time(job)}] '
-#      output += f'[remaining: {self.runner.format_remaining_time(partial_state)}]\n'
-#    output += '\n'
-#
-#    output += f'Pending jobs ({len(self.pending_jobs)}):\n'
-#    for job in self.pending_jobs:
-#      partial_state.pending_jobs.append(job)
-#      output += f'  {job}  '
-#      output += f'[duration: {self.runner.format_duration(job)}] '
-#      output += f'[remaining: {self.runner.format_remaining_time(partial_state)}]\n'
-#
-#    output += '\n'
-#
-#    output += f'Concurrency: {self.concurrency}'
-#
-#    return output
-
-    #self.estimator = Estimator(hist)
-
-
 class Runner:
   '''Run jobs with parameters.'''
 
@@ -126,8 +78,7 @@ class Runner:
     param = job['param']
 
     try:
-      cmd = param['_cmd']
-      cmd_on_failure = param.get('_cmd_on_failure', None)
+      cmd = param['cmd']
 
       if not await self.queue.set_started(job_id, None):
         self.logger.info(f'Ignoring missing job {job_id}')
@@ -136,7 +87,7 @@ class Runner:
       self.logger.info(f'Launching job {job_id} with command {cmd}')
 
       proc = await asyncio.create_subprocess_exec(
-          cmd, stdin=asyncio.subprocess.PIPE, loop=self.loop)
+          *cmd, stdin=asyncio.subprocess.PIPE, loop=self.loop)
       await self.queue.set_started(job_id, proc.pid)
 
       await proc.communicate(input=json.dumps(job).encode('utf-8'))
@@ -144,24 +95,20 @@ class Runner:
       if proc.returncode == 0:
         await self.queue.set_finished(job_id, True)
       else:
-        if cmd_on_failure is not None:
-          proc = await asyncio.create_subprocess_exec(
-              cmd_on_failure, stdin=asyncio.subprocess.PIPE, loop=self.loop)
-          await proc.communicate(input=json.dumps(job))
         await self.queue.set_finished(job_id, False)
     except Exception: # pylint: disable=broad-except
       self.logger.exception(f'Exception while running job {job_id}')
       await self.queue.set_finished(job_id, False)
 
   @rpc_export_function
-  async def kill(self, job_ids, force=False):
+  async def kill(self, job_ids=None, force=False):
     '''Kill started jobs.'''
-    if isinstance(job_ids, int):
-      job_ids = [job_ids]
+    queue_state = await self.queue.get_state()
+
+    if job_ids is None:
+      job_ids = [job['id'] for job in queue_state['started_jobs']]
 
     job_ids = set(job_ids)
-
-    queue_state = await self.queue.get_state()
     for job in queue_state['started_jobs']:
       if job['id'] in job_ids and job['pid'] is not None:
         if not force:
@@ -174,8 +121,6 @@ class Runner:
   @rpc_export_function
   async def killall(self, force=False):
     '''Kill all started jobs.'''
-    queue_state = await self.queue.get_state()
-    await self.kill([job['id'] for job in queue_state['started_jobs']], force)
 
   #def format_elapsed_time(self, job):
   #  '''Format the elapsed time of a job.'''

@@ -6,63 +6,63 @@ import datetime
 
 import termcolor
 
-from exptools.time import diff_sec, format_local, format_sec, utcnow
+from exptools.param import get_exec_id
+from exptools.time import diff_sec, format_local, format_sec, utcnow, parse_utc
 
 class Estimator:
   '''Estimate the remaining time.'''
 
-  def __init__(self, hist=None):
-    self.hist = hist
+  def __init__(self, history):
+    self.history = history
 
-  def estimate_remaining_time(self, runner_state):
-    '''Estimate the remaining time using Runner's state.'''
+  async def estimate_remaining_time(self, state):
+    '''Estimate the remaining time using the queue state.'''
 
     now = utcnow()
-    state = runner_state
 
     # Future parallelism cannot be higher than the remaining job count
-    concurrency = max(1., min(runner_state.concurrency,
-                              len(state.active_jobs) + len(state.pending_jobs)))
+    concurrency = max(1., min(state['concurrency'],
+                              len(state['started_jobs']) + len(state['queued_jobs'])))
 
-    hist_data = self.hist.get_all()
+    history_data = await self.history.get_all()
 
     # Estimate average per-job duration
     known_duration = 0.
     known_count = 0
 
-    for hist_entry in hist_data.values():
-      if hist_entry['duration'] is not None:
-        known_duration += hist_entry['duration']
+    for history_entry in history_data.values():
+      if history_entry['duration'] is not None:
+        known_duration += history_entry['duration']
         known_count += 1
-      #elif hist_entry['started'] is not None:
-      #  known_duration += diff_sec(now, hist_entry['started'])
+      #elif history_entry['started'] is not None:
+      #  known_duration += diff_sec(now, history_entry['started'])
       #  known_count += 1
 
     avg_duration = known_duration / max(known_count, 1)
 
-    # Calculate active jobs' remaining time
+    # Calculate started jobs' remaining time
     remaining_duration = 0.
-    for job in state.active_jobs:
-      hist_entry = self.hist.get(job.param)
+    for job in state['started_jobs']:
+      history_entry = await self.history.get(get_exec_id(job['param']))
 
-      if hist_entry['started'] is None:
+      if history_entry['started'] is None:
         started = now
       else:
-        started = hist_entry['started']
+        started = parse_utc(history_entry['started'])
 
-      if hist_entry['duration'] is None:
+      if history_entry['duration'] is None:
         remaining_duration += max(avg_duration - diff_sec(now, started), 0.)
       else:
-        remaining_duration += max(hist_entry['duration'] - diff_sec(now, started), 0.)
+        remaining_duration += max(history_entry['duration'] - diff_sec(now, started), 0.)
 
-    # Calculate pending jobs' remaining time
-    for job in state.pending_jobs:
-      hist_entry = self.hist.get(job.param)
+    # Calculate queued jobs' remaining time
+    for job in state['queued_jobs']:
+      history_entry = await self.history.get(get_exec_id(job['param']))
 
-      if hist_entry['duration'] is None:
+      if history_entry['duration'] is None:
         remaining_duration += avg_duration
       else:
-        remaining_duration += hist_entry['duration']
+        remaining_duration += history_entry['duration']
 
     # Take into account concurrency
     remaining_time = remaining_duration / concurrency
@@ -70,12 +70,12 @@ class Estimator:
     return remaining_time
 
   @staticmethod
-  def _format_job_count(runner_state):
+  def _format_job_count(state):
     '''Format job count.'''
-    succeeded = len(runner_state.succeeded_jobs)
-    failed = len(runner_state.failed_jobs)
-    active = len(runner_state.active_jobs)
-    pending = len(runner_state.pending_jobs)
+    succeeded = len(filter(lambda job: job['succeeded'], state['finished_jobs']))
+    failed = len(filter(lambda job: not job['succeeded'], state['finished_jobs']))
+    started = len(state['started_jobs'])
+    queued = len(state['queued_jobs'])
 
     output = 'S:'
     output += termcolor.colored(str(succeeded), 'green')
@@ -88,15 +88,15 @@ class Estimator:
       output += termcolor.colored(str(failed), 'red')
       output += termcolor.colored('/', 'blue')
     output += 'A:'
-    output += termcolor.colored(str(active), 'yellow')
+    output += termcolor.colored(str(started), 'yellow')
     output += termcolor.colored('/', 'blue')
-    output += 'P:'
-    output += termcolor.colored(str(pending), 'cyan')
+    output += 'Q:'
+    output += termcolor.colored(str(queued), 'cyan')
     return output
 
-  def format_estimated_time(self, runner_state):
+  def format_estimated_time(self, state):
     '''Format the estimated time with colors.'''
-    remaining_time = self.estimate_remaining_time(runner_state)
+    remaining_time = self.estimate_remaining_time(state)
     remaining_str = format_sec(remaining_time)
 
     current_time = utcnow()
@@ -105,9 +105,9 @@ class Estimator:
     finish_by_local_str = format_local(finish_by)
 
     output = termcolor.colored('[', 'blue')
-    output += self._format_job_count(runner_state)
+    output += self._format_job_count(state)
     output += termcolor.colored(
         f'] remaining: {remaining_str}; ' + \
         f'finish by: {finish_by_local_str}; ' + \
-        f'concurrency: {runner_state.concurrency}', 'blue')
+        f'concurrency: {state.concurrency}', 'blue')
     return output
