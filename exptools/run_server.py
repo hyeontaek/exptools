@@ -30,7 +30,9 @@ def run_server():
   args = parser.parse_args()
 
   if not os.path.exists(args.secret_path):
+    prev_mask = os.umask(0o077)
     open(args.secret_path, 'w').write(secrets.token_hex() + '\n')
+    os.umask(prev_mask)
     logger.info(f'Created new secret file at {args.secret_path}')
   else:
     logger.info(f'Using secret file at {args.secret_path}')
