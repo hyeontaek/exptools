@@ -15,6 +15,7 @@ from exptools.runner import Runner
 from exptools.queue import Queue
 
 # pylint: disable=too-few-public-methods
+# pylint: disable=too-many-instance-attributes
 class Client:
   '''Implement a RPC client that provides access to remote objects.'''
 
