@@ -4,6 +4,7 @@
 from exptools.client import *
 from exptools.estimator import *
 from exptools.file import *
+from exptools.filter import *
 from exptools.history import *
 from exptools.runner import *
 from exptools.param import *
