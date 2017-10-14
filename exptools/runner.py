@@ -67,7 +67,8 @@ class Runner:
     exec_id = job['exec_id']
 
     name = job['name']
-    cmd = job['command']
+    command = job['command']
+    cwd = job['cwd']
 
     try:
       if not await self.queue.set_started(job_id):
@@ -90,7 +91,8 @@ class Runner:
       with open(os.path.join(job_dir, 'out'), 'wb', buffering=0) as stdout, \
            open(os.path.join(job_dir, 'err'), 'wb', buffering=0) as stderr:
         proc = await asyncio.create_subprocess_exec(
-            *cmd,
+            *command,
+            cwd=cwd,
             stdin=asyncio.subprocess.DEVNULL,
             stdout=stdout,
             stderr=stderr,

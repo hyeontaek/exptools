@@ -4,7 +4,7 @@ __all__ = [
     'get_param_id', 'get_param_ids',
     'get_exec_id', 'get_exec_ids',
     'get_name', 'get_names',
-    'get_command',
+    'get_command', 'get_cwd',
     ]
 
 import hashlib
@@ -52,3 +52,9 @@ def get_command(param):
   if '_' in param and 'command' in param['_']:
     return param['_']['command']
   return param['command']
+
+def get_cwd(param):
+  '''Return the working directory of a parameter.'''
+  if '_' in param and 'cwd' in param['_']:
+    return param['_']['cwd']
+  return param.get('cwd', None)
