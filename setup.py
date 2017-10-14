@@ -37,10 +37,10 @@ setup(
     packages=find_packages(),
 
     install_requires=[
-      'aiofiles',
-      'base58',
       'pytz',
       'termcolor',
+      'aiofiles',
+      'base58',
       'tzlocal',
       'websockets',
       'yaql',
@@ -52,11 +52,6 @@ setup(
         'pylint',
         'pytest',
         'pytest-cov',
-        ],
-      'sample': [
-        'jupyter',
-        'matplotlib',
-        'pandas',
         ],
       },
 
