@@ -6,6 +6,7 @@ import asyncio
 import argparse
 import json
 #import logging
+import pprint
 import sys
 import traceback
 
@@ -18,7 +19,7 @@ from exptools.time import (
     format_remaining_time_short,
     format_estimated_time,
     )
-from exptools.param import get_exec_ids
+from exptools.param import get_exec_id, get_exec_ids, get_name
 
 
 # pylint: disable=unused-argument
@@ -125,14 +126,37 @@ async def _omit_params(client, args, params):
     params = await client.queue.omit(params, queued=True, started=False, finished=False)
   return params
 
-async def _handle_add(client, args):
-  params = []
-  if len(args.arguments) == 1 and args.arguments[0] == '-':
-    params.extend(json.loads(sys.stdin.read()))
+def _read_params(args):
+  if not args.arguments:
+    params = json.loads(open(args.params_file).read())
+  elif len(args.arguments) == 1 and args.arguments[0] == '-':
+    params = json.loads(sys.stdin.read())
   else:
+    params = []
     for path in args.arguments:
       with open(path) as file:
         params.extend(json.loads(file.read()))
+  return params
+
+async def _handle_c(client, args):
+  params = _read_params(args)
+  for param in params:
+    print(f'{get_exec_id(param)}  {get_name(param)}')
+
+async def _handle_ca(client, args):
+  params = _read_params(args)
+  for param in params:
+    print(f'{get_exec_id(param)}')
+    #for line in json.dumps(params, sort_keys=True, indent=2).split('\n'):
+    for line in pprint.pformat(param).split('\n'):
+      print('  ' + line)
+
+async def _handle_cat(client, args):
+  params = _read_params(args)
+  print(json.dumps(params, sort_keys=True, indent=2))
+
+async def _handle_add(client, args):
+  params = _read_params(args)
   params = await _omit_params(client, args, params)
   job_ids = await client.queue.add(params)
   print(f'Added queued jobs: {" ".join(job_ids)}')
@@ -223,11 +247,20 @@ async def handle_command(client, client2, args):
     elif args.command == 'prune':
       await _handle_prune(client, args)
 
+    elif args.command == 'c':
+      await _handle_c(client, args)
+
+    elif args.command == 'ca':
+      await _handle_ca(client, args)
+
+    elif args.command == 'cat':
+      await _handle_cat(client, args)
+
     else:
       print(f'Invalid command: {args.command}')
       return 1
 
-    if args.command not in ['stop', 'monitor', 'ls']:
+    if args.command not in ['stop', 'monitor', 'ls', 'c', 'ca', 'cat']:
       await _handle_status(client, args)
 
     return 0
@@ -247,6 +280,7 @@ def run_client():
   parser.add_argument('--host', type=str, default='localhost', help='hostname')
   parser.add_argument('--port', type=int, default='31234', help='port')
   parser.add_argument('--secret-file', type=str, default='secret.json', help='secret file path')
+  parser.add_argument('--params-file', type=str, default='params.json', help='default parameters file path')
   parser.add_argument('--omit', type=str, default='succeeded,started,queued',
                       help='omit parameters before adding')
   parser.add_argument('--no-omit', action='store_const', dest='omit', const='',
@@ -261,11 +295,19 @@ def run_client():
 
   loop = asyncio.get_event_loop()
 
-  client = Client(args.host, args.port, secret, loop)
+  if args.command in ['c', 'ca', 'cat']:
+    client = None
+  else:
+    client = Client(args.host, args.port, secret, loop)
+
   if args.command in ['monitor']:
     client2 = Client(args.host, args.port, secret, loop)
   else:
     client2 = None
-  handle_comamnd_future = asyncio.ensure_future(handle_command(client, client2, args), loop=loop)
-  loop.run_until_complete(handle_comamnd_future)
-  return handle_comamnd_future.result()
+
+  handle_command_future = asyncio.ensure_future(handle_command(client, client2, args), loop=loop)
+  loop.run_until_complete(handle_command_future)
+  return handle_command_future.result()
+
+if __name__ == '__main__':
+  run_client()

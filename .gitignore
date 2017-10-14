@@ -2,6 +2,7 @@ __pycache__
 /exptools/sample/.ipynb_checkpoints
 secret.json
 history.json
+params.json
 /output
 /build
 /dist

@@ -68,7 +68,7 @@ class Queue:
         exec_ids.update(map(lambda job: get_exec_id(job['param']), self.started_jobs))
       if finished:
         exec_ids.update(map(lambda job: get_exec_id(job['param']), self.finished_jobs))
-    return list(filter(lambda param: param.exec_id not in exec_ids, params))
+    return list(filter(lambda param: get_exec_id(param) not in exec_ids, params))
 
   @rpc_export_function
   async def add(self, params, append=True):

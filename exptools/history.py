@@ -55,7 +55,7 @@ class History:
   async def _dump(self):
     '''Dump the current history to the history file.'''
     async with self.lock:
-      data = json.dumps(self.history, sort_keys=True, indent=1)
+      data = json.dumps(self.history, sort_keys=True, indent=2)
       async with aiofiles.open(self.path + '.tmp', 'w') as file:
         await file.write(data)
       os.rename(self.path + '.tmp', self.path)

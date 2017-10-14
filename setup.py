@@ -19,18 +19,18 @@ setup(
     license='Apache',
 
     classifiers=[
-        'Development Status :: 3 - Alpha',
+      'Development Status :: 3 - Alpha',
 
-        'Intended Audience :: Developers',
-        'Intended Audience :: Science/Research',
+      'Intended Audience :: Developers',
+      'Intended Audience :: Science/Research',
 
-        'Topic :: Scientific/Engineering',
-        'Topic :: Software Development',
+      'Topic :: Scientific/Engineering',
+      'Topic :: Software Development',
 
-        'License :: OSI Approved :: Apache Software License',
+      'License :: OSI Approved :: Apache Software License',
 
-        'Programming Language :: Python :: 3.6',
-    ],
+      'Programming Language :: Python :: 3.6',
+      ],
 
     keywords='experiment research',
 
@@ -46,29 +46,30 @@ setup(
       ],
 
     extras_require={
-        'dev': [
-          'wheel',
-          'pylint',
-          'pytest',
-          'pytest-cov',
-          ],
-        'sample': [
-          'jupyter',
-          'matplotlib',
-          'pandas',
-          ],
-    },
+      'dev': [
+        'wheel',
+        'pylint',
+        'pytest',
+        'pytest-cov',
+        ],
+      'sample': [
+        'jupyter',
+        'matplotlib',
+        'pandas',
+        ],
+      },
 
     package_data={},
 
-    data_files=[
-        ('', ['LICENSE.txt']),
-        ],
+    scripts=[
+      'bin/exptools-server',
+      'bin/exptools-client',
+      'bin/etc',
+      ],
 
-    entry_points={
-        'console_scripts': [
-          'exptools_server=exptools.run_server:run_server',
-          'etc=exptools.run_client:run_client',
-          ],
-        },
+    data_files=[
+      ('', ['LICENSE.txt']),
+      ],
+
+    entry_points={},
 )
