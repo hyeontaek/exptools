@@ -7,6 +7,7 @@ import argparse
 import json
 #import logging
 import sys
+import traceback
 
 import termcolor
 
@@ -162,41 +163,48 @@ async def _handle_kill(client, args):
 async def handle_command(client, args):
   '''Handle a client command.'''
 
-  if args.command == 'start':
-    await _handle_start(client, args)
+  try:
+    if args.command == 'start':
+      await _handle_start(client, args)
 
-  elif args.command == 'stop':
-    await _handle_stop(client, args)
+    elif args.command == 'stop':
+      await _handle_stop(client, args)
 
-  elif args.command == 'status':
-    pass
+    elif args.command == 'status':
+      pass
 
-  elif args.command == 'ls':
-    await _handle_ls(client, args)
+    elif args.command == 'ls':
+      await _handle_ls(client, args)
 
-  elif args.command == 'run':
-    await _handle_run(client, args)
+    elif args.command == 'run':
+      await _handle_run(client, args)
 
-  elif args.command == 'retry':
-    await _handle_retry(client, args)
+    elif args.command == 'retry':
+      await _handle_retry(client, args)
 
-  elif args.command == 'add':
-    await _handle_add(client, args)
+    elif args.command == 'add':
+      await _handle_add(client, args)
 
-  elif args.command == 'rm':
-    await _handle_rm(client, args)
+    elif args.command == 'rm':
+      await _handle_rm(client, args)
 
-  elif args.command == 'clear':
-    await _handle_clear(client, args)
+    elif args.command == 'clear':
+      await _handle_clear(client, args)
 
-  elif args.command == 'kill':
-    await _handle_kill(client, args)
+    elif args.command == 'kill':
+      await _handle_kill(client, args)
 
-  else:
-    raise RuntimeError(f'Invalid command: {args[0]}')
+    else:
+      print(f'Invalid command: {args.command}')
+      return 1
 
-  if args.command not in ['stop', 'ls']:
-    await _handle_status(client, args)
+    if args.command not in ['stop', 'ls']:
+      await _handle_status(client, args)
+
+    return 0
+  except:
+    traceback.print_exc()
+    return 1
 
 def run_client():
   '''Parse arguments and process a client command.'''
@@ -224,4 +232,6 @@ def run_client():
   loop = asyncio.get_event_loop()
 
   client = Client(args.host, args.port, secret, loop)
-  loop.run_until_complete(asyncio.ensure_future(handle_command(client, args), loop=loop))
+  handle_comamnd_future = asyncio.ensure_future(handle_command(client, args), loop=loop)
+  loop.run_until_complete(handle_comamnd_future)
+  return handle_comamnd_future.result()
