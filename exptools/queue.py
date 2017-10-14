@@ -57,6 +57,12 @@ class Queue:
         yield self._get_state()
         await self.lock.wait()
 
+  @rpc_export_generator
+  async def notify(self):
+    '''Notify listeners of the queue for a potential change.'''
+    async with self.lock:
+      self.lock.notify_all()
+
   @rpc_export_function
   async def omit(self, params, *, queued=True, started=True, finished=True):
     '''Omit parameters that are already in the queue.'''

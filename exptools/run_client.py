@@ -22,11 +22,11 @@ from exptools.param import get_exec_id, get_exec_ids, get_param_id, get_name
 
 # pylint: disable=unused-argument
 async def _handle_start(client, args):
-  await client.runner.start()
+  await client.scheduler.start()
 
 # pylint: disable=unused-argument
 async def _handle_stop(client, args):
-  await client.runner.stop()
+  await client.scheduler.stop()
 
 async def _handle_status(client, args):
   queue_state = await client.queue.get_state()

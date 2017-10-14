@@ -13,8 +13,9 @@ import websockets
 from exptools.estimator import Estimator
 from exptools.filter import Filter
 from exptools.history import History
-from exptools.runner import Runner
 from exptools.queue import Queue
+from exptools.runner import Runner
+from exptools.scheduler import Scheduler
 
 # pylint: disable=too-few-public-methods
 # pylint: disable=too-many-instance-attributes
@@ -37,9 +38,10 @@ class Client:
     assert auth.result(), 'Authentication failed'
 
     self.history = ObjectProxy(self, 'history', History)
+    self.filter = ObjectProxy(self, 'filter', Filter)
     self.queue = ObjectProxy(self, 'queue', Queue)
     self.runner = ObjectProxy(self, 'runner', Runner)
-    self.filter = ObjectProxy(self, 'filter', Filter)
+    self.scheduler = ObjectProxy(self, 'scheduler', Scheduler)
 
     self.estimator = Estimator(self.history)
 

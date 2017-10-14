@@ -9,11 +9,12 @@ import logging
 import os
 import secrets
 
+from exptools.filter import Filter
 from exptools.history import History
 from exptools.queue import Queue
 from exptools.runner import Runner
+from exptools.scheduler import SerialScheduler
 from exptools.server import Server
-from exptools.filter import Filter
 
 def run_server():
   '''Run the server.'''
@@ -51,10 +52,11 @@ def run_server():
 
   history = History(args.history_file, loop)
   queue = Queue(history, loop)
-  runner = Runner(args.output_dir, queue, loop)
+  scheduler = SerialScheduler(queue, loop)
+  runner = Runner(args.output_dir, queue, scheduler, loop)
   filter_ = Filter(loop)
 
-  server = Server(args.host, args.port, secret, history, queue, runner, filter_, loop)
+  server = Server(args.host, args.port, secret, history, queue, scheduler, runner, filter_, loop)
   try:
     server.serve_forever()
   except KeyboardInterrupt:

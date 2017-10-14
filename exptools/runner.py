@@ -14,66 +14,23 @@ from exptools.rpc_helper import rpc_export_function
 class Runner:
   '''Run jobs with parameters.'''
 
-  def __init__(self, base_dir, queue, loop):
+  def __init__(self, base_dir, queue, scheduler, loop):
     self.base_dir = base_dir
     self.queue = queue
+    self.scheduler = scheduler
     self.loop = loop
 
     self.logger = logging.getLogger('exptools.Runner')
 
-    self.running = False
-
     if not os.path.exists(self.base_dir):
       mkdirs(self.base_dir, ignore_errors=False)
 
-    asyncio.ensure_future(self._main(), loop=loop)
-    asyncio.ensure_future(self.start(), loop=loop)
+    asyncio.ensure_future(self._wait_for_schedule(), loop=loop)
 
-  @rpc_export_function
-  async def is_running(self):
-    '''Return True if running.'''
-    return self.running
+  async def _wait_for_schedule(self):
+    '''Request to run a scheduled job.'''
 
-  @rpc_export_function
-  async def start(self):
-    '''Start the runner.'''
-    if self.running:
-      self.logger.error('Already started runner')
-      return
-
-    self.logger.info('Started Runner')
-    self.running = True
-
-    async with self.queue.lock:
-      self.queue.lock.notify_all()
-
-  @rpc_export_function
-  async def stop(self):
-    '''Stop the runner.'''
-    if not self.running:
-      self.logger.error('Already stopped runner')
-      return
-
-    self.running = False
-    self.logger.info('Stopped Runner')
-
-  async def _main(self):
-    '''Run the queue.'''
-
-    async for queue_state in self.queue.watch_state():
-      if not self.running:
-        continue
-
-      if not queue_state['queued_jobs']:
-        continue
-
-      # XXX: No prerequisite support; avoid concurrent execution
-      if queue_state['started_jobs']:
-        continue
-
-      # TODO: Possibly launch other jobs if prerequisites meet
-      job = queue_state['queued_jobs'][0]
-
+    async for job in self.scheduler.schedule():
       asyncio.ensure_future(self._run(job), loop=self.loop)
 
   @staticmethod
@@ -110,7 +67,6 @@ class Runner:
     exec_id = job['exec_id']
 
     name = job['name']
-    param = job['param']
     cmd = job['command']
 
     try:

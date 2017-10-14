@@ -15,15 +15,16 @@ import websockets
 # pylint: disable=too-few-public-methods
 # pylint: disable=too-many-instance-attributes
 class Server:
-  '''Implement a RPC server that exposes History and Runner objects.'''
+  '''Implement a RPC server that exposes internal objects.'''
 
   # pylint: disable=too-many-arguments
-  def __init__(self, host, port, secret, history, queue, runner, filter_, loop):
+  def __init__(self, host, port, secret, history, queue, scheduler, runner, filter_, loop):
     self.host = host
     self.port = port
     self.secret = secret
     self.history = history
     self.queue = queue
+    self.scheduler = scheduler
     self.runner = runner
     self.filter = filter_
     self.loop = loop
@@ -39,6 +40,7 @@ class Server:
     for object_name, obj in [
         ('history', self.history),
         ('queue', self.queue),
+        ('scheduler', self.scheduler),
         ('runner', self.runner),
         ('filter', self.filter),
         ]:
