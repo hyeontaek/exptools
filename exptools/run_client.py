@@ -206,12 +206,14 @@ async def _handle_filter(client, args):
 
 async def _handle_estimate(client, args):
   params = await _read_params(client, args)
+  params = await _omit_params(client, args, params)
 
   queue_state = await client.queue.get_state()
+  print('Current:   ' + await format_estimated_time(client.estimator, queue_state))
+
   queue_state['queued_jobs'].extend(
       [{'exec_id': get_exec_id(param), 'param': param} for param in params])
-
-  print(await format_estimated_time(client.estimator, queue_state))
+  print('Estimated: ' + await format_estimated_time(client.estimator, queue_state))
 
 async def _handle_add(client, args):
   params = await _read_params(client, args)
