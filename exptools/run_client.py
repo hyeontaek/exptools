@@ -101,6 +101,14 @@ async def _handle_add(client, args):
   job_ids = await client.queue.add([param])
   print(f'New job: {job_ids[0]}')
 
+async def _handle_retry(client, args):
+  argument = args.argument
+  if not argument:
+    job_ids = await client.queue.retry(None)
+  else:
+    job_ids = await client.queue.retry(argument)
+  print(f'New job: {job_ids[0]}')
+
 async def _handle_rm(client, args):
   argument = args.argument
   if not argument:
@@ -140,6 +148,8 @@ async def handle_command(client, args):
     await _handle_status(client, args)
   elif args.command == 'add':
     await _handle_add(client, args)
+  elif args.command == 'retry':
+    await _handle_retry(client, args)
   elif args.command == 'rm':
     await _handle_rm(client, args)
   elif args.command == 'clear':

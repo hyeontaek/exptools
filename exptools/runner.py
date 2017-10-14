@@ -147,7 +147,6 @@ class Runner:
         await proc.communicate()
 
       if proc.returncode == 0:
-        # update execution path
         os.rename(exec_path + '_tmp', exec_path)
         await self.queue.set_finished(job_id, True)
       else:

@@ -71,11 +71,12 @@ class Queue:
     return list(filter(lambda param: param.exec_id not in exec_ids, params))
 
   @rpc_export_function
-  async def add(self, params):
+  async def add(self, params, append=True):
     '''Add parameters as queued jobs.'''
     now = format_utc(utcnow())
     job_ids = []
     async with self.lock:
+      new_jobs = []
       for param in params:
         exec_id = get_exec_id(param)
         await self.history.set_queued(exec_id, now)
@@ -83,7 +84,7 @@ class Queue:
         job_id = await self.history.get_next_job_id()
         job_ids.append(job_id)
 
-        self.queued_jobs.append({
+        new_jobs.append({
             'job_id': job_id,
             'param_id': get_param_id(param),
             'exec_id': exec_id,
@@ -97,27 +98,37 @@ class Queue:
             'succeeded': None,
             })
 
+      if append:
+        self.queued_jobs = self.queued_jobs + new_jobs
+      else:
+        self.queued_jobs = new_jobs + self.queued_jobs
+
       self.logger.info(f'Added {len(params)} jobs')
       self.lock.notify_all()
     return job_ids
 
   @rpc_export_function
-  async def re_add(self, job_ids):
+  async def retry(self, job_ids, append=False):
     '''Re-add finished jobs.'''
     params = []
     async with self.lock:
-      # Iterate over job_ids so that we preserve the order
-      for job_id in job_ids:
-        for job in self.finished_jobs:
-          if job['job_id'] == job_id:
-            params.append(job['param'])
-            break
-        else:
-          for job in self.started_jobs:
+      if job_ids is None:
+        # Retry the last finished job
+        if self.finished_jobs:
+          params.append(self.finished_jobs[-1]['param'])
+      else:
+        # Iterate over job_ids so that we preserve the order
+        for job_id in job_ids:
+          for job in self.finished_jobs:
             if job['job_id'] == job_id:
               params.append(job['param'])
+              break
+          else:
+            for job in self.started_jobs:
+              if job['job_id'] == job_id:
+                params.append(job['param'])
 
-    return await self.add(params)
+    return await self.add(params, append)
 
   @rpc_export_function
   async def set_started(self, job_id):
