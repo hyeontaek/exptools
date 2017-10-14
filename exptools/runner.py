@@ -8,7 +8,7 @@ import logging
 import os
 import signal
 
-from exptools.file import mkdirs, get_job_dir, get_exec_path
+from exptools.file import mkdirs, rmdirs, get_job_dir, get_exec_path
 from exptools.rpc_helper import rpc_export_function
 
 class Runner:
@@ -178,3 +178,34 @@ class Runner:
           os.kill(job['pid'], signal.SIGTERM)
         count += 1
     return count
+
+  @rpc_export_function
+  async def prune_absent(self, exec_ids):
+    '''Prune directories that are not represented by given parameters.'''
+    trash_dir = os.path.join(self.base_dir, 'trash')
+    if not os.path.exists(trash_dir):
+      os.mkdir(trash_dir)
+
+    exec_ids = set(exec_ids)
+
+    job_ids = set()
+    for filename in os.listdir(self.base_dir):
+      if filename.startswith('e-'):
+        path = os.path.join(self.base_dir, filename)
+        new_path = os.path.join(trash_dir, filename)
+        if filename in exec_ids:
+          job_ids.add(os.readlink(path).strip('/'))
+        else:
+          if os.path.exists(new_path):
+            os.unlink(new_path)
+          os.rename(path, new_path)
+          self.logger.info(f'Moved {filename} to trash')
+
+    for filename in os.listdir(self.base_dir):
+      if filename.startswith('j-'):
+        path = os.path.join(self.base_dir, filename)
+        if filename not in job_ids:
+          if os.path.exists(new_path):
+            rmdirs(new_path)
+          os.rename(path, os.path.join(trash_dir, filename))
+          self.logger.info(f'Moved {filename} to trash')

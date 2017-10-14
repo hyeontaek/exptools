@@ -18,6 +18,7 @@ from exptools.time import (
     format_remaining_time_short,
     format_estimated_time,
     )
+from exptools.param import get_exec_ids
 
 
 # pylint: disable=unused-argument
@@ -164,6 +165,24 @@ async def _handle_kill(client, args):
     count = await client.runner.kill(arguments, force=force)
   print(f'Killed jobs: {count}')
 
+async def _handle_prune(client, args):
+  params = []
+  if len(args.arguments) == 1 and args.arguments[0] == '-':
+    params.extend(json.loads(sys.stdin.read()))
+  else:
+    for path in args.arguments:
+      with open(path) as file:
+        params.extend(json.loads(file.read()))
+
+  if not params:
+    raise RuntimeError('Cannot prune without parameters for safety')
+
+  exec_ids = get_exec_ids(params)
+
+  await client.runner.prune_absent(exec_ids)
+  await client.history.prune_absent(exec_ids)
+  print(f'Pruned')
+
 async def handle_command(client, client2, args):
   '''Handle a client command.'''
 
@@ -200,6 +219,9 @@ async def handle_command(client, client2, args):
 
     elif args.command == 'kill':
       await _handle_kill(client, args)
+
+    elif args.command == 'prune':
+      await _handle_prune(client, args)
 
     else:
       print(f'Invalid command: {args.command}')
