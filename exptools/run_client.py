@@ -98,8 +98,8 @@ async def _handle_status(client, args):
   print(output)
 
 async def _handle_run(client, args):
-  param = {'cmd': args.argument}
-  job_ids = await client.queue.add([param])
+  params = [{'cmd': args.argument}]
+  job_ids = await client.queue.add(params)
   print(f'New jobs: {job_ids[0]}')
 
 async def _handle_retry(client, args):
@@ -110,12 +110,26 @@ async def _handle_retry(client, args):
     job_ids = await client.queue.retry(argument)
   print(f'New jobs: {" ".join(job_ids)}')
 
+async def _omit_params(client, args, params):
+  '''Omit parameters.'''
+  omit = args.omit.split(',')
+  if 'finished' in omit:
+    params = await client.history.omit(params, only_succeeded=False)
+  if 'succeeded' in omit:
+    params = await client.history.omit(params, only_succeeded=True)
+  if 'started' in omit:
+    params = await client.queue.omit(params, queued=False, started=True, finished=False)
+  if 'queued' in omit:
+    params = await client.queue.omit(params, queued=True, started=False, finished=False)
+  return params
+
 async def _handle_add(client, args):
   params = json.loads(sys.stdin.read())
   if isinstance(params, dict):
     params = [params]
+  params = await _omit_params(client, args, params)
   job_ids = await client.queue.add(params)
-  print(f'New jobs: {job_ids[0]}')
+  print(f'New jobs: {" ".join(job_ids)}')
 
 async def _handle_rm(client, args):
   argument = args.argument
@@ -181,6 +195,8 @@ def run_client():
   parser.add_argument('--host', type=str, default='localhost', help='hostname')
   parser.add_argument('--port', type=int, default='31234', help='port')
   parser.add_argument('--secret-file', type=str, default='secret.json', help='secret file path')
+  parser.add_argument('--omit', type=str, default='succeeded,started,queued', help='omit parameters before adding')
+  parser.add_argument('--no-omit', action='store_const', dest='omit', const='', help='do not omit parameters')
   parser.add_argument('command', type=str, help='command')
   parser.add_argument('argument', type=str, nargs='*', help='arguments')
 
