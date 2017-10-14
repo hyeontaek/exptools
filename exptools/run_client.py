@@ -35,8 +35,15 @@ async def _handle_status(client, args):
   print(await format_estimated_time(client.estimator, queue_state))
 
 async def _handle_monitor(client, client_watch, args):
+  forever = False
+  if args.arguments and args.arguments[0] == 'forever':
+    forever = True
+
   async for queue_state in client_watch.queue.watch_state():
     print(await format_estimated_time(client.estimator, queue_state))
+    if not forever and \
+       not queue_state['started_jobs'] and not queue_state['queued_jobs']:
+      break
 
 async def _handle_ls(client, args):
   queue_state = await client.queue.get_state()
@@ -117,7 +124,7 @@ async def _omit_params(client, args, params):
 
   omit = args.omit.split(',')
   for entry in omit:
-    assert entry in ('finished', 'succeeded', 'started', 'queued'), f'Invalid omission: {entry}'
+    assert entry in ('finished', 'succeeded', 'started', 'queued', 'duplicated'), f'Invalid omission: {entry}'
 
   if 'finished' in omit:
     params = await client.history.omit(params, only_succeeded=False)
@@ -127,6 +134,15 @@ async def _omit_params(client, args, params):
     params = await client.queue.omit(params, queued=False, started=True, finished=False)
   if 'queued' in omit:
     params = await client.queue.omit(params, queued=True, started=False, finished=False)
+  if 'duplicated' in omit:
+    seen_exec_ids = set()
+    unique_params = []
+    for param in params:
+      exec_id = get_exec_id(param)
+      if exec_id not in seen_exec_ids:
+        seen_exec_ids.add(exec_id)
+        unique_params.append(param)
+    params = unique_params
   return params
 
 def _read_params(args):
@@ -322,7 +338,7 @@ def run_client():
   parser.add_argument('--secret-file', type=str, default='secret.json', help='secret file path')
   parser.add_argument('--params-file', type=str, default='params.json',
                       help='default parameters file path')
-  parser.add_argument('--omit', type=str, default='succeeded,started,queued',
+  parser.add_argument('--omit', type=str, default='succeeded,started,queued,duplicated',
                       help='omit parameters before adding')
   parser.add_argument('--no-omit', action='store_const', dest='omit', const='',
                       help='do not omit parameters')
