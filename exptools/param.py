@@ -17,7 +17,7 @@ def get_param_id(param):
   '''Return the parameter ID of a parameter.'''
   param_str = json.dumps(param, sort_keys=True)
   # Skip first few bytes because they are typically skewed to a few characters in base58
-  return base58.b58encode(
+  return 'p-' + base58.b58encode(
       _HASH_FUNC(param_str.encode('utf-8')).digest())[3:3+20]
 
 def get_param_ids(params):
@@ -29,7 +29,7 @@ def get_exec_id(param):
   filtered_param = {key: value for key, value in param.items() if not key.startswith('_')}
   param_str = json.dumps(filtered_param, sort_keys=True)
   # Skip first few bytes because they are typically skewed to a few characters in base58
-  return base58.b58encode(
+  return 'e-' + base58.b58encode(
       _HASH_FUNC(param_str.encode('utf-8')).digest())[3:3+20]
 
 def get_exec_ids(params):

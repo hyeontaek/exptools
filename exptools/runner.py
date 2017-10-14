@@ -8,18 +8,23 @@ import logging
 import os
 import signal
 
+from exptools.file import mkdirs, get_job_dir, get_exec_path
 from exptools.rpc_helper import rpc_export_function
 
 class Runner:
   '''Run jobs with parameters.'''
 
-  def __init__(self, queue, loop):
+  def __init__(self, base_dir, queue, loop):
+    self.base_dir = base_dir
     self.queue = queue
     self.loop = loop
 
     self.logger = logging.getLogger('exptools.Runner')
 
     self.running = False
+
+    if not os.path.exists(self.base_dir):
+      mkdirs(self.base_dir, ignore_errors=False)
 
     asyncio.ensure_future(self._main(), loop=loop)
     asyncio.ensure_future(self.start(), loop=loop)
@@ -71,10 +76,40 @@ class Runner:
 
       asyncio.ensure_future(self._run(job), loop=self.loop)
 
+  @staticmethod
+  def _create_job_files(job, job_dir):
+    '''Create job filles.'''
+
+    with open(os.path.join(job_dir, 'job_id'), 'wt') as file:
+      file.write(job['job_id'])
+    with open(os.path.join(job_dir, 'param_id'), 'wt') as file:
+      file.write(job['param_id'])
+    with open(os.path.join(job_dir, 'exec_id'), 'wt') as file:
+      file.write(job['exec_id'])
+    with open(os.path.join(job_dir, 'job.json'), 'wt') as file:
+      file.write(json.dumps(job))
+    with open(os.path.join(job_dir, 'param.json'), 'wt') as file:
+      file.write(json.dumps(job['param']))
+
+  @staticmethod
+  def _construct_env(job, job_dir):
+    '''Construct environment variables.'''
+    env = dict(os.environ)
+    env['EXPTOOLS_JOB_DIR'] = job_dir
+    env['EXPTOOLS_JOB_ID'] = job['job_id']
+    env['EXPTOOLS_PARAM_ID'] = job['param_id']
+    env['EXPTOOLS_EXEC_ID'] = job['exec_id']
+    env['EXPTOOLS_JOB_JSON_PATH'] = os.path.join(job_dir, 'job.json')
+    env['EXPTOOLS_PARAM_JSON_PATH'] = os.path.join(job_dir, 'param.json')
+    return env
+
   async def _run(self, job):
     '''Run a job.'''
 
-    job_id = job['id']
+    job_id = job['job_id']
+    exec_id = job['exec_id']
+
+    name = job['name']
     param = job['param']
 
     try:
@@ -84,20 +119,42 @@ class Runner:
         self.logger.info(f'Ignoring missing job {job_id}')
         return
 
-      self.logger.info(f'Launching job {job_id} with command {cmd}')
+      self.logger.info(f'Launching job {job_id} for {exec_id}: {name}')
 
-      proc = await asyncio.create_subprocess_exec(
-          *cmd, stdin=asyncio.subprocess.PIPE, loop=self.loop)
-      await self.queue.set_started(job_id, proc.pid)
+      job_dir = get_job_dir(self.base_dir, job)
+      os.mkdir(job_dir)
 
-      await proc.communicate(input=json.dumps(job).encode('utf-8'))
+      self._create_job_files(job, job_dir)
+      env = self._construct_env(job, job_dir)
+
+      exec_path = get_exec_path(self.base_dir, exec_id)
+      if os.path.exists(exec_path + '_tmp'):
+        os.unlink(exec_path + '_tmp')
+      os.symlink(job_id, exec_path + '_tmp', target_is_directory=True)
+
+      with open(os.path.join(job_dir, 'out'), 'wb', buffering=0) as stdout, \
+           open(os.path.join(job_dir, 'err'), 'wb', buffering=0) as stderr:
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdin=asyncio.subprocess.DEVNULL,
+            stdout=stdout,
+            stderr=stderr,
+            env=env,
+            loop=self.loop)
+
+        await self.queue.set_started(job_id, proc.pid)
+
+        await proc.communicate()
 
       if proc.returncode == 0:
+        # update execution path
+        os.rename(exec_path + '_tmp', exec_path)
         await self.queue.set_finished(job_id, True)
       else:
         await self.queue.set_finished(job_id, False)
+
     except Exception: # pylint: disable=broad-except
-      self.logger.exception(f'Exception while running job {job_id}')
+      self.logger.exception(f'Exception while running job {job_id} ({exec_id}): {name}')
       await self.queue.set_finished(job_id, False)
 
   @rpc_export_function
@@ -106,111 +163,15 @@ class Runner:
     queue_state = await self.queue.get_state()
 
     if job_ids is None:
-      job_ids = [job['id'] for job in queue_state['started_jobs']]
+      job_ids = [job['job_id'] for job in queue_state['started_jobs']]
 
     job_ids = set(job_ids)
     for job in queue_state['started_jobs']:
-      if job['id'] in job_ids and job['pid'] is not None:
+      if job['job_id'] in job_ids and job['pid'] is not None:
+        job_id = job['job_id']
         if not force:
-          self.logger.info(f'Killing job {job["id"]}')
+          self.logger.info(f'Killing job {job_id}')
           os.kill(job['pid'], signal.SIGINT)
         else:
-          self.logger.info(f'Killing job {job["id"]} forcefully')
+          self.logger.info(f'Terminating job {job_id}')
           os.kill(job['pid'], signal.SIGTERM)
-
-  @rpc_export_function
-  async def killall(self, force=False):
-    '''Kill all started jobs.'''
-
-  #def format_elapsed_time(self, job):
-  #  '''Format the elapsed time of a job.'''
-  #  hist_entry = self.hist.get(job.param)
-  #  started = hist_entry['started']
-  #  finished = hist_entry['finished']
-  #  if not started:
-  #    return format_sec(0.)
-  #  if not finished:
-  #    return format_sec(diff_sec(utcnow(), started))
-  #  return format_sec(diff_sec(finished, started))
-
-  #def format_duration(self, job):
-  #  '''Format the duration of a job.'''
-  #  hist_entry = self.hist.get(job.param)
-  #  duration = hist_entry['duration']
-  #  if not duration:
-  #    return format_sec(0.)
-  #  return format_sec(duration)
-
-  #def format_remaining_time(self, state=None):
-  #  '''Format the elapsed time of jobs in the state.'''
-  #  if state is None:
-  #    state = self.state()
-  #  return format_sec(self.estimator.estimate_remaining_time(state))
-
-  #def format_estimated_time(self, work_list=None, params=None, concurrency=None):
-  #  '''Format the estimated time to finish jobs with new parameters.'''
-  #  state = self.state()
-
-  #  if work_list is None:
-  #    work_list = []
-  #  if params is None:
-  #    params = []
-  #  if isinstance(params, Param):
-  #    params = [params]
-  #  if isinstance(work_list, Work):
-  #    work_list = [work_list] * len(params)
-
-  #  assert len(work_list) == len(params)
-
-  #  with self.lock:
-  #    if params is not None:
-  #      new_jobs = [Job(self.next_job_id + i, work_list[i], params[i]) for i in range(len(params))]
-  #      state.pending_jobs = \
-  #          self._sort(self._dedup(state.pending_jobs + new_jobs))
-  #    if concurrency is not None:
-  #      state.concurrency = concurrency
-
-  #  return self.estimator.format_estimated_time(state)
-
-  #def _format_estimated_time(self):
-  #  '''Format the estimated time to finish jobs.'''
-  #  assert self.lock.locked() # pylint: disable=no-member
-  #  return self.estimator.format_estimated_time(self._state)
-
-  #def _succeeded(self, job):
-  #  '''Report a succeeded job.'''
-  #  assert self.lock.locked() # pylint: disable=no-member
-  #  self.hist.finished(job.param, True)
-  #  self._state.succeeded_jobs.append(job)
-  #  #self.logger.info(termcolor.colored(
-  #  #    f'Succeeded: {job} ' + \
-  #  #    f'[elapsed: {self.format_elapsed_time(job)}]', 'green'))
-  #  #self.logger.info(self._format_estimated_time())
-
-  #def _failed_resource_error(self, job, exc):
-  #  '''Report a failed job due to a resource error.'''
-  #  assert self.lock.locked() # pylint: disable=no-member
-  #  self.hist.finished(job.param, False)
-  #  self._state.failed_jobs.append(job)
-  #  #self.logger.error(termcolor.colored(
-  #  #    f'Failed: {job} (resource error)' + \
-  #  #    f'[elapsed: {self.format_elapsed_time(job)}]' + \
-  #  #    '\n' + exc, 'red'))
-  #  #self.logger.info(self._format_estimated_time())
-
-  #def _failed_exception(self, job, exc):
-  #  '''Report a failed job with an exception.'''
-  #  assert self.lock.locked() # pylint: disable=no-member
-  #  self.hist.finished(job.param, False)
-  #  self._state.failed_jobs.append(job)
-  #  exc = '  ' + exc.rstrip().replace('\n', '\n  ')
-  #  #self.logger.error(termcolor.colored(
-  #  #    f'Failed:   {job} (exception) ' + \
-  #  #    f'[elapsed: {self.format_elapsed_time(job)}]' + \
-  #  #    '\n' + exc, 'red'))
-  #  #self.logger.info(self._format_estimated_time())
-
-  #def _check_empty_queue(self):
-  #  assert self.lock.locked() # pylint: disable=no-member
-  #  if not (self._state.active_jobs or self._state.pending_jobs):
-  #    self.logger.warning('Job queue empty')

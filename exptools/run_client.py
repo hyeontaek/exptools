@@ -4,22 +4,31 @@ __all__ = ['run_client']
 
 import asyncio
 import argparse
+import json
 #import logging
+
+import termcolor
 
 from exptools.client import Client
 from exptools.estimator import Estimator
-from exptools.param import get_exec_id, get_name
-from exptools.pretty import pprint
+#from exptools.pretty import pprint
 from exptools.time import diff_sec, utcnow, parse_utc
 
+# pylint: disable=unused-argument
 async def _handle_start(client, args):
   await client.runner.start()
 
+# pylint: disable=unused-argument
 async def _handle_stop(client, args):
   await client.runner.stop()
 
 async def _handle_status(client, args):
   queue_state = await client.queue.get_state()
+
+  if not args.argument:
+    show = set(['finished', 'started', 'queued'])
+  else:
+    show = set(args.argument)
 
   estimator = Estimator(client.history)
 
@@ -36,34 +45,50 @@ async def _handle_status(client, args):
     sec = await estimator.estimate_remaining_time(state)
     return '%d:%02d:%02d' % (int(sec / 3600), int(sec % 3600 / 60), int(sec % 60))
 
-  output = f"Finished jobs ({len(queue_state['finished_jobs'])}):\n"
-  for job in queue_state['finished_jobs']:
-    output += f"  [{job['id']}] {get_exec_id(job['param'])}"
-    output += f' ({_format_elapsed(job)})'
-    if not job['succeeded']:
-      output += ' [FAILED]'
-    output += f"  {get_name(job['param'])}\n"
-  output += '\n'
+  if 'finished' in show:
+    output = f"Finished jobs ({len(queue_state['finished_jobs'])}):\n"
+    for job in queue_state['finished_jobs']:
+      line = f"  {job['job_id']} {job['exec_id']}"
+      line += f' [{_format_elapsed(job)}]'
+      if job['succeeded']:
+        line += ' succeeded:'
+      else:
+        line += ' FAILED:'
+      line += f" {job['name']}"
+      if not job['succeeded']:
+        line = termcolor.colored(line, 'red')
+      output += line + '\n'
+
+    output += '\n'
 
   partial_state = {'started_jobs': [], 'queued_jobs': [],
                    'concurrency': queue_state['concurrency']}
 
-  output += f"Started jobs ({len(queue_state['started_jobs'])}):\n"
-  for job in queue_state['started_jobs']:
-    partial_state['started_jobs'].append(job)
-    output += f"  [{job['id']}] {get_exec_id(job['param'])}"
-    rem = await _format_remaining(partial_state)
-    output += f' ({_format_elapsed(job)}+{rem})'
-    output += f"  {get_name(job['param'])}\n"
-  output += '\n'
+  if 'started' in show:
+    output += f"Started jobs ({len(queue_state['started_jobs'])}):\n"
+    for job in queue_state['started_jobs']:
+      partial_state['started_jobs'].append(job)
+      line = f"  {job['job_id']} {job['exec_id']}"
+      rem = await _format_remaining(partial_state)
+      line += f' [{_format_elapsed(job)}+{rem}]:'
+      line += f" {job['name']}"
+      line = termcolor.colored(line, 'yellow')
+      output += line + '\n'
+    output += '\n'
+  else:
+    for job in queue_state['started_jobs']:
+      partial_state['started_jobs'].append(job)
 
-  output += f"Queued jobs ({len(queue_state['queued_jobs'])}):\n"
-  for job in queue_state['queued_jobs']:
-    partial_state['pending_jobs'].append(job)
-    output += f"  [{job['id']}] {get_exec_id(job['param'])}"
-    rem = await _format_remaining(partial_state)
-    output += f' ({_format_elapsed(job)}+{rem})'
-    output += f"  {get_name(job['param'])}\n"
+  if 'queued' in show:
+    output += f"Queued jobs ({len(queue_state['queued_jobs'])}):\n"
+    for job in queue_state['queued_jobs']:
+      partial_state['pending_jobs'].append(job)
+      line = f"  {job['job_id']} {job['exec_id']}"
+      rem = await _format_remaining(partial_state)
+      line += f' [{_format_elapsed(job)}+{rem}]:'
+      line += f" {job['name']}"
+      line = termcolor.colored(line, 'blue')
+      output += line + '\n'
 
   #output += '\n'
   #output += f"Concurrency: {queue_state['concurrency']}"
@@ -140,21 +165,21 @@ async def handle_command(client, args):
 def run_client():
   '''Parse arguments and process a client command.'''
 
-  #logging_fmt = '%(asctime)s %(name)s %(levelname)-8s %(message)s'
+  #logging_fmt = '%(asctime)s %(name)-19s %(levelname)-8s %(message)s'
   #logging.basicConfig(format=logging_fmt, level=logging.INFO)
   #logger = logging.getLogger('exptools.run_client')
 
   parser = argparse.ArgumentParser(description='Control the runner.')
   parser.add_argument('--host', type=str, default='localhost', help='hostname')
   parser.add_argument('--port', type=int, default='31234', help='port')
-  parser.add_argument('--secret-path', type=str, default='secret.dat', help='secret file path')
+  parser.add_argument('--secret-file', type=str, default='secret.json', help='secret file path')
   parser.add_argument('command', type=str, help='command')
   parser.add_argument('argument', type=str, nargs='*', help='arguments')
 
   args = parser.parse_args()
 
-  #logger.info(f'Using secret file at {args.secret_path}')
-  secret = open(args.secret_path, 'r').read().strip()
+  #logger.info(f'Using secret file at {args.secret_file}')
+  secret = json.load(open(args.secret_file))
 
   loop = asyncio.get_event_loop()
 

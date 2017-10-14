@@ -11,8 +11,6 @@ _PP = PrettyPrinter()
 def pformat(params, verbose=False):
   '''Pretty-format parameters.'''
 
-  org_params = params
-
   output = ''
 
   if isinstance(params, dict):
