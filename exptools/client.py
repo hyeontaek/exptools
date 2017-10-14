@@ -10,6 +10,7 @@ import json
 
 import websockets
 
+from exptools.estimator import Estimator
 from exptools.history import History
 from exptools.runner import Runner
 from exptools.queue import Queue
@@ -37,6 +38,8 @@ class Client:
     self.history = ObjectProxy(self, 'history', History)
     self.queue = ObjectProxy(self, 'queue', Queue)
     self.runner = ObjectProxy(self, 'runner', Runner)
+
+    self.estimator = Estimator(self.history)
 
     self.next_id = 0
 

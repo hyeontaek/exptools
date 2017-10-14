@@ -155,10 +155,8 @@ class Queue:
   async def set_pid(self, job_id, pid):
     '''Update pid of a started job.'''
     async with self.lock:
-      for i, job in enumerate(self.started_jobs):
+      for job in self.started_jobs:
         if job['job_id'] == job_id:
-          exec_id = job['exec_id']
-
           job['pid'] = pid
 
           self.logger.info(f'Updated job {job_id} pid {pid}')

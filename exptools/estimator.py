@@ -2,13 +2,9 @@
 
 __all__ = ['Estimator']
 
-import datetime
+from exptools.time import diff_sec, utcnow, parse_utc
 
-import termcolor
-
-from exptools.param import get_exec_id
-from exptools.time import diff_sec, format_local, format_sec, utcnow, parse_utc
-
+# pylint: disable=too-few-public-methods
 class Estimator:
   '''Estimate the remaining time.'''
 
@@ -43,7 +39,7 @@ class Estimator:
     # Calculate started jobs' remaining time
     remaining_duration = 0.
     for job in state['started_jobs']:
-      history_entry = await self.history.get(get_exec_id(job['param']))
+      history_entry = await self.history.get(job['exec_id'])
 
       if history_entry['started'] is None:
         started = now
@@ -57,7 +53,7 @@ class Estimator:
 
     # Calculate queued jobs' remaining time
     for job in state['queued_jobs']:
-      history_entry = await self.history.get(get_exec_id(job['param']))
+      history_entry = await self.history.get(job['exec_id'])
 
       if history_entry['duration'] is None:
         remaining_duration += avg_duration
@@ -68,46 +64,3 @@ class Estimator:
     remaining_time = remaining_duration / concurrency
 
     return remaining_time
-
-  @staticmethod
-  def _format_job_count(state):
-    '''Format job count.'''
-    succeeded = len(filter(lambda job: job['succeeded'], state['finished_jobs']))
-    failed = len(filter(lambda job: not job['succeeded'], state['finished_jobs']))
-    started = len(state['started_jobs'])
-    queued = len(state['queued_jobs'])
-
-    output = 'S:'
-    output += termcolor.colored(str(succeeded), 'green')
-    output += termcolor.colored('/', 'blue')
-    output += 'F:'
-    if failed == 0:
-      output += termcolor.colored(str(failed), 'green')
-      output += termcolor.colored('/', 'blue')
-    else:
-      output += termcolor.colored(str(failed), 'red')
-      output += termcolor.colored('/', 'blue')
-    output += 'A:'
-    output += termcolor.colored(str(started), 'yellow')
-    output += termcolor.colored('/', 'blue')
-    output += 'Q:'
-    output += termcolor.colored(str(queued), 'cyan')
-    return output
-
-  def format_estimated_time(self, state):
-    '''Format the estimated time with colors.'''
-    remaining_time = self.estimate_remaining_time(state)
-    remaining_str = format_sec(remaining_time)
-
-    current_time = utcnow()
-
-    finish_by = current_time + datetime.timedelta(seconds=remaining_time)
-    finish_by_local_str = format_local(finish_by)
-
-    output = termcolor.colored('[', 'blue')
-    output += self._format_job_count(state)
-    output += termcolor.colored(
-        f'] remaining: {remaining_str}; ' + \
-        f'finish by: {finish_by_local_str}; ' + \
-        f'concurrency: {state.concurrency}', 'blue')
-    return output

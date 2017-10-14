@@ -11,9 +11,17 @@ import sys
 import termcolor
 
 from exptools.client import Client
-from exptools.estimator import Estimator
 #from exptools.pretty import pprint
-from exptools.time import diff_sec, utcnow, parse_utc
+from exptools.time import (
+    format_elapsed_time_short,
+    format_remaining_time_short,
+    format_estimated_time,
+    )
+
+
+# pylint: disable=unused-argument
+async def _handle_stat(client, args):
+  await client.runner.start()
 
 # pylint: disable=unused-argument
 async def _handle_start(client, args):
@@ -31,28 +39,13 @@ async def _handle_status(client, args):
   else:
     show = set(args.argument)
 
-  estimator = Estimator(client.history)
-
-  now = utcnow()
-
-  def _format_elapsed(job):
-    if job['finished']:
-      sec = job['duration']
-    else:
-      sec = diff_sec(now, parse_utc(job['started']))
-    return '%d:%02d:%02d' % (int(sec / 3600), int(sec % 3600 / 60), int(sec % 60))
-
-  async def _format_remaining(state):
-    sec = await estimator.estimate_remaining_time(state)
-    return '%d:%02d:%02d' % (int(sec / 3600), int(sec % 3600 / 60), int(sec % 60))
-
   output = ''
 
   if 'finished' in show:
     output += f"Finished jobs ({len(queue_state['finished_jobs'])}):\n"
     for job in queue_state['finished_jobs']:
       line = f"  {job['job_id']} {job['exec_id']}"
-      line += f' [{_format_elapsed(job)}]'
+      line += f' [{format_elapsed_time_short(job)}]'
       if job['succeeded']:
         line += ' succeeded:'
       else:
@@ -61,10 +54,10 @@ async def _handle_status(client, args):
       if not job['succeeded']:
         line = termcolor.colored(line, 'red')
       output += line + '\n'
-
     output += '\n'
 
-  partial_state = {'started_jobs': [], 'queued_jobs': [],
+  partial_state = {'finished_jobs': queue_state['finished_jobs'],
+                   'started_jobs': [], 'queued_jobs': [],
                    'concurrency': queue_state['concurrency']}
 
   if 'started' in show:
@@ -72,8 +65,8 @@ async def _handle_status(client, args):
     for job in queue_state['started_jobs']:
       partial_state['started_jobs'].append(job)
       line = f"  {job['job_id']} {job['exec_id']}"
-      rem = await _format_remaining(partial_state)
-      line += f' [{_format_elapsed(job)}+{rem}]:'
+      rem = await format_remaining_time_short(client.estimator, partial_state)
+      line += f' [{format_elapsed_time_short(job)}+{rem}]:'
       line += f" {job['name']}"
       line = termcolor.colored(line, 'yellow')
       output += line + '\n'
@@ -87,15 +80,15 @@ async def _handle_status(client, args):
     for job in queue_state['queued_jobs']:
       partial_state['pending_jobs'].append(job)
       line = f"  {job['job_id']} {job['exec_id']}"
-      rem = await _format_remaining(partial_state)
-      line += f' [{_format_elapsed(job)}+{rem}]:'
+      rem = await format_remaining_time_short(client.estimator, partial_state)
+      line += f' [{format_elapsed_time_short(job)}+{rem}]:'
       line += f" {job['name']}"
       line = termcolor.colored(line, 'blue')
       output += line + '\n'
+    output += '\n'
 
-  #output += '\n'
   #output += f"Concurrency: {queue_state['concurrency']}"
-  print(output)
+  print(output.strip() + '\n')
 
 async def _handle_run(client, args):
   params = [{'cmd': args.argument}]
@@ -190,6 +183,9 @@ async def handle_command(client, args):
 
   else:
     raise RuntimeError(f'Invalid command: {args[0]}')
+
+  queue_state = await client.queue.get_state()
+  print(await format_estimated_time(client.estimator, queue_state))
 
 def run_client():
   '''Parse arguments and process a client command.'''

@@ -6,12 +6,15 @@ __all__ = [
     'format_utc', 'format_local',
     'parse_utc', 'parse_local',
     'diff_sec',
-    'format_sec']
+    'format_sec', 'format_sec_short',
+    'format_elapsed_time_short', 'format_job_count',
+    ]
 
 import datetime
 
-import pytz
+import termcolor
 import tzlocal
+import pytz
 
 def utcnow():
   '''Return the current time in UTC.'''
@@ -33,9 +36,17 @@ def format_utc(time):
   '''Format a time in UTC.'''
   return as_utc(time).strftime('%Y-%m-%d %H:%M:%S.%f')
 
+def format_utc_short(time):
+  '''Format a time in UTC in a short format.'''
+  return as_utc(time).strftime('%Y-%m-%d %H:%M:%S')
+
 def format_local(time):
   '''Format a time in the local timezone.'''
   return as_local(time).strftime('%Y-%m-%d %H:%M:%S.%f')
+
+def format_local_short(time):
+  '''Format a time in the local timezone in a short format.'''
+  return as_local(time).strftime('%Y-%m-%d %H:%M:%S')
 
 def parse_utc(time):
   '''Parse a UTC time.'''
@@ -52,7 +63,7 @@ def diff_sec(time1, time2):
   return (time1 - time2).total_seconds()
 
 def format_sec(sec):
-  '''Format seconds as human-readable shorthands.'''
+  '''Format seconds in a human-readable format.'''
   sec = round(sec)
   output = ''
   if sec >= 86400:
@@ -67,7 +78,75 @@ def format_sec(sec):
     value = int(sec / 60)
     sec -= value * 60
     output += '%d minute%s ' % (value, 's' if value != 1 else '')
-  value = sec
+  value = round(sec)
   if value > 0 or output == '':
     output += '%d second%s ' % (value, 's' if value != 1 else '')
   return output.rstrip()
+
+def format_sec_short(sec):
+  '''Format seconds in a short format.'''
+  return '%d:%02d:%02d' % (int(sec / 3600), int(sec % 3600 / 60), int(round(sec % 60)))
+
+def format_elapsed_time_short(job):
+  '''Format elapsed time of a job.'''
+  now = utcnow()
+  if job['finished']:
+    sec = job['duration']
+  else:
+    sec = diff_sec(now, parse_utc(job['started']))
+  return format_sec_short(sec)
+
+async def format_remaining_time_short(estimator, queue_state):
+  '''Format remaining time to finish jobs.'''
+  sec = await estimator.estimate_remaining_time(queue_state)
+  return format_sec_short(sec)
+
+def format_job_count(queue_state):
+  '''Format job count.'''
+
+  state = queue_state
+
+  succeeded = len(list(filter(lambda job: job['succeeded'], state['finished_jobs'])))
+  failed = len(list(filter(lambda job: not job['succeeded'], state['finished_jobs'])))
+  started = len(state['started_jobs'])
+  queued = len(state['queued_jobs'])
+
+  output = 'S:'
+  output += termcolor.colored(str(succeeded), 'green')
+  output += termcolor.colored('/', 'blue')
+  output += 'F:'
+  if failed == 0:
+    output += termcolor.colored(str(failed), 'green')
+    output += termcolor.colored('/', 'blue')
+  else:
+    output += termcolor.colored(str(failed), 'red')
+    output += termcolor.colored('/', 'blue')
+  output += 'A:'
+  output += termcolor.colored(str(started), 'yellow')
+  output += termcolor.colored('/', 'blue')
+  output += 'Q:'
+  output += termcolor.colored(str(queued), 'cyan')
+  return output
+
+async def format_estimated_time(estimator, queue_state):
+  '''Format the estimated time with colors.'''
+
+  state = queue_state
+
+  remaining_time = await estimator.estimate_remaining_time(state)
+  remaining_str = format_sec_short(remaining_time)
+
+  current_time = utcnow()
+
+  finish_by = current_time + datetime.timedelta(seconds=remaining_time)
+  finish_by_local_str = format_local_short(finish_by)
+
+  concurrency = state['concurrency']
+
+  output = termcolor.colored('[', 'blue')
+  output += format_job_count(state)
+  output += termcolor.colored(
+      f'] Remaining {remaining_str}' + \
+      f'  Finish by {finish_by_local_str}' + \
+      f'  Concurrency {concurrency}', 'blue')
+  return output
