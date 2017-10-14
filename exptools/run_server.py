@@ -16,6 +16,24 @@ from exptools.runner import Runner
 from exptools.scheduler import SerialScheduler
 from exptools.server import Server
 
+def make_parser():
+  '''Return a new argument parser.'''
+  parser = argparse.ArgumentParser(description='Run the exptools server.')
+
+  parser.add_argument('--host', type=str, default='localhost',
+                      help='the hostname of the server (default: %(default)s)')
+  parser.add_argument('--port', type=int, default='31234',
+                      help='the port number of the server (default: %(default)s)')
+  parser.add_argument('--secret-file', type=str,
+                      default='secret.json', help='the secret file path (default: %(default)s)')
+
+  parser.add_argument('--history-file', type=str, default='history.json',
+                      help='the history file path (default: %(default)s)')
+  parser.add_argument('--output-dir', type=str, default='output',
+                      help='the job output directory (default: %(default)s)')
+
+  return parser
+
 def run_server():
   '''Run the server.'''
   logging_fmt = '%(asctime)s %(name)-19s %(levelname)-8s %(message)s'
@@ -26,17 +44,7 @@ def run_server():
 
   logger = logging.getLogger('exptools.run_server')
 
-  parser = argparse.ArgumentParser(
-      description='Run the exptools server.',
-      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-  parser.add_argument('--host', type=str, default='localhost', help='The hostname of the server')
-  parser.add_argument('--port', type=int, default='31234', help='The port number of the server')
-  parser.add_argument('--secret-file', type=str, default='secret.json', help='The secret file path')
-  parser.add_argument('--history-file',
-                      type=str, default='history.json', help='The history file path')
-  parser.add_argument('--output-dir', type=str, default='output', help='The job output directory')
-
-  args = parser.parse_args()
+  args = make_parser().parse_args()
 
   if not os.path.exists(args.secret_file):
     prev_mask = os.umask(0o077)
@@ -63,6 +71,3 @@ def run_server():
     server.serve_forever()
   except KeyboardInterrupt:
     pass
-
-if __name__ == '__main__':
-  run_server()
