@@ -204,6 +204,15 @@ async def _handle_filter(client, args):
   params = await client.filter.filter(filter_expr, params)
   print(json.dumps(params, sort_keys=True, indent=2))
 
+async def _handle_estimate(client, args):
+  params = await _read_params(client, args)
+
+  queue_state = await client.queue.get_state()
+  queue_state['queued_jobs'].extend(
+      [{'exec_id': get_exec_id(param), 'param': param} for param in params])
+
+  print(await format_estimated_time(client.estimator, queue_state))
+
 async def _handle_add(client, args):
   params = await _read_params(client, args)
   params = await _omit_params(client, args, params)
@@ -347,6 +356,9 @@ async def handle_command(client, client_watch, args):
 
     elif args.command == 'filter':
       await _handle_filter(client, args)
+
+    elif args.command == 'estimate':
+      await _handle_estimate(client, args)
 
     else:
       print(f'Invalid command: {args.command}')
