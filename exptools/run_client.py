@@ -35,10 +35,10 @@ async def _handle_status(client, args):
 async def _handle_ls(client, args):
   queue_state = await client.queue.get_state()
 
-  if not args.argument:
+  if not args.arguments:
     show = set(['finished', 'started', 'queued'])
   else:
-    show = set(args.argument)
+    show = set(args.arguments)
 
   output = ''
 
@@ -92,16 +92,16 @@ async def _handle_ls(client, args):
   print(output.strip() + '\n')
 
 async def _handle_run(client, args):
-  params = [{'cmd': args.argument}]
+  params = [{'cmd': args.arguments}]
   job_ids = await client.queue.add(params)
   print(f'Added queued jobs: {job_ids[0]}')
 
 async def _handle_retry(client, args):
-  argument = args.argument
-  if not argument:
+  arguments = args.arguments
+  if not arguments:
     job_ids = await client.queue.retry(None)
   else:
-    job_ids = await client.queue.retry(argument)
+    job_ids = await client.queue.retry(arguments)
   print(f'Added queued jobs: {" ".join(job_ids)}')
 
 async def _omit_params(client, args, params):
@@ -122,10 +122,10 @@ async def _omit_params(client, args, params):
 
 async def _handle_add(client, args):
   params = []
-  if len(args.argument) == 1 and args.argument[0] == '-':
+  if len(args.arguments) == 1 and args.arguments[0] == '-':
     params.extend(json.loads(sys.stdin.read()))
   else:
-    for path in args.argument:
+    for path in args.arguments:
       with open(path) as file:
         params.extend(json.loads(file.read()))
   params = await _omit_params(client, args, params)
@@ -133,31 +133,31 @@ async def _handle_add(client, args):
   print(f'Added queued jobs: {" ".join(job_ids)}')
 
 async def _handle_rm(client, args):
-  argument = args.argument
-  if not argument:
+  arguments = args.arguments
+  if not arguments:
     count = await client.queue.remove_queued(None)
   else:
-    count = await client.queue.remove_queued(argument)
+    count = await client.queue.remove_queued(arguments)
   print(f'Removed queued jobs: {count}')
 
 async def _handle_clear(client, args):
-  argument = args.argument
-  if not argument:
+  arguments = args.arguments
+  if not arguments:
     count = await client.queue.remove_finished(None)
   else:
-    count = await client.queue.remove_finished(argument)
+    count = await client.queue.remove_finished(arguments)
   print(f'Removed finished jobs: {count}')
 
 async def _handle_kill(client, args):
-  argument = args.argument
+  arguments = args.arguments
   force = False
-  if argument and argument[0] == 'force':
+  if arguments and arguments[0] == 'force':
     force = True
-    argument = argument[1:]
-  if not argument:
+    arguments = arguments[1:]
+  if not arguments:
     count = await client.runner.kill(None, force=force)
   else:
-    count = await client.runner.kill(argument, force=force)
+    count = await client.runner.kill(arguments, force=force)
   print(f'Killed jobs: {count}')
 
 async def handle_command(client, args):
@@ -223,7 +223,7 @@ def run_client():
   parser.add_argument('--no-omit', action='store_const', dest='omit', const='',
                       help='do not omit parameters')
   parser.add_argument('command', type=str, help='command')
-  parser.add_argument('argument', type=str, nargs='*', help='arguments')
+  parser.add_argument('arguments', type=str, nargs='*', help='arguments')
 
   args = parser.parse_args()
 
