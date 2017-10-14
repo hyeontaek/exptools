@@ -4,6 +4,7 @@ __all__ = [
     'get_param_id', 'get_param_ids',
     'get_exec_id', 'get_exec_ids',
     'get_name', 'get_names',
+    'get_command',
     ]
 
 import hashlib
@@ -38,8 +39,16 @@ def get_exec_ids(params):
 
 def get_name(param):
   '''Return the name of a parameter.'''
-  return param.get('_name', str(param))
+  if '_' in param and 'name' in param['_']:
+    return param['_']['name']
+  return str(param)
 
 def get_names(params):
   '''Return the names of parameters.'''
   return [get_name(param) for param in params]
+
+def get_command(param):
+  '''Return the command of a parameter.'''
+  if '_' in param and 'command' in param['_']:
+    return param['_']['command']
+  return param['command']

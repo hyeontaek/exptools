@@ -111,10 +111,9 @@ class Runner:
 
     name = job['name']
     param = job['param']
+    cmd = job['command']
 
     try:
-      cmd = param['cmd']
-
       if not await self.queue.set_started(job_id):
         self.logger.info(f'Ignoring missing job {job_id}')
         return

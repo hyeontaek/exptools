@@ -157,18 +157,25 @@ async def _read_params(client, args, skip=0):
   if args.history:
     exec_ids = set()
     for param in params:
-      param['_exptools'] = {}
-      param['_exptools']['param_id'] = get_param_id(param)
-      exec_id = get_exec_id(param)
-      param['_exptools']['exec_id'] = exec_id
-      exec_ids.add(exec_id)
+      if '_' not in param:
+        meta = param['_'] = {}
+      else:
+        meta = param['_']
+
+      if 'exec_id' not in meta:
+        meta['param_id'] = get_param_id(param)
+        exec_id = get_exec_id(param)
+        meta['exec_id'] = exec_id
+
+        exec_ids.add(exec_id)
 
     if exec_ids:
       history = await client.history.get_all(list(exec_ids))
       for param in params:
-        exec_id = param['_exptools']['exec_id']
+        meta = param['_']
+        exec_id = meta['exec_id']
         if exec_id in exec_ids:
-          param['_exptools'].update(history.get(exec_id, {}))
+          meta.update(history.get(exec_id, {}))
 
   return params
 
@@ -184,6 +191,7 @@ async def _handle_ca(client, args):
     #for line in json.dumps(params, sort_keys=True, indent=2).split('\n'):
     for line in pprint.pformat(param).split('\n'):
       print('  ' + line)
+    print()
 
 async def _handle_cat(client, args):
   params = await _read_params(client, args)
