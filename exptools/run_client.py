@@ -32,6 +32,10 @@ async def _handle_status(client, args):
   queue_state = await client.queue.get_state()
   print(await format_estimated_time(client.estimator, queue_state))
 
+async def _handle_monitor(client, client2, args):
+  async for queue_state in client2.queue.watch_state():
+    print(await format_estimated_time(client.estimator, queue_state))
+
 async def _handle_ls(client, args):
   queue_state = await client.queue.get_state()
 
@@ -160,7 +164,7 @@ async def _handle_kill(client, args):
     count = await client.runner.kill(arguments, force=force)
   print(f'Killed jobs: {count}')
 
-async def handle_command(client, args):
+async def handle_command(client, client2, args):
   '''Handle a client command.'''
 
   try:
@@ -172,6 +176,9 @@ async def handle_command(client, args):
 
     elif args.command == 'status':
       pass
+
+    elif args.command == 'monitor':
+      await _handle_monitor(client, client2, args)
 
     elif args.command == 'ls':
       await _handle_ls(client, args)
@@ -198,7 +205,7 @@ async def handle_command(client, args):
       print(f'Invalid command: {args.command}')
       return 1
 
-    if args.command not in ['stop', 'ls']:
+    if args.command not in ['stop', 'monitor', 'ls']:
       await _handle_status(client, args)
 
     return 0
@@ -233,6 +240,10 @@ def run_client():
   loop = asyncio.get_event_loop()
 
   client = Client(args.host, args.port, secret, loop)
-  handle_comamnd_future = asyncio.ensure_future(handle_command(client, args), loop=loop)
+  if args.command in ['monitor']:
+    client2 = Client(args.host, args.port, secret, loop)
+  else:
+    client2 = None
+  handle_comamnd_future = asyncio.ensure_future(handle_command(client, client2, args), loop=loop)
   loop.run_until_complete(handle_comamnd_future)
   return handle_comamnd_future.result()
