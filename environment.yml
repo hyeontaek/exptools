@@ -9,6 +9,7 @@ dependencies:
   - base58
   - tzlocal
   - websockets
+  - yaql
 - wheel
 - pylint
 - pytest

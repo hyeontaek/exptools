@@ -5,7 +5,6 @@ __all__ = ['run_client']
 import asyncio
 import argparse
 import json
-#import logging
 import pprint
 import sys
 import traceback
@@ -13,13 +12,12 @@ import traceback
 import termcolor
 
 from exptools.client import Client
-#from exptools.pretty import pprint
 from exptools.time import (
     format_elapsed_time_short,
     format_remaining_time_short,
     format_estimated_time,
     )
-from exptools.param import get_exec_id, get_exec_ids, get_name
+from exptools.param import get_exec_id, get_exec_ids, get_param_id, get_name
 
 
 # pylint: disable=unused-argument
@@ -124,7 +122,9 @@ async def _omit_params(client, args, params):
 
   omit = args.omit.split(',')
   for entry in omit:
-    assert entry in ('finished', 'succeeded', 'started', 'queued', 'duplicated'), f'Invalid omission: {entry}'
+    assert entry in (
+        'finished', 'succeeded', 'started', 'queued', 'duplicated',
+        ), f'Invalid omission: {entry}'
 
   if 'finished' in omit:
     params = await client.history.omit(params, only_succeeded=False)
@@ -145,25 +145,40 @@ async def _omit_params(client, args, params):
     params = unique_params
   return params
 
-def _read_params(args):
-  if not args.arguments:
-    params = json.loads(open(args.params_file).read())
-  elif len(args.arguments) == 1 and args.arguments[0] == '-':
+async def _read_params(client, args, skip=0):
+  if len(args.arguments) <= skip:
     params = json.loads(sys.stdin.read())
   else:
     params = []
-    for path in args.arguments:
+    for path in args.arguments[skip:]:
       with open(path) as file:
         params.extend(json.loads(file.read()))
+
+  if args.history:
+    exec_ids = set()
+    for param in params:
+      param['_exptools'] = {}
+      param['_exptools']['param_id'] = get_param_id(param)
+      exec_id = get_exec_id(param)
+      param['_exptools']['exec_id'] = exec_id
+      exec_ids.add(exec_id)
+
+    if exec_ids:
+      history = await client.history.get_all(list(exec_ids))
+      for param in params:
+        exec_id = param['_exptools']['exec_id']
+        if exec_id in exec_ids:
+          param['_exptools'].update(history.get(exec_id, {}))
+
   return params
 
 async def _handle_c(client, args):
-  params = _read_params(args)
+  params = await _read_params(client, args)
   for param in params:
     print(f'{get_exec_id(param)}  {get_name(param)}')
 
 async def _handle_ca(client, args):
-  params = _read_params(args)
+  params = await _read_params(client, args)
   for param in params:
     print(f'{get_exec_id(param)}')
     #for line in json.dumps(params, sort_keys=True, indent=2).split('\n'):
@@ -171,11 +186,18 @@ async def _handle_ca(client, args):
       print('  ' + line)
 
 async def _handle_cat(client, args):
-  params = _read_params(args)
+  params = await _read_params(client, args)
+  print(json.dumps(params, sort_keys=True, indent=2))
+
+async def _handle_filter(client, args):
+  filter_expr = args.arguments[0]
+  params = await _read_params(client, args, skip=1)
+
+  params = await client.filter.filter(filter_expr, params)
   print(json.dumps(params, sort_keys=True, indent=2))
 
 async def _handle_add(client, args):
-  params = _read_params(args)
+  params = await _read_params(client, args)
   params = await _omit_params(client, args, params)
   job_ids = await client.queue.add(params)
   print(f'Added queued jobs: {" ".join(job_ids)}')
@@ -231,7 +253,7 @@ async def _handle_kill(client, args):
   print(f'Killed jobs: {count}')
 
 async def _handle_prune_matching(client, args):
-  params = _read_params(args)
+  params = await _read_params(client, args)
   exec_ids = get_exec_ids(params)
 
   symlink_count, dir_count = await client.runner.prune(exec_ids, prune_matching=True)
@@ -241,7 +263,7 @@ async def _handle_prune_matching(client, args):
         f'{entry_count} histroy entries')
 
 async def _handle_prune_mismatching(client, args):
-  params = _read_params(args)
+  params = await _read_params(client, args)
   exec_ids = get_exec_ids(params)
 
   symlink_count, dir_count = await client.runner.prune(exec_ids, prune_mismatching=True)
@@ -315,6 +337,9 @@ async def handle_command(client, client_watch, args):
     elif args.command == 'cat':
       await _handle_cat(client, args)
 
+    elif args.command == 'filter':
+      await _handle_filter(client, args)
+
     else:
       print(f'Invalid command: {args.command}')
       return 1
@@ -328,20 +353,18 @@ async def handle_command(client, client_watch, args):
 def run_client():
   '''Parse arguments and process a client command.'''
 
-  #logging_fmt = '%(asctime)s %(name)-19s %(levelname)-8s %(message)s'
-  #logging.basicConfig(format=logging_fmt, level=logging.INFO)
-  #logger = logging.getLogger('exptools.run_client')
-
   parser = argparse.ArgumentParser(description='Control the runner.')
   parser.add_argument('--host', type=str, default='localhost', help='hostname')
   parser.add_argument('--port', type=int, default='31234', help='port')
   parser.add_argument('--secret-file', type=str, default='secret.json', help='secret file path')
-  parser.add_argument('--params-file', type=str, default='params.json',
-                      help='default parameters file path')
   parser.add_argument('--omit', type=str, default='succeeded,started,queued,duplicated',
                       help='omit parameters before adding')
   parser.add_argument('--no-omit', action='store_const', dest='omit', const='',
                       help='do not omit parameters')
+  parser.add_argument('--history', action='store_true', dest='history', default=True,
+                      help='augment history data to parameters')
+  parser.add_argument('--no-history', action='store_false', dest='history',
+                      help='do not augment history data to parameters')
   parser.add_argument('command', type=str, help='command')
   parser.add_argument('arguments', type=str, nargs='*', help='arguments')
 
@@ -352,7 +375,7 @@ def run_client():
 
   loop = asyncio.get_event_loop()
 
-  if args.command in ['c', 'ca', 'cat']:
+  if args.command in ['c', 'ca', 'cat'] and not args.history:
     client = None
   else:
     client = Client(args.host, args.port, secret, loop)

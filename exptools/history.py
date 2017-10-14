@@ -109,11 +109,17 @@ class History:
       self._schedule_dump()
 
   @rpc_export_function
-  async def get_all(self):
+  async def get_all(self, exec_ids=None):
     '''Get all history data.'''
     async with self.lock:
+      if exec_ids is None:
+        return {exec_id: dict(self.history[exec_id]) \
+                for exec_id in self.history if exec_id.startswith('e-')}
+
+      exec_ids = set(exec_ids)
       return {exec_id: dict(self.history[exec_id]) \
-              for exec_id in self.history if exec_id.startswith('e-')}
+              for exec_id in self.history \
+              if exec_id.startswith('e-') and exec_id in exec_ids}
 
   @rpc_export_function
   async def get(self, exec_id):

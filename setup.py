@@ -43,6 +43,7 @@ setup(
       'termcolor',
       'tzlocal',
       'websockets',
+      'yaql',
       ],
 
     extras_require={

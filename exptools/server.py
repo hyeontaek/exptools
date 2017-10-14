@@ -18,13 +18,14 @@ class Server:
   '''Implement a RPC server that exposes History and Runner objects.'''
 
   # pylint: disable=too-many-arguments
-  def __init__(self, host, port, secret, history, queue, runner, loop):
+  def __init__(self, host, port, secret, history, queue, runner, filter_, loop):
     self.host = host
     self.port = port
     self.secret = secret
     self.history = history
     self.queue = queue
     self.runner = runner
+    self.filter = filter_
     self.loop = loop
 
     self.logger = logging.getLogger('exptools.Server')
@@ -39,6 +40,7 @@ class Server:
         ('history', self.history),
         ('queue', self.queue),
         ('runner', self.runner),
+        ('filter', self.filter),
         ]:
       for method_name in dir(obj):
         method = getattr(obj, method_name)
