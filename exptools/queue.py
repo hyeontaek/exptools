@@ -29,13 +29,19 @@ class Queue:
 
   def _get_state(self):
     '''Get the job queue state.'''
+    assert self.lock.locked()
     state = {
-        'finished_jobs': list(self.finished_jobs),
-        'started_jobs': list(self.started_jobs),
-        'queued_jobs': list(self.queued_jobs),
+        'finished_jobs': self._clone_jobs(self.finished_jobs),
+        'started_jobs': self._clone_jobs(self.started_jobs),
+        'queued_jobs': self._clone_jobs(self.queued_jobs),
         'concurrency': self.concurrency,
         }
     return state
+
+  @staticmethod
+  def _clone_jobs(jobs):
+    '''Clone a job list.'''
+    return [dict(job) for job in jobs]
 
   @rpc_export_function
   async def get_state(self):
@@ -114,7 +120,7 @@ class Queue:
     return await self.add(params)
 
   @rpc_export_function
-  async def set_started(self, job_id, pid):
+  async def set_started(self, job_id):
     '''Mark a queued job as started.'''
     now = format_utc(utcnow())
     async with self.lock:
@@ -124,12 +130,27 @@ class Queue:
           await self.history.set_started(exec_id, now)
 
           job['started'] = now
-          job['pid'] = pid
+          job['pid'] = None
 
           self.started_jobs.append(job)
           del self.queued_jobs[i]
 
           self.logger.info(f'Started job {job_id}')
+          self.lock.notify_all()
+          return True
+    return False
+
+  @rpc_export_function
+  async def set_pid(self, job_id, pid):
+    '''Update pid of a started job.'''
+    async with self.lock:
+      for i, job in enumerate(self.started_jobs):
+        if job['job_id'] == job_id:
+          exec_id = job['exec_id']
+
+          job['pid'] = pid
+
+          self.logger.info(f'Updated job {job_id} pid {pid}')
           self.lock.notify_all()
           return True
     return False

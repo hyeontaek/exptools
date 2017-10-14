@@ -115,7 +115,7 @@ class Runner:
     try:
       cmd = param['cmd']
 
-      if not await self.queue.set_started(job_id, None):
+      if not await self.queue.set_started(job_id):
         self.logger.info(f'Ignoring missing job {job_id}')
         return
 
@@ -142,7 +142,7 @@ class Runner:
             env=env,
             loop=self.loop)
 
-        await self.queue.set_started(job_id, proc.pid)
+        await self.queue.set_pid(job_id, proc.pid)
 
         await proc.communicate()
 
