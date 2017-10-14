@@ -127,9 +127,13 @@ async def _omit_params(client, args, params):
   return params
 
 async def _handle_add(client, args):
-  params = json.loads(sys.stdin.read())
-  if isinstance(params, dict):
-    params = [params]
+  params = []
+  if len(args.argument) == 1 and args.argument[0] == '-':
+    params.extend(json.loads(sys.stdin.read()))
+  else:
+    for path in args.argument:
+      with open(path) as file:
+        params.extend(json.loads(file.read()))
   params = await _omit_params(client, args, params)
   job_ids = await client.queue.add(params)
   print(f'New jobs: {" ".join(job_ids)}')
@@ -198,8 +202,10 @@ def run_client():
   parser.add_argument('--host', type=str, default='localhost', help='hostname')
   parser.add_argument('--port', type=int, default='31234', help='port')
   parser.add_argument('--secret-file', type=str, default='secret.json', help='secret file path')
-  parser.add_argument('--omit', type=str, default='succeeded,started,queued', help='omit parameters before adding')
-  parser.add_argument('--no-omit', action='store_const', dest='omit', const='', help='do not omit parameters')
+  parser.add_argument('--omit', type=str, default='succeeded,started,queued',
+                      help='omit parameters before adding')
+  parser.add_argument('--no-omit', action='store_const', dest='omit', const='',
+                      help='do not omit parameters')
   parser.add_argument('command', type=str, help='command')
   parser.add_argument('argument', type=str, nargs='*', help='arguments')
 
