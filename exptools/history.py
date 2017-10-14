@@ -112,7 +112,8 @@ class History:
   async def get_all(self):
     '''Get all history data.'''
     async with self.lock:
-      return {exec_id: dict(self.history[exec_id]) for exec_id in self.history}
+      return {exec_id: dict(self.history[exec_id]) \
+              for exec_id in self.history if exec_id.startswith('e-')}
 
   @rpc_export_function
   async def get(self, exec_id):
@@ -148,6 +149,8 @@ class History:
     async with self.lock:
       valid_exec_ids = set(exec_ids)
       for exec_id in list(self.history.keys()):
+        if not exec_id.startswith('e-'):
+          continue
         if exec_id not in valid_exec_ids:
           del self.history[exec_id]
       self._schedule_dump()
