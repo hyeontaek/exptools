@@ -1,3 +1,7 @@
-#!/usr/bin/env sh
+#!/usr/bin/env python
 
-python -m exptools.run_client "$@"
+import sys
+
+from exptools.run_client import run_client
+
+sys.exit(run_client())
