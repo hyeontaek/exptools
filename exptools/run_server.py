@@ -57,6 +57,3 @@ def run_server():
     server.serve_forever()
   except KeyboardInterrupt:
     pass
-
-if __name__ == '__main__':
-  run_server()

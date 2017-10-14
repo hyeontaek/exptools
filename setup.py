@@ -59,13 +59,16 @@ setup(
           ],
     },
 
-    package_data={
-        '': ['sample/*.ipynb'],
-        },
+    package_data={},
 
     data_files=[
         ('', ['LICENSE.txt']),
         ],
 
-    entry_points={},
+    entry_points={
+        'console_scripts': [
+          'exptools_server=exptools.run_server:run_server',
+          'etc=exptools.run_client:run_client',
+          ],
+        },
 )

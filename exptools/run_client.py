@@ -225,6 +225,3 @@ def run_client():
 
   client = Client(args.host, args.port, secret, loop)
   loop.run_until_complete(asyncio.ensure_future(handle_command(client, args), loop=loop))
-
-if __name__ == '__main__':
-  run_client()
