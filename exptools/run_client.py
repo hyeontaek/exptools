@@ -20,10 +20,6 @@ from exptools.time import (
 
 
 # pylint: disable=unused-argument
-async def _handle_stat(client, args):
-  await client.runner.start()
-
-# pylint: disable=unused-argument
 async def _handle_start(client, args):
   await client.runner.start()
 
@@ -32,6 +28,10 @@ async def _handle_stop(client, args):
   await client.runner.stop()
 
 async def _handle_status(client, args):
+  queue_state = await client.queue.get_state()
+  print(await format_estimated_time(client.estimator, queue_state))
+
+async def _handle_ls(client, args):
   queue_state = await client.queue.get_state()
 
   if not args.argument:
@@ -93,7 +93,7 @@ async def _handle_status(client, args):
 async def _handle_run(client, args):
   params = [{'cmd': args.argument}]
   job_ids = await client.queue.add(params)
-  print(f'New jobs: {job_ids[0]}')
+  print(f'Added queued jobs: {job_ids[0]}')
 
 async def _handle_retry(client, args):
   argument = args.argument
@@ -101,7 +101,7 @@ async def _handle_retry(client, args):
     job_ids = await client.queue.retry(None)
   else:
     job_ids = await client.queue.retry(argument)
-  print(f'New jobs: {" ".join(job_ids)}')
+  print(f'Added queued jobs: {" ".join(job_ids)}')
 
 async def _omit_params(client, args, params):
   '''Omit parameters.'''
@@ -129,7 +129,7 @@ async def _handle_add(client, args):
         params.extend(json.loads(file.read()))
   params = await _omit_params(client, args, params)
   job_ids = await client.queue.add(params)
-  print(f'New jobs: {" ".join(job_ids)}')
+  print(f'Added queued jobs: {" ".join(job_ids)}')
 
 async def _handle_rm(client, args):
   argument = args.argument
@@ -137,7 +137,7 @@ async def _handle_rm(client, args):
     count = await client.queue.remove_queued(None)
   else:
     count = await client.queue.remove_queued(argument)
-  print(f'Removed jobs: {count}')
+  print(f'Removed queued jobs: {count}')
 
 async def _handle_clear(client, args):
   argument = args.argument
@@ -145,7 +145,7 @@ async def _handle_clear(client, args):
     count = await client.queue.remove_finished(None)
   else:
     count = await client.queue.remove_finished(argument)
-  print(f'Removed jobs: {count}')
+  print(f'Removed finished jobs: {count}')
 
 async def _handle_kill(client, args):
   argument = args.argument
@@ -164,28 +164,39 @@ async def handle_command(client, args):
 
   if args.command == 'start':
     await _handle_start(client, args)
+
   elif args.command == 'stop':
     await _handle_stop(client, args)
+
   elif args.command == 'status':
-    await _handle_status(client, args)
+    pass
+
+  elif args.command == 'ls':
+    await _handle_ls(client, args)
+
   elif args.command == 'run':
     await _handle_run(client, args)
+
   elif args.command == 'retry':
     await _handle_retry(client, args)
+
   elif args.command == 'add':
     await _handle_add(client, args)
+
   elif args.command == 'rm':
     await _handle_rm(client, args)
+
   elif args.command == 'clear':
     await _handle_clear(client, args)
+
   elif args.command == 'kill':
     await _handle_kill(client, args)
 
   else:
     raise RuntimeError(f'Invalid command: {args[0]}')
 
-  queue_state = await client.queue.get_state()
-  print(await format_estimated_time(client.estimator, queue_state))
+  if args.command not in ['stop', 'ls']:
+    await _handle_status(client, args)
 
 def run_client():
   '''Parse arguments and process a client command.'''
