@@ -144,16 +144,23 @@ class History:
       self._schedule_dump()
 
   @rpc_export_function
-  async def prune_absent(self, exec_ids):
-    '''Remove history entries that are absent in parameters.'''
+  async def prune(self, exec_ids, *, prune_matching=False, prune_mismatching=False):
+    '''Remove history entries.'''
+    entry_count = 0
+    exec_ids = set(exec_ids)
     async with self.lock:
-      valid_exec_ids = set(exec_ids)
       for exec_id in list(self.history.keys()):
         if not exec_id.startswith('e-'):
           continue
-        if exec_id not in valid_exec_ids:
+
+        if (prune_matching and exec_id in exec_ids) or \
+           (prune_mismatching and exec_id not in exec_ids):
           del self.history[exec_id]
+          entry_count += 1
+
       self._schedule_dump()
+
+    return entry_count
 
   @rpc_export_function
   async def is_finished(self, exec_id):

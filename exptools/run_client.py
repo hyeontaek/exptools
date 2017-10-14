@@ -34,8 +34,8 @@ async def _handle_status(client, args):
   queue_state = await client.queue.get_state()
   print(await format_estimated_time(client.estimator, queue_state))
 
-async def _handle_monitor(client, client2, args):
-  async for queue_state in client2.queue.watch_state():
+async def _handle_monitor(client, client_watch, args):
+  async for queue_state in client_watch.queue.watch_state():
     print(await format_estimated_time(client.estimator, queue_state))
 
 async def _handle_ls(client, args):
@@ -112,10 +112,13 @@ async def _handle_retry(client, args):
 
 async def _omit_params(client, args, params):
   '''Omit parameters.'''
+  if not args.omit:
+    return params
+
   omit = args.omit.split(',')
-  if omit:
-    for entry in omit:
-      assert entry in ('finished', 'succeeded', 'started', 'queued'), f'Invalid omission: {entry}'
+  for entry in omit:
+    assert entry in ('finished', 'succeeded', 'started', 'queued'), f'Invalid omission: {entry}'
+
   if 'finished' in omit:
     params = await client.history.omit(params, only_succeeded=False)
   if 'succeeded' in omit:
@@ -189,63 +192,75 @@ async def _handle_kill(client, args):
     count = await client.runner.kill(arguments, force=force)
   print(f'Killed jobs: {count}')
 
-async def _handle_prune(client, args):
-  params = []
-  if len(args.arguments) == 1 and args.arguments[0] == '-':
-    params.extend(json.loads(sys.stdin.read()))
-  else:
-    for path in args.arguments:
-      with open(path) as file:
-        params.extend(json.loads(file.read()))
-
-  if not params:
-    raise RuntimeError('Cannot prune without parameters for safety')
-
+async def _handle_prune_matching(client, args):
+  params = _read_params(args)
   exec_ids = get_exec_ids(params)
 
-  await client.runner.prune_absent(exec_ids)
-  await client.history.prune_absent(exec_ids)
-  print(f'Pruned')
+  symlink_count, dir_count = await client.runner.prune(exec_ids, prune_matching=True)
+  entry_count = await client.history.prune(exec_ids, prune_matching=True)
+  print(f'Pruned: {symlink_count} symlinks, ' + \
+        f'{dir_count} output directories, ' + \
+        f'{entry_count} histroy entries')
 
-async def handle_command(client, client2, args):
+async def _handle_prune_mismatching(client, args):
+  params = _read_params(args)
+  exec_ids = get_exec_ids(params)
+
+  symlink_count, dir_count = await client.runner.prune(exec_ids, prune_mismatching=True)
+  entry_count = await client.history.prune(exec_ids, prune_mismatching=True)
+  print(f'Pruned: {symlink_count} symlinks, ' + \
+        f'{dir_count} output directories, ' + \
+        f'{entry_count} histroy entries')
+
+async def handle_command(client, client_watch, args):
   '''Handle a client command.'''
 
   try:
     if args.command == 'start':
       await _handle_start(client, args)
+      await _handle_status(client, args)
 
     elif args.command == 'stop':
       await _handle_stop(client, args)
 
     elif args.command == 'status':
-      pass
+      await _handle_status(client, args)
 
     elif args.command == 'monitor':
-      await _handle_monitor(client, client2, args)
+      await _handle_monitor(client, client_watch, args)
 
     elif args.command == 'ls':
       await _handle_ls(client, args)
 
     elif args.command == 'run':
       await _handle_run(client, args)
+      await _handle_status(client, args)
 
     elif args.command == 'retry':
       await _handle_retry(client, args)
+      await _handle_status(client, args)
 
     elif args.command == 'add':
       await _handle_add(client, args)
+      await _handle_status(client, args)
 
     elif args.command == 'rm':
       await _handle_rm(client, args)
+      await _handle_status(client, args)
 
     elif args.command == 'clear':
       await _handle_clear(client, args)
+      await _handle_status(client, args)
 
     elif args.command == 'kill':
       await _handle_kill(client, args)
+      await _handle_status(client, args)
 
-    elif args.command == 'prune':
-      await _handle_prune(client, args)
+    elif args.command == 'prune-matching':
+      await _handle_prune_matching(client, args)
+
+    elif args.command == 'prune-mismatching':
+      await _handle_prune_mismatching(client, args)
 
     elif args.command == 'c':
       await _handle_c(client, args)
@@ -259,9 +274,6 @@ async def handle_command(client, client2, args):
     else:
       print(f'Invalid command: {args.command}')
       return 1
-
-    if args.command not in ['stop', 'monitor', 'ls', 'c', 'ca', 'cat']:
-      await _handle_status(client, args)
 
     return 0
 
@@ -280,7 +292,8 @@ def run_client():
   parser.add_argument('--host', type=str, default='localhost', help='hostname')
   parser.add_argument('--port', type=int, default='31234', help='port')
   parser.add_argument('--secret-file', type=str, default='secret.json', help='secret file path')
-  parser.add_argument('--params-file', type=str, default='params.json', help='default parameters file path')
+  parser.add_argument('--params-file', type=str, default='params.json',
+                      help='default parameters file path')
   parser.add_argument('--omit', type=str, default='succeeded,started,queued',
                       help='omit parameters before adding')
   parser.add_argument('--no-omit', action='store_const', dest='omit', const='',
@@ -301,11 +314,12 @@ def run_client():
     client = Client(args.host, args.port, secret, loop)
 
   if args.command in ['monitor']:
-    client2 = Client(args.host, args.port, secret, loop)
+    client_watch = Client(args.host, args.port, secret, loop)
   else:
-    client2 = None
+    client_watch = None
 
-  handle_command_future = asyncio.ensure_future(handle_command(client, client2, args), loop=loop)
+  handle_command_future = asyncio.ensure_future(
+      handle_command(client, client_watch, args), loop=loop)
   loop.run_until_complete(handle_command_future)
   return handle_command_future.result()
 

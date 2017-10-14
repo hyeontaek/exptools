@@ -180,34 +180,61 @@ class Runner:
     return count
 
   @rpc_export_function
-  async def prune_absent(self, exec_ids):
-    '''Prune directories that are not represented by given parameters.'''
+  async def prune(self, exec_ids, *, prune_matching=False, prune_mismatching=False):
+    '''Prune output data.'''
     trash_dir = os.path.join(self.base_dir, 'trash')
     if not os.path.exists(trash_dir):
       os.mkdir(trash_dir)
 
+    queue_state = await self.queue.get_state()
+    started_job_exec_ids = [job['exec_id'] for job in queue_state['started_jobs']]
+
+    # The below code must not use any coroutine so that
+    # Runner does not create any new symlink or directory concurrently
+    # by launching/finishing jobs
+    filenames = os.listdir(self.base_dir)
+
+    symlink_count = 0
+    dir_count = 0
+
     exec_ids = set(exec_ids)
+    valid_job_ids = set()
+    for filename in filenames:
+      if not filename.startswith('e-'):
+        continue
+      path = os.path.join(self.base_dir, filename)
 
-    job_ids = set()
-    for filename in os.listdir(self.base_dir):
-      if filename.startswith('e-'):
-        path = os.path.join(self.base_dir, filename)
-        # accept both e-XXX and e-XXX_tmp
-        if filename.partition('_')[0] in exec_ids:
-          job_ids.add(os.readlink(path).strip('/'))
-        else:
-          new_path = os.path.join(trash_dir, filename)
-          if os.path.exists(new_path):
-            os.unlink(new_path)
-          os.rename(path, new_path)
-          self.logger.info(f'Moved {filename} to trash')
+      prune = False
+      if filename.endswith('_tmp'):
+        # prune e-*_tmp symlinks for any non-started jobs
+        if filename.partition('_')[0] not in started_job_exec_ids:
+          prune = True
+      elif (prune_matching and filename in exec_ids) or \
+         (prune_mismatching and filename not in exec_ids):
+        prune = True
 
-    for filename in os.listdir(self.base_dir):
-      if filename.startswith('j-'):
-        path = os.path.join(self.base_dir, filename)
-        if filename not in job_ids:
-          new_path = os.path.join(trash_dir, filename)
-          if os.path.exists(new_path):
-            rmdirs(new_path)
-          os.rename(path, new_path)
-          self.logger.info(f'Moved {filename} to trash')
+      if prune:
+        new_path = os.path.join(trash_dir, filename)
+        if os.path.exists(new_path):
+          os.unlink(new_path)
+        os.rename(path, new_path)
+        self.logger.info(f'Moved {filename} to trash')
+        symlink_count += 1
+      else:
+        valid_job_ids.add(os.readlink(path).strip('/'))
+
+    # Prune j-* directories if no symlinks point to it
+    for filename in filenames:
+      if not filename.startswith('j-'):
+        continue
+      path = os.path.join(self.base_dir, filename)
+
+      if filename not in valid_job_ids:
+        new_path = os.path.join(trash_dir, filename)
+        if os.path.exists(new_path):
+          rmdirs(new_path)
+        os.rename(path, new_path)
+        self.logger.info(f'Moved {filename} to trash')
+        dir_count += 1
+
+    return symlink_count, dir_count
