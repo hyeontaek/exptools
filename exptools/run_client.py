@@ -202,7 +202,8 @@ async def handle_command(client, args):
       await _handle_status(client, args)
 
     return 0
-  except:
+
+  except Exception: # pylint: disable=broad-except
     traceback.print_exc()
     return 1
 
