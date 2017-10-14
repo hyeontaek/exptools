@@ -198,19 +198,10 @@ class Queue:
     job_count = len(job_ids)
     order = dict(zip(job_ids, range(job_count)))
     async with self.lock:
-      self.queued_jobs.sort(key=lambda job_id, param: order.get(job_id, job_count + 1))
+      self.queued_jobs.sort(key=lambda param: order.get(param['job_id'], job_count + 1))
       self.logger.info(f'Reordered {job_count} jobs')
       self.lock.notify_all()
-
-  @rpc_export_function
-  async def clear(self):
-    '''Clear all but started jobs.'''
-    async with self.lock:
-      self.finished_jobs = []
-      self.queued_jobs = []
-      self.logger.info(f'Cleared jobs')
-      self._check_empty()
-      self.lock.notify_all()
+    return job_count
 
   @rpc_export_function
   async def remove_finished(self, job_ids=None):

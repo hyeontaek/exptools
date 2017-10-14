@@ -85,10 +85,10 @@ async def _handle_ls(client, args):
   if 'queued' in show:
     output += f"Queued jobs ({len(queue_state['queued_jobs'])}):\n"
     for job in queue_state['queued_jobs']:
-      partial_state['pending_jobs'].append(job)
+      partial_state['queued_jobs'].append(job)
       line = f"  {job['job_id']} {job['exec_id']}"
       rem = await format_remaining_time_short(client.estimator, partial_state)
-      line += f' [{format_elapsed_time_short(job)}+{rem}]:'
+      line += f' [+{rem}]:'
       line += f" {job['name']}"
       line = termcolor.colored(line, 'blue')
       output += line + '\n'
@@ -164,6 +164,28 @@ async def _handle_add(client, args):
   job_ids = await client.queue.add(params)
   print(f'Added queued jobs: {" ".join(job_ids)}')
 
+async def _handle_up(client, args):
+  changed_job_ids = set(args.arguments)
+  queue_state = await client.queue.get_state()
+
+  job_ids = [job['job_id'] for job in queue_state['queued_jobs']]
+  for i in range(1, len(job_ids)):
+    if job_ids[i] in changed_job_ids:
+      job_ids[i - 1], job_ids[i] = job_ids[i], job_ids[i - 1]
+  count = await client.queue.reorder(job_ids)
+  print(f'Reordered queued jobs: {count}')
+
+async def _handle_down(client, args):
+  changed_job_ids = set(args.arguments)
+  queue_state = await client.queue.get_state()
+
+  job_ids = [job['job_id'] for job in queue_state['queued_jobs']]
+  for i in range(len(job_ids) - 2, -1, -1):
+    if job_ids[i] in changed_job_ids:
+      job_ids[i], job_ids[i + 1] = job_ids[i + 1], job_ids[i]
+  count = await client.queue.reorder(job_ids)
+  print(f'Reordered queued jobs: {count}')
+
 async def _handle_rm(client, args):
   arguments = args.arguments
   if not arguments:
@@ -172,7 +194,7 @@ async def _handle_rm(client, args):
     count = await client.queue.remove_queued(arguments)
   print(f'Removed queued jobs: {count}')
 
-async def _handle_clear(client, args):
+async def _handle_dismiss(client, args):
   arguments = args.arguments
   if not arguments:
     count = await client.queue.remove_finished(None)
@@ -244,12 +266,18 @@ async def handle_command(client, client_watch, args):
       await _handle_add(client, args)
       await _handle_status(client, args)
 
+    elif args.command == 'up':
+      await _handle_up(client, args)
+
+    elif args.command == 'down':
+      await _handle_down(client, args)
+
     elif args.command == 'rm':
       await _handle_rm(client, args)
       await _handle_status(client, args)
 
-    elif args.command == 'clear':
-      await _handle_clear(client, args)
+    elif args.command == 'dismiss':
+      await _handle_dismiss(client, args)
       await _handle_status(client, args)
 
     elif args.command == 'kill':
