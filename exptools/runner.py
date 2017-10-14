@@ -151,6 +151,7 @@ class Runner:
         os.rename(exec_path + '_tmp', exec_path)
         await self.queue.set_finished(job_id, True)
       else:
+        os.unlink(exec_path + '_tmp')
         await self.queue.set_finished(job_id, False)
 
     except Exception: # pylint: disable=broad-except
