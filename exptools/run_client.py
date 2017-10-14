@@ -45,8 +45,10 @@ async def _handle_status(client, args):
     sec = await estimator.estimate_remaining_time(state)
     return '%d:%02d:%02d' % (int(sec / 3600), int(sec % 3600 / 60), int(sec % 60))
 
+  output = ''
+
   if 'finished' in show:
-    output = f"Finished jobs ({len(queue_state['finished_jobs'])}):\n"
+    output += f"Finished jobs ({len(queue_state['finished_jobs'])}):\n"
     for job in queue_state['finished_jobs']:
       line = f"  {job['job_id']} {job['exec_id']}"
       line += f' [{_format_elapsed(job)}]'
