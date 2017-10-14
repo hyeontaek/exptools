@@ -19,6 +19,69 @@ from exptools.time import (
     )
 from exptools.param import get_exec_id, get_exec_ids, get_param_id, get_name
 
+async def _read_params(client, args, skip=0):
+  if len(args.arguments) <= skip:
+    params = json.loads(sys.stdin.read())
+  else:
+    params = []
+    for path in args.arguments[skip:]:
+      with open(path) as file:
+        params.extend(json.loads(file.read()))
+
+  if args.history:
+    exec_ids = set()
+    for param in params:
+      if '_' not in param:
+        meta = param['_'] = {}
+      else:
+        meta = param['_']
+
+      if 'exec_id' not in meta:
+        meta['param_id'] = get_param_id(param)
+        exec_id = get_exec_id(param)
+        meta['exec_id'] = exec_id
+
+        exec_ids.add(exec_id)
+
+    if exec_ids:
+      history = await client.history.get_all(list(exec_ids))
+      for param in params:
+        meta = param['_']
+        exec_id = meta['exec_id']
+        if exec_id in exec_ids:
+          meta.update(history.get(exec_id, {}))
+
+  return params
+
+async def _omit_params(client, args, params):
+  '''Omit parameters.'''
+  if not args.omit:
+    return params
+
+  omit = args.omit.split(',')
+  for entry in omit:
+    assert entry in (
+        'finished', 'succeeded', 'started', 'queued', 'duplicated',
+        ), f'Invalid omission: {entry}'
+
+  if 'finished' in omit:
+    params = await client.history.omit(params, only_succeeded=False)
+  if 'succeeded' in omit:
+    params = await client.history.omit(params, only_succeeded=True)
+  if 'started' in omit:
+    params = await client.queue.omit(params, queued=False, started=True, finished=False)
+  if 'queued' in omit:
+    params = await client.queue.omit(params, queued=True, started=False, finished=False)
+  if 'duplicated' in omit:
+    seen_exec_ids = set()
+    unique_params = []
+    for param in params:
+      exec_id = get_exec_id(param)
+      if exec_id not in seen_exec_ids:
+        seen_exec_ids.add(exec_id)
+        unique_params.append(param)
+    params = unique_params
+  return params
 
 # pylint: disable=unused-argument
 async def _handle_start(client, args):
@@ -115,106 +178,6 @@ async def _handle_retry(client, args):
     job_ids = await client.queue.retry(arguments)
   print(f'Added queued jobs: {" ".join(job_ids)}')
 
-async def _omit_params(client, args, params):
-  '''Omit parameters.'''
-  if not args.omit:
-    return params
-
-  omit = args.omit.split(',')
-  for entry in omit:
-    assert entry in (
-        'finished', 'succeeded', 'started', 'queued', 'duplicated',
-        ), f'Invalid omission: {entry}'
-
-  if 'finished' in omit:
-    params = await client.history.omit(params, only_succeeded=False)
-  if 'succeeded' in omit:
-    params = await client.history.omit(params, only_succeeded=True)
-  if 'started' in omit:
-    params = await client.queue.omit(params, queued=False, started=True, finished=False)
-  if 'queued' in omit:
-    params = await client.queue.omit(params, queued=True, started=False, finished=False)
-  if 'duplicated' in omit:
-    seen_exec_ids = set()
-    unique_params = []
-    for param in params:
-      exec_id = get_exec_id(param)
-      if exec_id not in seen_exec_ids:
-        seen_exec_ids.add(exec_id)
-        unique_params.append(param)
-    params = unique_params
-  return params
-
-async def _read_params(client, args, skip=0):
-  if len(args.arguments) <= skip:
-    params = json.loads(sys.stdin.read())
-  else:
-    params = []
-    for path in args.arguments[skip:]:
-      with open(path) as file:
-        params.extend(json.loads(file.read()))
-
-  if args.history:
-    exec_ids = set()
-    for param in params:
-      if '_' not in param:
-        meta = param['_'] = {}
-      else:
-        meta = param['_']
-
-      if 'exec_id' not in meta:
-        meta['param_id'] = get_param_id(param)
-        exec_id = get_exec_id(param)
-        meta['exec_id'] = exec_id
-
-        exec_ids.add(exec_id)
-
-    if exec_ids:
-      history = await client.history.get_all(list(exec_ids))
-      for param in params:
-        meta = param['_']
-        exec_id = meta['exec_id']
-        if exec_id in exec_ids:
-          meta.update(history.get(exec_id, {}))
-
-  return params
-
-async def _handle_c(client, args):
-  params = await _read_params(client, args)
-  for param in params:
-    print(f'{get_exec_id(param)}  {get_name(param)}')
-
-async def _handle_ca(client, args):
-  params = await _read_params(client, args)
-  for param in params:
-    print(f'{get_exec_id(param)}')
-    #for line in json.dumps(params, sort_keys=True, indent=2).split('\n'):
-    for line in pprint.pformat(param).split('\n'):
-      print('  ' + line)
-    print()
-
-async def _handle_cat(client, args):
-  params = await _read_params(client, args)
-  print(json.dumps(params, sort_keys=True, indent=2))
-
-async def _handle_filter(client, args):
-  filter_expr = args.arguments[0]
-  params = await _read_params(client, args, skip=1)
-
-  params = await client.filter.filter(filter_expr, params)
-  print(json.dumps(params, sort_keys=True, indent=2))
-
-async def _handle_estimate(client, args):
-  params = await _read_params(client, args)
-  params = await _omit_params(client, args, params)
-
-  queue_state = await client.queue.get_state()
-  print('Current:   ' + await format_estimated_time(client.estimator, queue_state))
-
-  queue_state['queued_jobs'].extend(
-      [{'exec_id': get_exec_id(param), 'param': param} for param in params])
-  print('Estimated: ' + await format_estimated_time(client.estimator, queue_state))
-
 async def _handle_add(client, args):
   params = await _read_params(client, args)
   params = await _omit_params(client, args, params)
@@ -290,6 +253,42 @@ async def _handle_prune_mismatching(client, args):
   print(f'Pruned: {symlink_count} symlinks, ' + \
         f'{dir_count} output directories, ' + \
         f'{entry_count} histroy entries')
+
+async def _handle_c(client, args):
+  params = await _read_params(client, args)
+  for param in params:
+    print(f'{get_exec_id(param)}  {get_name(param)}')
+
+async def _handle_ca(client, args):
+  params = await _read_params(client, args)
+  for param in params:
+    print(f'{get_exec_id(param)}')
+    #for line in json.dumps(params, sort_keys=True, indent=2).split('\n'):
+    for line in pprint.pformat(param).split('\n'):
+      print('  ' + line)
+    print()
+
+async def _handle_cat(client, args):
+  params = await _read_params(client, args)
+  print(json.dumps(params, sort_keys=True, indent=2))
+
+async def _handle_filter(client, args):
+  filter_expr = args.arguments[0]
+  params = await _read_params(client, args, skip=1)
+
+  params = await client.filter.filter(filter_expr, params)
+  print(json.dumps(params, sort_keys=True, indent=2))
+
+async def _handle_estimate(client, args):
+  params = await _read_params(client, args)
+  params = await _omit_params(client, args, params)
+
+  queue_state = await client.queue.get_state()
+  print('Current:   ' + await format_estimated_time(client.estimator, queue_state))
+
+  queue_state['queued_jobs'].extend(
+      [{'exec_id': get_exec_id(param), 'param': param} for param in params])
+  print('Estimated: ' + await format_estimated_time(client.estimator, queue_state))
 
 async def handle_command(client, client_watch, args):
   '''Handle a client command.'''
@@ -375,20 +374,24 @@ async def handle_command(client, client_watch, args):
 def run_client():
   '''Parse arguments and process a client command.'''
 
-  parser = argparse.ArgumentParser(description='Control the runner.')
-  parser.add_argument('--host', type=str, default='localhost', help='hostname')
-  parser.add_argument('--port', type=int, default='31234', help='port')
-  parser.add_argument('--secret-file', type=str, default='secret.json', help='secret file path')
+  parser = argparse.ArgumentParser(
+      description='Interact with the exptools server.',
+      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+  parser.add_argument('--host', type=str, default='localhost', help='The hostname of the server')
+  parser.add_argument('--port', type=int, default='31234', help='The port number of the server')
+  parser.add_argument('--secret-file', type=str, default='secret.json', help='The secret file path')
   parser.add_argument('--omit', type=str, default='succeeded,started,queued,duplicated',
-                      help='omit parameters before adding')
+                      help='Omission types to apply before adding parameters')
   parser.add_argument('--no-omit', action='store_const', dest='omit', const='',
-                      help='do not omit parameters')
+                      help='Do not omit parameters',
+                      default=argparse.SUPPRESS)
   parser.add_argument('--history', action='store_true', dest='history', default=True,
-                      help='augment history data to parameters')
+                      help='Augment parameters with history data',)
   parser.add_argument('--no-history', action='store_false', dest='history',
-                      help='do not augment history data to parameters')
-  parser.add_argument('command', type=str, help='command')
-  parser.add_argument('arguments', type=str, nargs='*', help='arguments')
+                      help='Do not augment parameters with history data',
+                      default=argparse.SUPPRESS)
+  parser.add_argument('command', type=str, help='Command')
+  parser.add_argument('arguments', type=str, nargs='*', help='Arguments')
 
   args = parser.parse_args()
 

@@ -26,13 +26,15 @@ def run_server():
 
   logger = logging.getLogger('exptools.run_server')
 
-  parser = argparse.ArgumentParser(description='Run an exptools RPC server.')
-  parser.add_argument('--host', type=str, default='localhost', help='hostname')
-  parser.add_argument('--port', type=int, default='31234', help='port')
-  parser.add_argument('--secret-file', type=str, default='secret.json', help='secret file path')
+  parser = argparse.ArgumentParser(
+      description='Run the exptools server.',
+      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+  parser.add_argument('--host', type=str, default='localhost', help='The hostname of the server')
+  parser.add_argument('--port', type=int, default='31234', help='The port number of the server')
+  parser.add_argument('--secret-file', type=str, default='secret.json', help='The secret file path')
   parser.add_argument('--history-file',
-                      type=str, default='history.json', help='history file path')
-  parser.add_argument('--output-dir', type=str, default='output', help='job output directory')
+                      type=str, default='history.json', help='The history file path')
+  parser.add_argument('--output-dir', type=str, default='output', help='The job output directory')
 
   args = parser.parse_args()
 
