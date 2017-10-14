@@ -6,6 +6,7 @@ import asyncio
 import argparse
 import json
 #import logging
+import sys
 
 import termcolor
 
@@ -96,10 +97,10 @@ async def _handle_status(client, args):
   #output += f"Concurrency: {queue_state['concurrency']}"
   print(output)
 
-async def _handle_add(client, args):
+async def _handle_run(client, args):
   param = {'cmd': args.argument}
   job_ids = await client.queue.add([param])
-  print(f'New job: {job_ids[0]}')
+  print(f'New jobs: {job_ids[0]}')
 
 async def _handle_retry(client, args):
   argument = args.argument
@@ -107,7 +108,14 @@ async def _handle_retry(client, args):
     job_ids = await client.queue.retry(None)
   else:
     job_ids = await client.queue.retry(argument)
-  print(f'New job: {job_ids[0]}')
+  print(f'New jobs: {" ".join(job_ids)}')
+
+async def _handle_add(client, args):
+  params = json.loads(sys.stdin.read())
+  if isinstance(params, dict):
+    params = [params]
+  job_ids = await client.queue.add(params)
+  print(f'New jobs: {job_ids[0]}')
 
 async def _handle_rm(client, args):
   argument = args.argument
@@ -115,7 +123,7 @@ async def _handle_rm(client, args):
     count = await client.queue.remove_queued(None)
   else:
     count = await client.queue.remove_queued(argument)
-  print(f'Removed {count} jobs')
+  print(f'Removed jobs: {count}')
 
 async def _handle_clear(client, args):
   argument = args.argument
@@ -123,7 +131,7 @@ async def _handle_clear(client, args):
     count = await client.queue.remove_finished(None)
   else:
     count = await client.queue.remove_finished(argument)
-  print(f'Removed {count} jobs')
+  print(f'Removed jobs: {count}')
 
 async def _handle_kill(client, args):
   argument = args.argument
@@ -135,7 +143,7 @@ async def _handle_kill(client, args):
     count = await client.runner.kill(None, force=force)
   else:
     count = await client.runner.kill(argument, force=force)
-  print(f'Killed {count} jobs')
+  print(f'Killed jobs: {count}')
 
 async def handle_command(client, args):
   '''Handle a client command.'''
@@ -146,10 +154,12 @@ async def handle_command(client, args):
     await _handle_stop(client, args)
   elif args.command == 'status':
     await _handle_status(client, args)
-  elif args.command == 'add':
-    await _handle_add(client, args)
+  elif args.command == 'run':
+    await _handle_run(client, args)
   elif args.command == 'retry':
     await _handle_retry(client, args)
+  elif args.command == 'add':
+    await _handle_add(client, args)
   elif args.command == 'rm':
     await _handle_rm(client, args)
   elif args.command == 'clear':
