@@ -113,6 +113,9 @@ async def _handle_retry(client, args):
 async def _omit_params(client, args, params):
   '''Omit parameters.'''
   omit = args.omit.split(',')
+  if omit:
+    for entry in omit:
+      assert entry in ('finished', 'succeeded', 'started', 'queued'), f'Invalid omission: {entry}'
   if 'finished' in omit:
     params = await client.history.omit(params, only_succeeded=False)
   if 'succeeded' in omit:
