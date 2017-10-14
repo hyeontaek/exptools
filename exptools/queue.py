@@ -196,6 +196,7 @@ class Queue:
       self.logger.info(f'Removed {prev_count - new_count} finished jobs')
       self._check_empty()
       self.lock.notify_all()
+      return prev_count - new_count
 
   @rpc_export_function
   async def remove_queued(self, job_ids=None):
@@ -211,6 +212,7 @@ class Queue:
       self.logger.info(f'Removed {prev_count - new_count} queued jobs')
       self._check_empty()
       self.lock.notify_all()
+      return prev_count - new_count
 
   def _check_empty(self):
     assert self.lock.locked()

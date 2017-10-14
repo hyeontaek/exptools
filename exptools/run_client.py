@@ -101,45 +101,31 @@ async def _handle_add(client, args):
 
 async def _handle_rm(client, args):
   argument = args.argument
-  all_ = False
-  if argument and argument[0] == 'all':
-    argument = argument[1:]
-  if all_:
-    await client.queue.remove_queued(None)
+  if not argument:
+    count = await client.queue.remove_queued(None)
   else:
-    job_ids = [int(arg) for arg in argument]
-    await client.queue.remove_queued(job_ids)
+    count = await client.queue.remove_queued(argument)
+  print(f'Removed {count} jobs')
 
 async def _handle_clear(client, args):
   argument = args.argument
-  all_ = False
-  if argument and argument[0] == 'all':
-    all_ = True
-    argument = argument[1:]
-  if all_:
-    await client.queue.remove_finished(None)
+  if not argument:
+    count = await client.queue.remove_finished(None)
   else:
-    job_ids = [int(arg) for arg in argument]
-    await client.queue.remove_finished(job_ids)
+    count = await client.queue.remove_finished(argument)
+  print(f'Removed {count} jobs')
 
 async def _handle_kill(client, args):
   argument = args.argument
   force = False
-  all_ = False
-  while True:
-    if argument and argument[0] == 'force':
-      force = True
-      argument = argument[1:]
-    elif argument and argument[0] == 'all':
-      all_ = True
-      argument = argument[1:]
-    else:
-      break
-  if all_:
-    await client.runner.kill(None, force=force)
+  if argument and argument[0] == 'force':
+    force = True
+    argument = argument[1:]
+  if not argument:
+    count = await client.runner.kill(None, force=force)
   else:
-    job_ids = [int(arg) for arg in args.argument]
-    await client.runner.kill(job_ids, force=force)
+    count = await client.runner.kill(argument, force=force)
+  print(f'Killed {count} jobs')
 
 async def handle_command(client, args):
   '''Handle a client command.'''

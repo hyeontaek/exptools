@@ -165,6 +165,7 @@ class Runner:
     if job_ids is None:
       job_ids = [job['job_id'] for job in queue_state['started_jobs']]
 
+    count = 0
     job_ids = set(job_ids)
     for job in queue_state['started_jobs']:
       if job['job_id'] in job_ids and job['pid'] is not None:
@@ -175,3 +176,5 @@ class Runner:
         else:
           self.logger.info(f'Terminating job {job_id}')
           os.kill(job['pid'], signal.SIGTERM)
+        count += 1
+    return count
