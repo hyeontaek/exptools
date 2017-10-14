@@ -192,10 +192,11 @@ class Runner:
     for filename in os.listdir(self.base_dir):
       if filename.startswith('e-'):
         path = os.path.join(self.base_dir, filename)
-        new_path = os.path.join(trash_dir, filename)
-        if filename in exec_ids:
+        # accept both e-XXX and e-XXX_tmp
+        if filename.partition('_')[0] in exec_ids:
           job_ids.add(os.readlink(path).strip('/'))
         else:
+          new_path = os.path.join(trash_dir, filename)
           if os.path.exists(new_path):
             os.unlink(new_path)
           os.rename(path, new_path)
@@ -205,7 +206,8 @@ class Runner:
       if filename.startswith('j-'):
         path = os.path.join(self.base_dir, filename)
         if filename not in job_ids:
+          new_path = os.path.join(trash_dir, filename)
           if os.path.exists(new_path):
             rmdirs(new_path)
-          os.rename(path, os.path.join(trash_dir, filename))
+          os.rename(path, new_path)
           self.logger.info(f'Moved {filename} to trash')
