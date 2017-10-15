@@ -4,6 +4,7 @@ __all__ = ['Queue']
 
 import asyncio
 import logging
+import os
 
 from exptools.param import get_param_id, get_name, get_command, get_cwd
 from exptools.rpc_helper import rpc_export_function, rpc_export_generator
@@ -95,7 +96,7 @@ class Queue:
             'param_id': param_id,
             'name': get_name(param),
             'command': get_command(param),
-            'cwd': get_cwd(param),
+            'cwd': get_cwd(param) or os.getcwd(),
             'param': param,
             'queued': now,
             'started': None,

@@ -37,14 +37,17 @@ class Runner:
   def _create_job_files(job, job_dir):
     '''Create job filles.'''
 
-    with open(os.path.join(job_dir, 'job_id'), 'wt') as file:
-      file.write(job['job_id'])
-    with open(os.path.join(job_dir, 'param_id'), 'wt') as file:
-      file.write(job['param_id'])
     with open(os.path.join(job_dir, 'job.json'), 'wt') as file:
-      file.write(json.dumps(job))
-    with open(os.path.join(job_dir, 'param.json'), 'wt') as file:
-      file.write(json.dumps(job['param']))
+      file.write(json.dumps(job) + '\n')
+
+    for key in ['job_id', 'param_id', 'name', 'cwd']:
+      with open(os.path.join(job_dir, key), 'wt') as file:
+        assert isinstance(job[key], str)
+        file.write(job[key] + '\n')
+
+    for key in ['command', 'param']:
+      with open(os.path.join(job_dir, key + '.json'), 'wt') as file:
+        file.write(json.dumps(job[key]) + '\n')
 
   @staticmethod
   def _construct_env(job, job_dir):

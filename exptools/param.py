@@ -30,7 +30,8 @@ def get_name(param):
   elif 'name' in param:
     name = param['name']
   if name is None:
-    name = str(param)
+    filtered_param = {key: value for key, value in param.items() if not key.startswith('_')}
+    name = json.dumps(filtered_param, sort_keys=True)
   return name
 
 def get_command(param):
