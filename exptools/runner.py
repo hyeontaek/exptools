@@ -88,8 +88,8 @@ class Runner:
         os.unlink(exec_path + '_tmp')
       os.symlink(job_id, exec_path + '_tmp', target_is_directory=True)
 
-      with open(os.path.join(job_dir, 'out'), 'wb', buffering=0) as stdout, \
-           open(os.path.join(job_dir, 'err'), 'wb', buffering=0) as stderr:
+      with open(os.path.join(job_dir, 'stdout'), 'wb', buffering=0) as stdout, \
+           open(os.path.join(job_dir, 'stderr'), 'wb', buffering=0) as stderr:
         proc = await asyncio.create_subprocess_exec(
             *command,
             cwd=cwd,
