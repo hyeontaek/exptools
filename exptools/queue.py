@@ -168,7 +168,6 @@ class Queue:
           job['pid'] = pid
 
           self.logger.info(f'Updated job {job_id} pid {pid}')
-          self.lock.notify_all()
           return True
     return False
 
