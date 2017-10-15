@@ -123,7 +123,7 @@ async def _handle_stat(client, args):
 async def _handle_status(client, args):
   queue_state = await client.queue.get_state()
 
-  show = set(args.show)
+  show = set(args.show.split(','))
 
   output = ''
 
