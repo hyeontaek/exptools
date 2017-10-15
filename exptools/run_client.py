@@ -184,7 +184,7 @@ async def _handle_monitor(client, client_watch, args):
       break
 
 async def _handle_run(client, args):
-  params = [{'cmd': args.arguments}]
+  params = [{'command': args.arguments}]
   job_ids = await client.queue.add(params)
   print(f'Added queued jobs: {job_ids[0]}')
 
