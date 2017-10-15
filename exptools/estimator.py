@@ -27,7 +27,7 @@ class Estimator:
     known_count = 0
 
     for history_entry in history_data.values():
-      if history_entry['duration'] is not None:
+      if history_entry['duration'] is not None and history_entry['succeeded']:
         known_duration += history_entry['duration']
         known_count += 1
       #elif history_entry['started'] is not None:
