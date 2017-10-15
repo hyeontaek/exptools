@@ -1,10 +1,11 @@
 '''Provide the Param class.'''
 
 __all__ = [
-    'get_param_id', 'get_param_ids',
-    'get_exec_id', 'get_exec_ids',
-    'get_name', 'get_names',
-    'get_command', 'get_cwd',
+    'get_param_id',
+    'get_exec_id',
+    'get_name',
+    'get_command',
+    'get_cwd',
     ]
 
 import hashlib
@@ -21,10 +22,6 @@ def get_param_id(param):
   return 'p-' + base58.b58encode(
       _HASH_FUNC(param_str.encode('utf-8')).digest())[3:3+20]
 
-def get_param_ids(params):
-  '''Return the parameter IDs of parameters.'''
-  return [get_param_id(param) for param in params]
-
 def get_exec_id(param):
   '''Return the execution ID of a parameter.'''
   filtered_param = {key: value for key, value in param.items() if not key.startswith('_')}
@@ -33,28 +30,33 @@ def get_exec_id(param):
   return 'e-' + base58.b58encode(
       _HASH_FUNC(param_str.encode('utf-8')).digest())[3:3+20]
 
-def get_exec_ids(params):
-  '''Return the execution IDs of parameters.'''
-  return [get_exec_id(param) for param in params]
-
 def get_name(param):
   '''Return the name of a parameter.'''
+  name = None
   if '_' in param and 'name' in param['_']:
-    return param['_']['name']
-  return str(param)
-
-def get_names(params):
-  '''Return the names of parameters.'''
-  return [get_name(param) for param in params]
+    name = param['_']['name']
+  elif 'name' in param:
+    name = param['name']
+  if name is None:
+    name = str(param)
+  return name
 
 def get_command(param):
   '''Return the command of a parameter.'''
+  command = None
   if '_' in param and 'command' in param['_']:
     return param['_']['command']
-  return param['command']
+  elif 'command' in param:
+    command = param['command']
+  if command is None:
+    raise RuntimeError(f'command must exists for {get_exec_id(param)}')
+  return command
 
 def get_cwd(param):
   '''Return the working directory of a parameter.'''
+  cwd = None
   if '_' in param and 'cwd' in param['_']:
     return param['_']['cwd']
-  return param.get('cwd', None)
+  elif 'cwd' in param:
+    cwd = param['cwd']
+  return cwd

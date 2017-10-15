@@ -17,7 +17,7 @@ from exptools.time import (
     format_remaining_time_short,
     format_estimated_time,
     )
-from exptools.param import get_exec_id, get_exec_ids, get_param_id, get_name
+from exptools.param import get_exec_id, get_param_id, get_name
 
 async def _read_params(client, args):
   if not args.arguments:
@@ -265,7 +265,7 @@ async def _handle_dismiss(client, args):
 
 async def _handle_prune_matching(client, args):
   params = await _read_params(client, args)
-  exec_ids = get_exec_ids(params)
+  exec_ids = [get_exec_id(param) for param in params]
 
   symlink_count, dir_count = await client.runner.prune(exec_ids, prune_matching=True)
   entry_count = await client.history.prune(exec_ids, prune_matching=True)
@@ -275,7 +275,7 @@ async def _handle_prune_matching(client, args):
 
 async def _handle_prune_mismatching(client, args):
   params = await _read_params(client, args)
-  exec_ids = get_exec_ids(params)
+  exec_ids = [get_exec_id(param) for param in params]
 
   symlink_count, dir_count = await client.runner.prune(exec_ids, prune_mismatching=True)
   entry_count = await client.history.prune(exec_ids, prune_mismatching=True)
