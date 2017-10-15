@@ -55,7 +55,7 @@ class Runner:
     env = dict(os.environ)
     env['EXPTOOLS_JOB_DIR'] = job_dir
     env['EXPTOOLS_JOB_ID'] = job['job_id']
-    env['EXPTOOLS_param_id'] = job['param_id']
+    env['EXPTOOLS_PARAM_ID'] = job['param_id']
     env['EXPTOOLS_JOB_JSON_PATH'] = os.path.join(job_dir, 'job.json')
     env['EXPTOOLS_PARAM_JSON_PATH'] = os.path.join(job_dir, 'param.json')
     return env
