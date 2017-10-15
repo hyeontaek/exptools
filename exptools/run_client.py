@@ -107,6 +107,30 @@ async def _handle_filter(client, args):
   params = await client.filter.filter(filter_expr, params)
   print(json.dumps(params, sort_keys=True, indent=2))
 
+async def _handle_select(client, args):
+  filter_param_ids = args.filter[0].split(',')
+  params = await _read_params(client, args)
+  params_map = {param['_']['param_id']: param for param in params}
+
+  selected_params = []
+  for filter_param_id in filter_param_ids:
+    if filter_param_id in params_map:
+      # exact match
+      selected_params.append(params_map[filter_param_id])
+      continue
+
+    # partial match
+    selected_param = None
+    for param_id in params_map:
+      if param_id.startswith(filter_param_id):
+        if selected_param is not None:
+          raise RuntimeError(f'Ambiguous parameter ID: {param_id}')
+        selected_param = params_map[param_id]
+    selected_params.append(selected_param)
+
+  params = selected_params
+  print(json.dumps(params, sort_keys=True, indent=2))
+
 # pylint: disable=unused-argument
 async def _handle_start(client, args):
   await client.scheduler.start()
@@ -298,6 +322,9 @@ async def handle_command(client, client_watch, args):
     elif args.command == 'filter':
       await _handle_filter(client, args)
 
+    elif args.command == 'select':
+      await _handle_select(client, args)
+
     elif args.command == 'start':
       await _handle_start(client, args)
       await _handle_stat(client, args)
@@ -420,6 +447,11 @@ def make_parser():
   sub_parser.add_argument('filter', type=str, nargs=1, help='YAML expression')
   _add_read_params_argument(sub_parser)
 
+  sub_parser = subparsers.add_parser('select', help='select parameters by parameter IDs')
+  _add_history(sub_parser)
+  sub_parser.add_argument('filter', type=str, nargs=1, help='comma-separated parameter IDs')
+  _add_read_params_argument(sub_parser)
+
   sub_parser = subparsers.add_parser('start', help='start the scheduler')
 
   sub_parser = subparsers.add_parser('stop', help='stop the scheduler')
@@ -488,7 +520,7 @@ def run_client():
 
   loop = asyncio.get_event_loop()
 
-  if args.command in ['c', 'ca', 'cat', 'filter'] and not args.history:
+  if args.command in ['c', 'ca', 'cat', 'filter', 'select'] and not args.history:
     client = None
   else:
     client = Client(args.host, args.port, secret, loop)
