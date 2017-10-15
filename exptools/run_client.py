@@ -384,7 +384,7 @@ def make_parser():
     sub_parser.add_argument('arguments', type=str, nargs='+', help='job IDs')
 
   def _add_job_ids_auto_select_all(sub_parser):
-    sub_parser.add_argument('arguments', type=str, nargs='+',
+    sub_parser.add_argument('arguments', type=str, nargs='*',
                             help='job IDs; leave empty to select all jobs')
 
   def _add_history(sub_parser):
