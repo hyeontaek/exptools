@@ -30,9 +30,6 @@ class Estimator:
       if history_entry['duration'] is not None and history_entry['succeeded']:
         known_duration += history_entry['duration']
         known_count += 1
-      #elif history_entry['started'] is not None:
-      #  known_duration += diff_sec(now, history_entry['started'])
-      #  known_count += 1
 
     avg_duration = known_duration / max(known_count, 1)
 
@@ -46,19 +43,19 @@ class Estimator:
       else:
         started = parse_utc(history_entry['started'])
 
-      if history_entry['duration'] is None:
-        remaining_duration += max(avg_duration - diff_sec(now, started), 0.)
-      else:
+      if history_entry['duration'] is not None and history_entry['succeeded']:
         remaining_duration += max(history_entry['duration'] - diff_sec(now, started), 0.)
+      else:
+        remaining_duration += max(avg_duration - diff_sec(now, started), 0.)
 
     # Calculate queued jobs' remaining time
     for job in state['queued_jobs']:
       history_entry = await self.history.get(job['param_id'])
 
-      if history_entry['duration'] is None:
-        remaining_duration += avg_duration
-      else:
+      if history_entry['duration'] is not None and history_entry['succeeded']:
         remaining_duration += history_entry['duration']
+      else:
+        remaining_duration += avg_duration
 
     # Take into account concurrency
     remaining_time = remaining_duration / concurrency
