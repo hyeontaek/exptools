@@ -39,7 +39,7 @@ class Estimator:
     # Calculate started jobs' remaining time
     remaining_duration = 0.
     for job in state['started_jobs']:
-      history_entry = await self.history.get(job['exec_id'])
+      history_entry = await self.history.get(job['param_id'])
 
       if history_entry['started'] is None:
         started = now
@@ -53,7 +53,7 @@ class Estimator:
 
     # Calculate queued jobs' remaining time
     for job in state['queued_jobs']:
-      history_entry = await self.history.get(job['exec_id'])
+      history_entry = await self.history.get(job['param_id'])
 
       if history_entry['duration'] is None:
         remaining_duration += avg_duration

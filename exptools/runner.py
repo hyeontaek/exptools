@@ -8,7 +8,7 @@ import logging
 import os
 import signal
 
-from exptools.file import mkdirs, rmdirs, get_job_dir, get_exec_path
+from exptools.file import mkdirs, rmdirs, get_job_dir, get_param_path
 from exptools.rpc_helper import rpc_export_function
 
 class Runner:
@@ -39,8 +39,8 @@ class Runner:
 
     with open(os.path.join(job_dir, 'job_id'), 'wt') as file:
       file.write(job['job_id'])
-    with open(os.path.join(job_dir, 'exec_id'), 'wt') as file:
-      file.write(job['exec_id'])
+    with open(os.path.join(job_dir, 'param_id'), 'wt') as file:
+      file.write(job['param_id'])
     with open(os.path.join(job_dir, 'job.json'), 'wt') as file:
       file.write(json.dumps(job))
     with open(os.path.join(job_dir, 'param.json'), 'wt') as file:
@@ -52,7 +52,7 @@ class Runner:
     env = dict(os.environ)
     env['EXPTOOLS_JOB_DIR'] = job_dir
     env['EXPTOOLS_JOB_ID'] = job['job_id']
-    env['EXPTOOLS_EXEC_ID'] = job['exec_id']
+    env['EXPTOOLS_param_id'] = job['param_id']
     env['EXPTOOLS_JOB_JSON_PATH'] = os.path.join(job_dir, 'job.json')
     env['EXPTOOLS_PARAM_JSON_PATH'] = os.path.join(job_dir, 'param.json')
     return env
@@ -61,7 +61,7 @@ class Runner:
     '''Run a job.'''
 
     job_id = job['job_id']
-    exec_id = job['exec_id']
+    param_id = job['param_id']
 
     name = job['name']
     command = job['command']
@@ -72,7 +72,7 @@ class Runner:
         self.logger.info(f'Ignoring missing job {job_id}')
         return
 
-      self.logger.info(f'Launching job {job_id} for {exec_id}: {name}')
+      self.logger.info(f'Launching job {job_id} for {param_id}: {name}')
 
       job_dir = get_job_dir(self.base_dir, job)
       os.mkdir(job_dir)
@@ -80,10 +80,10 @@ class Runner:
       self._create_job_files(job, job_dir)
       env = self._construct_env(job, job_dir)
 
-      exec_path = get_exec_path(self.base_dir, exec_id)
-      if os.path.exists(exec_path + '_tmp'):
-        os.unlink(exec_path + '_tmp')
-      os.symlink(job_id, exec_path + '_tmp', target_is_directory=True)
+      param_path = get_param_path(self.base_dir, param_id)
+      if os.path.exists(param_path + '_tmp'):
+        os.unlink(param_path + '_tmp')
+      os.symlink(job_id, param_path + '_tmp', target_is_directory=True)
 
       with open(os.path.join(job_dir, 'stdout'), 'wb', buffering=0) as stdout, \
            open(os.path.join(job_dir, 'stderr'), 'wb', buffering=0) as stderr:
@@ -101,14 +101,14 @@ class Runner:
         await proc.communicate()
 
       if proc.returncode == 0:
-        os.rename(exec_path + '_tmp', exec_path)
+        os.rename(param_path + '_tmp', param_path)
         await self.queue.set_finished(job_id, True)
       else:
-        os.unlink(exec_path + '_tmp')
+        os.unlink(param_path + '_tmp')
         await self.queue.set_finished(job_id, False)
 
     except Exception: # pylint: disable=broad-except
-      self.logger.exception(f'Exception while running job {job_id} ({exec_id}): {name}')
+      self.logger.exception(f'Exception while running job {job_id} ({param_id}): {name}')
       await self.queue.set_finished(job_id, False)
 
   @rpc_export_function
@@ -134,14 +134,14 @@ class Runner:
     return count
 
   @rpc_export_function
-  async def prune(self, exec_ids, *, prune_matching=False, prune_mismatching=False):
+  async def prune(self, param_ids, *, prune_matching=False, prune_mismatching=False):
     '''Prune output data.'''
     trash_dir = os.path.join(self.base_dir, 'trash')
     if not os.path.exists(trash_dir):
       os.mkdir(trash_dir)
 
     queue_state = await self.queue.get_state()
-    started_job_exec_ids = [job['exec_id'] for job in queue_state['started_jobs']]
+    started_job_param_ids = [job['param_id'] for job in queue_state['started_jobs']]
 
     # The below code must not use any coroutine so that
     # Runner does not create any new symlink or directory concurrently
@@ -151,20 +151,20 @@ class Runner:
     symlink_count = 0
     dir_count = 0
 
-    exec_ids = set(exec_ids)
+    param_ids = set(param_ids)
     valid_job_ids = set()
     for filename in filenames:
-      if not filename.startswith('e-'):
+      if not filename.startswith('p-'):
         continue
       path = os.path.join(self.base_dir, filename)
 
       prune = False
       if filename.endswith('_tmp'):
-        # prune e-*_tmp symlinks for any non-started jobs
-        if filename.partition('_')[0] not in started_job_exec_ids:
+        # prune p-*_tmp symlinks for any non-started jobs
+        if filename.partition('_')[0] not in started_job_param_ids:
           prune = True
-      elif (prune_matching and filename in exec_ids) or \
-         (prune_mismatching and filename not in exec_ids):
+      elif (prune_matching and filename in param_ids) or \
+         (prune_mismatching and filename not in param_ids):
         prune = True
 
       if prune:

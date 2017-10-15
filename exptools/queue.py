@@ -5,7 +5,7 @@ __all__ = ['Queue']
 import asyncio
 import logging
 
-from exptools.param import get_exec_id, get_name, get_command, get_cwd
+from exptools.param import get_param_id, get_name, get_command, get_cwd
 from exptools.rpc_helper import rpc_export_function, rpc_export_generator
 from exptools.time import diff_sec, utcnow, format_utc, parse_utc
 
@@ -66,15 +66,15 @@ class Queue:
   @rpc_export_function
   async def omit(self, params, *, queued=True, started=True, finished=True):
     '''Omit parameters that are already in the queue.'''
-    exec_ids = set()
+    param_ids = set()
     async with self.lock:
       if queued:
-        exec_ids.update(map(lambda job: get_exec_id(job['param']), self.queued_jobs))
+        param_ids.update(map(lambda job: get_param_id(job['param']), self.queued_jobs))
       if started:
-        exec_ids.update(map(lambda job: get_exec_id(job['param']), self.started_jobs))
+        param_ids.update(map(lambda job: get_param_id(job['param']), self.started_jobs))
       if finished:
-        exec_ids.update(map(lambda job: get_exec_id(job['param']), self.finished_jobs))
-    return list(filter(lambda param: get_exec_id(param) not in exec_ids, params))
+        param_ids.update(map(lambda job: get_param_id(job['param']), self.finished_jobs))
+    return list(filter(lambda param: get_param_id(param) not in param_ids, params))
 
   @rpc_export_function
   async def add(self, params, append=True):
@@ -84,15 +84,15 @@ class Queue:
     async with self.lock:
       new_jobs = []
       for param in params:
-        exec_id = get_exec_id(param)
-        await self.history.set_queued(exec_id, now)
+        param_id = get_param_id(param)
+        await self.history.set_queued(param_id, now)
 
         job_id = await self.history.get_next_job_id()
         job_ids.append(job_id)
 
         new_jobs.append({
             'job_id': job_id,
-            'exec_id': exec_id,
+            'param_id': param_id,
             'name': get_name(param),
             'command': get_command(param),
             'cwd': get_cwd(param),
@@ -144,8 +144,8 @@ class Queue:
     async with self.lock:
       for i, job in enumerate(self.queued_jobs):
         if job['job_id'] == job_id:
-          exec_id = job['exec_id']
-          await self.history.set_started(exec_id, now)
+          param_id = job['param_id']
+          await self.history.set_started(param_id, now)
 
           job['started'] = now
           job['pid'] = None
@@ -177,8 +177,8 @@ class Queue:
     async with self.lock:
       for i, job in enumerate(self.started_jobs):
         if job['job_id'] == job_id:
-          exec_id = job['exec_id']
-          await self.history.set_finished(exec_id, succeeded, now)
+          param_id = job['param_id']
+          await self.history.set_finished(param_id, succeeded, now)
 
           job['finished'] = now
           job['duration'] = \

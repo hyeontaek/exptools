@@ -9,7 +9,7 @@ import os
 import aiofiles
 import base58
 
-from exptools.param import get_exec_id
+from exptools.param import get_param_id
 from exptools.rpc_helper import rpc_export_function
 from exptools.time import diff_sec, parse_utc
 
@@ -68,100 +68,100 @@ class History:
       return 'j-' + base58.b58encode_int(next_job_id)
 
   @rpc_export_function
-  async def set_queued(self, exec_id, now):
+  async def set_queued(self, param_id, now):
     '''Record started time.'''
     async with self.lock:
-      hist_data = self._get(exec_id)
+      hist_data = self._get(param_id)
       hist_data['queued'] = now
       hist_data['started'] = None
       hist_data['finished'] = None
       # Keep duration for Estimator
       hist_data['succeeded'] = None
 
-      self.history[exec_id] = hist_data
+      self.history[param_id] = hist_data
       self._schedule_dump()
 
   @rpc_export_function
-  async def set_started(self, exec_id, now):
+  async def set_started(self, param_id, now):
     '''Record started time.'''
     async with self.lock:
-      hist_data = self._get(exec_id)
+      hist_data = self._get(param_id)
       hist_data['started'] = now
       hist_data['finished'] = None
       # Keep duration for Estimator
       hist_data['succeeded'] = None
 
-      self.history[exec_id] = hist_data
+      self.history[param_id] = hist_data
       self._schedule_dump()
 
   @rpc_export_function
-  async def set_finished(self, exec_id, succeeded, now):
+  async def set_finished(self, param_id, succeeded, now):
     '''Record finished time and result.'''
     async with self.lock:
-      hist_data = self._get(exec_id)
+      hist_data = self._get(param_id)
       hist_data['finished'] = now
       if hist_data['started'] is not None:
         hist_data['duration'] = \
             diff_sec(parse_utc(now), parse_utc(hist_data['started']))
       hist_data['succeeded'] = succeeded
 
-      self.history[exec_id] = hist_data
+      self.history[param_id] = hist_data
       self._schedule_dump()
 
   @rpc_export_function
-  async def get_all(self, exec_ids=None):
+  async def get_all(self, param_ids=None):
     '''Get all history data.'''
     async with self.lock:
-      if exec_ids is None:
-        return {exec_id: dict(self.history[exec_id]) \
-                for exec_id in self.history if exec_id.startswith('e-')}
+      if param_ids is None:
+        return {param_id: dict(self.history[param_id]) \
+                for param_id in self.history if param_id.startswith('p-')}
 
-      exec_ids = set(exec_ids)
-      return {exec_id: dict(self.history[exec_id]) \
-              for exec_id in self.history \
-              if exec_id.startswith('e-') and exec_id in exec_ids}
+      param_ids = set(param_ids)
+      return {param_id: dict(self.history[param_id]) \
+              for param_id in self.history \
+              if param_id.startswith('p-') and param_id in param_ids}
 
   @rpc_export_function
-  async def get(self, exec_id):
+  async def get(self, param_id):
     '''Get a parameter's history data.'''
     async with self.lock:
-      return self._get(exec_id)
+      return self._get(param_id)
 
-  def _get(self, exec_id):
+  def _get(self, param_id):
     '''Get a parameter's history data.'''
     assert self.lock.locked()
 
-    if exec_id in self.history:
-      return self.history[exec_id]
+    if param_id in self.history:
+      return self.history[param_id]
     return dict(self.stub)
 
   @rpc_export_function
-  async def add(self, exec_id, hist_data):
+  async def add(self, param_id, hist_data):
     '''Add a parameter's history data manually.'''
     async with self.lock:
-      self.history[exec_id] = hist_data
+      self.history[param_id] = hist_data
       self._schedule_dump()
 
   @rpc_export_function
-  async def remove(self, exec_id):
+  async def remove(self, param_id):
     '''Remove a parameter's history data manually.'''
     async with self.lock:
-      del self.history[exec_id]
+      del self.history[param_id]
       self._schedule_dump()
 
   @rpc_export_function
-  async def prune(self, exec_ids, *, prune_matching=False, prune_mismatching=False):
+  async def prune(self, param_ids, *, prune_matching=False, prune_mismatching=False):
     '''Remove history entries.'''
     entry_count = 0
-    exec_ids = set(exec_ids)
+    param_ids = set(param_ids)
     async with self.lock:
-      for exec_id in list(self.history.keys()):
-        if not exec_id.startswith('e-'):
+      for param_id in list(self.history.keys()):
+        if not param_id.startswith('p-'):
           continue
 
-        if (prune_matching and exec_id in exec_ids) or \
-           (prune_mismatching and exec_id not in exec_ids):
-          del self.history[exec_id]
+        if (prune_matching and param_id in param_ids) or \
+           (prune_mismatching and param_id not in param_ids):
+          del self.history[param_id]
           entry_count += 1
 
       self._schedule_dump()
@@ -169,23 +169,23 @@ class History:
     return entry_count
 
   @rpc_export_function
-  async def is_finished(self, exec_id):
+  async def is_finished(self, param_id):
     '''Check if a parameter finished.'''
     async with self.lock:
-      return exec_id in self.history and self.history[exec_id]['finished']
+      return param_id in self.history and self.history[param_id]['finished']
 
   @rpc_export_function
-  async def is_succeded(self, exec_id):
+  async def is_succeded(self, param_id):
     '''Check if a paramter did not succeed.'''
     async with self.lock:
-      return exec_id in self.history and self.history[exec_id]['succeeded']
+      return param_id in self.history and self.history[param_id]['succeeded']
 
   @rpc_export_function
   async def omit(self, params, *, only_succeeded=False):
     '''Omit parameters that has finished (and succeeded), leavning unfinished (or failed) ones.'''
     async with self.lock:
       if not only_succeeded:
-        params = filter(lambda param: not self._get(get_exec_id(param))['finished'], params)
+        params = filter(lambda param: not self._get(get_param_id(param))['finished'], params)
       else:
-        params = filter(lambda param: not self._get(get_exec_id(param))['succeeded'], params)
+        params = filter(lambda param: not self._get(get_param_id(param))['succeeded'], params)
       return list(params)

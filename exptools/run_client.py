@@ -17,7 +17,7 @@ from exptools.time import (
     format_remaining_time_short,
     format_estimated_time,
     )
-from exptools.param import get_exec_id, get_name
+from exptools.param import get_param_id, get_name
 
 async def _read_params(client, args):
   if not args.arguments:
@@ -29,26 +29,26 @@ async def _read_params(client, args):
         params.extend(json.loads(file.read()))
 
   if 'history' in args and args.history:
-    exec_ids = set()
+    param_ids = set()
     for param in params:
       if '_' not in param:
         meta = param['_'] = {}
       else:
         meta = param['_']
 
-      if 'exec_id' not in meta:
-        exec_id = get_exec_id(param)
-        meta['exec_id'] = exec_id
+      if 'param_id' not in meta:
+        param_id = get_param_id(param)
+        meta['param_id'] = param_id
 
-        exec_ids.add(exec_id)
+        param_ids.add(param_id)
 
-    if exec_ids:
-      history = await client.history.get_all(list(exec_ids))
+    if param_ids:
+      history = await client.history.get_all(list(param_ids))
       for param in params:
         meta = param['_']
-        exec_id = meta['exec_id']
-        if exec_id in exec_ids:
-          meta.update(history.get(exec_id, {}))
+        param_id = meta['param_id']
+        if param_id in param_ids:
+          meta.update(history.get(param_id, {}))
 
   return params
 
@@ -72,12 +72,12 @@ async def _omit_params(client, args, params):
   if 'queued' in omit:
     params = await client.queue.omit(params, queued=True, started=False, finished=False)
   if 'duplicated' in omit:
-    seen_exec_ids = set()
+    seen_param_ids = set()
     unique_params = []
     for param in params:
-      exec_id = get_exec_id(param)
-      if exec_id not in seen_exec_ids:
-        seen_exec_ids.add(exec_id)
+      param_id = get_param_id(param)
+      if param_id not in seen_param_ids:
+        seen_param_ids.add(param_id)
         unique_params.append(param)
     params = unique_params
   return params
@@ -85,12 +85,12 @@ async def _omit_params(client, args, params):
 async def _handle_c(client, args):
   params = await _read_params(client, args)
   for param in params:
-    print(f'{get_exec_id(param)}  {get_name(param)}')
+    print(f'{get_param_id(param)}  {get_name(param)}')
 
 async def _handle_ca(client, args):
   params = await _read_params(client, args)
   for param in params:
-    print(f'{get_exec_id(param)}')
+    print(f'{get_param_id(param)}')
     #for line in json.dumps(params, sort_keys=True, indent=2).split('\n'):
     for line in pprint.pformat(param).split('\n'):
       print('  ' + line)
@@ -129,7 +129,7 @@ async def _handle_status(client, args):
   if 'finished' in show:
     output += f"Finished jobs ({len(queue_state['finished_jobs'])}):\n"
     for job in queue_state['finished_jobs']:
-      line = f"  {job['job_id']} {job['exec_id']}"
+      line = f"  {job['job_id']} {job['param_id']}"
       line += f' [{format_elapsed_time_short(job)}]'
       if job['succeeded']:
         line += ' succeeded:'
@@ -149,7 +149,7 @@ async def _handle_status(client, args):
     output += f"Started jobs ({len(queue_state['started_jobs'])}):\n"
     for job in queue_state['started_jobs']:
       partial_state['started_jobs'].append(job)
-      line = f"  {job['job_id']} {job['exec_id']}"
+      line = f"  {job['job_id']} {job['param_id']}"
       rem = await format_remaining_time_short(client.estimator, partial_state)
       line += f' [{format_elapsed_time_short(job)}+{rem}]:'
       line += f" {job['name']}"
@@ -164,7 +164,7 @@ async def _handle_status(client, args):
     output += f"Queued jobs ({len(queue_state['queued_jobs'])}):\n"
     for job in queue_state['queued_jobs']:
       partial_state['queued_jobs'].append(job)
-      line = f"  {job['job_id']} {job['exec_id']}"
+      line = f"  {job['job_id']} {job['param_id']}"
       rem = await format_remaining_time_short(client.estimator, partial_state)
       line += f' [+{rem}]:'
       line += f" {job['name']}"
@@ -201,7 +201,7 @@ async def _handle_estimate(client, args):
   print('Current:   ' + await format_estimated_time(client.estimator, queue_state))
 
   queue_state['queued_jobs'].extend(
-      [{'exec_id': get_exec_id(param), 'param': param} for param in params])
+      [{'param_id': get_param_id(param), 'param': param} for param in params])
   print('Estimated: ' + await format_estimated_time(client.estimator, queue_state))
 
 async def _handle_retry(client, args):
@@ -264,20 +264,20 @@ async def _handle_dismiss(client, args):
 
 async def _handle_prune_matching(client, args):
   params = await _read_params(client, args)
-  exec_ids = [get_exec_id(param) for param in params]
+  param_ids = [get_param_id(param) for param in params]
 
-  symlink_count, dir_count = await client.runner.prune(exec_ids, prune_matching=True)
-  entry_count = await client.history.prune(exec_ids, prune_matching=True)
+  symlink_count, dir_count = await client.runner.prune(param_ids, prune_matching=True)
+  entry_count = await client.history.prune(param_ids, prune_matching=True)
   print(f'Pruned: {symlink_count} symlinks, ' + \
         f'{dir_count} output directories, ' + \
         f'{entry_count} histroy entries')
 
 async def _handle_prune_mismatching(client, args):
   params = await _read_params(client, args)
-  exec_ids = [get_exec_id(param) for param in params]
+  param_ids = [get_param_id(param) for param in params]
 
-  symlink_count, dir_count = await client.runner.prune(exec_ids, prune_mismatching=True)
-  entry_count = await client.history.prune(exec_ids, prune_mismatching=True)
+  symlink_count, dir_count = await client.runner.prune(param_ids, prune_mismatching=True)
+  entry_count = await client.history.prune(param_ids, prune_mismatching=True)
   print(f'Pruned: {symlink_count} symlinks, ' + \
         f'{dir_count} output directories, ' + \
         f'{entry_count} histroy entries')
