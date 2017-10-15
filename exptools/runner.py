@@ -39,8 +39,6 @@ class Runner:
 
     with open(os.path.join(job_dir, 'job_id'), 'wt') as file:
       file.write(job['job_id'])
-    with open(os.path.join(job_dir, 'param_id'), 'wt') as file:
-      file.write(job['param_id'])
     with open(os.path.join(job_dir, 'exec_id'), 'wt') as file:
       file.write(job['exec_id'])
     with open(os.path.join(job_dir, 'job.json'), 'wt') as file:
@@ -54,7 +52,6 @@ class Runner:
     env = dict(os.environ)
     env['EXPTOOLS_JOB_DIR'] = job_dir
     env['EXPTOOLS_JOB_ID'] = job['job_id']
-    env['EXPTOOLS_PARAM_ID'] = job['param_id']
     env['EXPTOOLS_EXEC_ID'] = job['exec_id']
     env['EXPTOOLS_JOB_JSON_PATH'] = os.path.join(job_dir, 'job.json')
     env['EXPTOOLS_PARAM_JSON_PATH'] = os.path.join(job_dir, 'param.json')

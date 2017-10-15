@@ -1,7 +1,6 @@
 '''Provide the Param class.'''
 
 __all__ = [
-    'get_param_id',
     'get_exec_id',
     'get_name',
     'get_command',
@@ -14,13 +13,6 @@ import json
 import base58
 
 _HASH_FUNC = hashlib.blake2b # pylint: disable=no-member
-
-def get_param_id(param):
-  '''Return the parameter ID of a parameter.'''
-  param_str = json.dumps(param, sort_keys=True)
-  # Skip first few bytes because they are typically skewed to a few characters in base58
-  return 'p-' + base58.b58encode(
-      _HASH_FUNC(param_str.encode('utf-8')).digest())[3:3+20]
 
 def get_exec_id(param):
   '''Return the execution ID of a parameter.'''

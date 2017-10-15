@@ -17,7 +17,7 @@ from exptools.time import (
     format_remaining_time_short,
     format_estimated_time,
     )
-from exptools.param import get_exec_id, get_param_id, get_name
+from exptools.param import get_exec_id, get_name
 
 async def _read_params(client, args):
   if not args.arguments:
@@ -37,7 +37,6 @@ async def _read_params(client, args):
         meta = param['_']
 
       if 'exec_id' not in meta:
-        meta['param_id'] = get_param_id(param)
         exec_id = get_exec_id(param)
         meta['exec_id'] = exec_id
 
