@@ -2,7 +2,9 @@
 
 __all__ = ['Server']
 
+import asyncio
 import base64
+import concurrent
 import hashlib
 import hmac
 import json
@@ -74,6 +76,20 @@ class Server:
     await websocket.send(b'Authenticated')
     return True
 
+  async def _send_pings(self, websocket):
+    ping = json.dumps('ping')
+    try:
+      while True:
+        await asyncio.sleep(10, loop=self.loop)
+        await websocket.send(ping)
+
+    except concurrent.futures.CancelledError:
+      # Ignore cancelled task
+      pass
+    except websockets.exceptions.ConnectionClosed:
+      # Ignore closed connection
+      pass
+
   async def _handle_request(self, websocket, request):
     '''Handle a request.'''
     try:
@@ -97,8 +113,13 @@ class Server:
       else:
         await websocket.send(json.dumps({'id': id_, 'error': 'InvalidMethod', 'data': None}))
 
-    except websockets.exceptions.ConnectionClosed:
+    except concurrent.futures.CancelledError:
+      # Pass through
       raise
+    except websockets.exceptions.ConnectionClosed:
+      # Pass through
+      raise
+
     except Exception as exc: # pylint: disable=broad-except
       self.logger.exception('Exception while handling request')
       await websocket.send(json.dumps({
@@ -106,6 +127,18 @@ class Server:
           'error': exc.__class__.__name__,
           'data': traceback.format_exc(),
           }))
+
+  async def _handle_requests(self, websocket):
+    try:
+      while True:
+        request = await websocket.recv()
+        await self._handle_request(websocket, request)
+    except concurrent.futures.CancelledError:
+      # Ignore cancelled task
+      pass
+    except websockets.exceptions.ConnectionClosed:
+      # Ignore closed connection
+      pass
 
   def serve_forever(self):
     '''Serve websocket requests forever.'''
@@ -115,9 +148,12 @@ class Server:
         if not await self._authenticate(websocket):
           return
 
-        while True:
-          request = await websocket.recv()
-          await self._handle_request(websocket, request)
+        done, pending = await asyncio.wait([
+            asyncio.ensure_future(self._send_pings(websocket), loop=self.loop),
+            asyncio.ensure_future(self._handle_requests(websocket), loop=self.loop),
+            ], return_when=asyncio.FIRST_COMPLETED)
+        for task in pending:
+          task.cancel()
 
       except websockets.exceptions.ConnectionClosed:
         self.logger.debug('Connection closed')

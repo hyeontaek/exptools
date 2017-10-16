@@ -107,7 +107,12 @@ class FunctionProxy:
     }
     await self.client.websocket.send(json.dumps(request))
 
-    response = json.loads(await self.client.websocket.recv())
+    while True:
+      response = json.loads(await self.client.websocket.recv())
+      if response == 'ping':
+        continue
+
+      break
     assert response['id'] == request['id']
 
     if 'result' in response:
@@ -136,6 +141,9 @@ class GeneratorProxy:
 
     while True:
       response = json.loads(await self.client.websocket.recv())
+      if response == 'ping':
+        continue
+
       assert response['id'] == request['id']
 
       if 'result' in response:
