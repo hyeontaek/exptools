@@ -49,7 +49,7 @@ class CommandHandler:
         self.client_pool['client_watch'] = client
       self.client_watch = self.client_pool['client_watch']
 
-    self._handler = getattr(self, '_handle_' + command)
+    self._handler = getattr(self, '_handle_' + command.replace('-', '_'))
 
   async def handle(self):
     '''Handle a command.'''
