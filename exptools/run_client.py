@@ -527,8 +527,7 @@ def run_client():
       # Spill output
       stdout.seek(0)
       sys.stdout.write(stdout.read())
-      stdin = io.StringIO()
-      stdin.close()
+      stdin = sys.stdin
     else:
       # Connect stdout to stdin
       stdout.seek(0)
