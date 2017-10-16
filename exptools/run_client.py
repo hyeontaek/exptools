@@ -170,13 +170,20 @@ class CommandHandler:
 
     await self._handle_stat()
 
+  async def _handle_oneshot(self):
+    succeeded = await self.client.scheduler.set_oneshot()
+    self.stdout.write('Scheduler oneshot mode set\n' if succeeded else 'Failed to set oneshot mode\n')
+
+    await self._handle_stat()
+
   async def _handle_stop(self):
     succeeded = await self.client.scheduler.stop()
     self.stdout.write('Scheduler stopped\n' if succeeded else 'Failed to stop scheduler\n')
 
   async def _handle_stat(self):
     queue_state = await self.client.queue.get_state()
-    self.stdout.write(await format_estimated_time(self.client.estimator, queue_state) + '\n')
+    oneshot = await self.client.scheduler.is_oneshot()
+    self.stdout.write(await format_estimated_time(self.client.estimator, queue_state, oneshot) + '\n')
 
   async def _handle_status(self):
     queue_state = await self.client.queue.get_state()
@@ -236,9 +243,10 @@ class CommandHandler:
 
   async def _handle_monitor(self):
     async for queue_state in self.client_watch.queue.watch_state():
-      self.stdout.write(await format_estimated_time(self.client.estimator, queue_state) + '\n')
+      oneshot = await self.client.scheduler.is_oneshot()
+      self.stdout.write(await format_estimated_time(self.client.estimator, queue_state, oneshot) + '\n')
       if not self.args.forever and \
-         not queue_state['started_jobs'] and not queue_state['queued_jobs']:
+         not queue_state['started_jobs'] and (oneshot or not queue_state['queued_jobs']):
         break
 
   async def _handle_run(self):
@@ -253,13 +261,15 @@ class CommandHandler:
     params = await self._omit_params(params)
 
     queue_state = await self.client.queue.get_state()
+    oneshot = await self.client.scheduler.is_oneshot()
     self.stdout.write('Current:   ' + \
-        await format_estimated_time(self.client.estimator, queue_state) + '\n')
+        await format_estimated_time(self.client.estimator, queue_state, oneshot) + '\n')
 
     queue_state['queued_jobs'].extend(
         [{'param_id': get_param_id(param), 'param': param} for param in params])
+    oneshot = await self.client.scheduler.is_oneshot()
     self.stdout.write('Estimated: ' + \
-        await format_estimated_time(self.client.estimator, queue_state) + '\n')
+        await format_estimated_time(self.client.estimator, queue_state, oneshot) + '\n')
 
   async def _handle_add(self):
     params = await self._read_params()
@@ -421,6 +431,8 @@ Use "//" to chain commands without pipe connection.''')
   _add_read_params_argument(sub_parser)
 
   sub_parser = subparsers.add_parser('start', help='start the scheduler')
+
+  sub_parser = subparsers.add_parser('oneshot', help='schedule only one job and stop')
 
   sub_parser = subparsers.add_parser('stop', help='stop the scheduler')
 

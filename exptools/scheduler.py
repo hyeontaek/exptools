@@ -21,6 +21,7 @@ class Scheduler:
     self.logger = logging.getLogger('exptools.Scheduler')
 
     self.running = False
+    self.oneshot = False
 
     asyncio.ensure_future(self.start(), loop=loop)
 
@@ -28,6 +29,11 @@ class Scheduler:
   async def is_running(self):
     '''Return True if running.'''
     return self.running
+
+  @rpc_export_function
+  async def is_oneshot(self):
+    '''Return True if oneshot mode is enabled.'''
+    return self.oneshot
 
   @rpc_export_function
   async def start(self):
@@ -38,6 +44,17 @@ class Scheduler:
 
     self.logger.info('Started')
     self.running = True
+    self.oneshot = False
+
+    await self.queue.notify()
+    return True
+
+  @rpc_export_function
+  async def set_oneshot(self):
+    '''Start the scheduler and stop it after scheduling one job.'''
+    self.logger.info('Using oneshot mode')
+    self.running = True
+    self.oneshot = True
 
     await self.queue.notify()
     return True
@@ -50,6 +67,7 @@ class Scheduler:
       return False
 
     self.running = False
+    self.oneshot = False
     self.logger.info('Stopped')
     return True
 
@@ -57,10 +75,12 @@ class Scheduler:
     '''Schedule a job.'''
     raise NotImplementedError()
 
+  @rpc_export_function
   async def add_resource(self, key, value):
     '''Add a resource.'''
     raise NotImplementedError()
 
+  @rpc_export_function
   async def remove_resource(self, key, value):
     '''Remove a resource.'''
     raise NotImplementedError()
@@ -87,6 +107,9 @@ class SerialScheduler(Scheduler):
       # Avoid concurrent execution
       if queue_state['started_jobs']:
         continue
+
+      if self.oneshot:
+        self.running = False
 
       # Choose the first queued job
       yield queue_state['queued_jobs'][0]

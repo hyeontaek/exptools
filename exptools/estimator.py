@@ -11,7 +11,7 @@ class Estimator:
   def __init__(self, history):
     self.history = history
 
-  async def estimate_remaining_time(self, state):
+  async def estimate_remaining_time(self, state, oneshot):
     '''Estimate the remaining time using the queue state.'''
 
     now = utcnow()
@@ -49,13 +49,14 @@ class Estimator:
         remaining_duration += max(avg_duration - diff_sec(now, started), 0.)
 
     # Calculate queued jobs' remaining time
-    for job in state['queued_jobs']:
-      history_entry = await self.history.get(job['param_id'])
+    if not oneshot:
+      for job in state['queued_jobs']:
+        history_entry = await self.history.get(job['param_id'])
 
-      if history_entry['duration'] is not None and history_entry['succeeded']:
-        remaining_duration += history_entry['duration']
-      else:
-        remaining_duration += avg_duration
+        if history_entry['duration'] is not None and history_entry['succeeded']:
+          remaining_duration += history_entry['duration']
+        else:
+          remaining_duration += avg_duration
 
     # Take into account concurrency
     remaining_time = remaining_duration / concurrency

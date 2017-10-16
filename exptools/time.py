@@ -96,9 +96,9 @@ def format_elapsed_time_short(job):
     sec = diff_sec(now, parse_utc(job['started']))
   return format_sec_short(sec)
 
-async def format_remaining_time_short(estimator, queue_state):
+async def format_remaining_time_short(estimator, queue_state, oneshot):
   '''Format remaining time to finish jobs.'''
-  sec = await estimator.estimate_remaining_time(queue_state)
+  sec = await estimator.estimate_remaining_time(queue_state, oneshot)
   return format_sec_short(sec)
 
 def format_job_count(queue_state):
@@ -128,12 +128,12 @@ def format_job_count(queue_state):
   output += termcolor.colored(str(queued), 'cyan')
   return output
 
-async def format_estimated_time(estimator, queue_state):
+async def format_estimated_time(estimator, queue_state, oneshot):
   '''Format the estimated time with colors.'''
 
   state = queue_state
 
-  remaining_time = await estimator.estimate_remaining_time(state)
+  remaining_time = await estimator.estimate_remaining_time(state, oneshot)
   remaining_str = format_sec_short(remaining_time)
 
   current_time = utcnow()

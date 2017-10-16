@@ -58,9 +58,6 @@ def get_cwd(param):
 
 class ParamBuilder(collections.ChainMap):
   '''A parameter builder.'''
-  def __init__(self, *args, **kwargs):
-    super().__init__(*args, **kwargs)
-
   def __add__(self, update):
     child = self.new_child()
     child.update(update)
