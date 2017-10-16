@@ -364,7 +364,7 @@ class CommandHandler:
     new_params = await self._read_params()
 
     if len(old_params) != len(new_params):
-      raise RuntimeError('Two inputs of parameters must have the same length''')
+      raise RuntimeError('Two inputs of parameters must have the same length')
 
     changes = []
     for i, new_param in enumerate(new_params):
@@ -402,9 +402,8 @@ class CommandHandler:
 def make_parser():
   '''Return a new argument parser.'''
   parser = argparse.ArgumentParser(description=\
-'''Interact with the exptools server.
-Use ":" to pipe commands.
-Use "::" to chain commands without pipe connection.''')
+      '''interact with the exptools server.
+      ":" connects commands with pipes, and "::" chains commands without pipe connection.''')
 
   parser.add_argument('--host', type=str, default='localhost',
                       help='the hostname of the server (default: %(default)s)')
@@ -556,8 +555,9 @@ def run_client():
       break
 
   if group_start == -1:
-    parser.parse_args(argv)
-    assert False, 'This line must be unreachable'
+    # No command given
+    parser.print_help()
+    sys.exit(1)
 
   # Use a dummy start command to parse the main arguments
   common_args = parser.parse_args(argv[:group_start] + ['start'])
