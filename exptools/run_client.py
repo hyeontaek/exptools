@@ -216,7 +216,7 @@ class CommandHandler:
       for job in queue_state['started_jobs']:
         partial_state['started_jobs'].append(job)
         line = f"  {job['job_id']} {job['param_id']}"
-        rem = await format_remaining_time_short(self.client.estimator, partial_state)
+        rem = await format_remaining_time_short(self.client.estimator, partial_state, False)
         line += f' [{format_elapsed_time_short(job)}+{rem}]:'
         line += f" {job['name']}"
         line = termcolor.colored(line, 'yellow')
@@ -231,7 +231,7 @@ class CommandHandler:
       for job in queue_state['queued_jobs']:
         partial_state['queued_jobs'].append(job)
         line = f"  {job['job_id']} {job['param_id']}"
-        rem = await format_remaining_time_short(self.client.estimator, partial_state)
+        rem = await format_remaining_time_short(self.client.estimator, partial_state, False)
         line += f' [+{rem}]:'
         line += f" {job['name']}"
         line = termcolor.colored(line, 'blue')
