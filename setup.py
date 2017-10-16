@@ -52,6 +52,7 @@ setup(
         'pylint',
         'pytest',
         'pytest-cov',
+        'tox',
         ],
       },
 

@@ -10,3 +10,4 @@ params.json
 /.coverage
 /.cache
 /cov_html
+/.tox

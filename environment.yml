@@ -10,7 +10,9 @@ dependencies:
   - tzlocal
   - websockets
   - yaql
+  - tox # requires conda's virtualenv
 - wheel
 - pylint
 - pytest
 - pytest-cov
+- virtualenv
