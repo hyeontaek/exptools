@@ -32,6 +32,8 @@ def make_parser():
   parser.add_argument('--output-dir', type=str, default='output',
                       help='the job output directory (default: %(default)s)')
 
+  parser.add_argument('-v', '--verbose', help='be verbose')
+
   return parser
 
 def run_server():
@@ -70,4 +72,5 @@ def run_server():
   try:
     server.serve_forever()
   except KeyboardInterrupt:
-    pass
+    if args.verbose:
+      raise

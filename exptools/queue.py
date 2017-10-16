@@ -85,7 +85,6 @@ class Queue:
       new_jobs = []
       for param in params:
         param_id = get_param_id(param)
-        await self.history.set_queued(param_id, now)
 
         job_id = await self.history.get_next_job_id()
         job_ids.append(job_id)
@@ -144,7 +143,6 @@ class Queue:
       for i, job in enumerate(self.queued_jobs):
         if job['job_id'] == job_id:
           param_id = job['param_id']
-          await self.history.set_started(param_id, now)
 
           job['started'] = now
           job['pid'] = None
@@ -175,13 +173,14 @@ class Queue:
       for i, job in enumerate(self.started_jobs):
         if job['job_id'] == job_id:
           param_id = job['param_id']
-          await self.history.set_finished(param_id, succeeded, now)
 
           job['finished'] = now
           job['duration'] = \
               diff_sec(parse_utc(now), parse_utc(job['started']))
           job['pid'] = None
           job['succeeded'] = succeeded
+
+          await self.history.update(job)
 
           self.finished_jobs.append(job)
           del self.started_jobs[i]

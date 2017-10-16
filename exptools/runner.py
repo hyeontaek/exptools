@@ -3,13 +3,14 @@
 __all__ = ['Runner']
 
 import asyncio
+import base64
 import json
 import logging
 import os
 import signal
 
 from exptools.file import mkdirs, rmdirs, get_job_dir, get_param_path
-from exptools.rpc_helper import rpc_export_function
+from exptools.rpc_helper import rpc_export_function, rpc_export_generator
 
 class Runner:
   '''Run jobs with parameters.'''
@@ -135,6 +136,58 @@ class Runner:
           os.kill(job['pid'], signal.SIGTERM)
         count += 1
     return count
+
+  @rpc_export_generator
+  async def cat(self, job_id, read_stdout, extra_args):
+    '''Run cat on the job output.'''
+    async for data in self._read_output(job_id, read_stdout, 'cat', extra_args):
+      yield data
+
+  @rpc_export_generator
+  async def head(self, job_id, read_stdout, extra_args):
+    '''Run head on the job output.'''
+    async for data in self._read_output(job_id, read_stdout, 'head', extra_args):
+      yield data
+
+  @rpc_export_generator
+  async def tail(self, job_id, read_stdout, extra_args):
+    '''Run tail on the job output.'''
+    async for data in self._read_output(job_id, read_stdout, 'tail', extra_args):
+      yield data
+
+  async def _read_output(self, job_id, read_stdout, external_command, extra_args):
+    '''Yield the output of an external command on the job output.'''
+    assert job_id.startswith('j-') and job_id.find('/') == -1
+
+    path = os.path.join(self.base_dir, job_id)
+    if read_stdout:
+      path = os.path.join(path, 'stdout')
+    else:
+      path = os.path.join(path, 'stderr')
+    command = [external_command] + extra_args + [path]
+
+    proc = await asyncio.create_subprocess_exec(
+        *command,
+        stdin=asyncio.subprocess.DEVNULL,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.STDOUT,
+        loop=self.loop)
+
+    try:
+      while True:
+        data = await proc.stdout.read(4096)
+        if not data:
+          break
+        yield base64.a85encode(data).decode('ascii')
+    finally:
+      try:
+        proc.terminate()
+      except Exception: # pylint: disable=broad-except
+        self.logger.exception('Exception while termining process')
+      try:
+        await proc.wait()
+      except Exception: # pylint: disable=broad-except
+        self.logger.exception('Exception while waiting for process')
 
   @rpc_export_function
   async def migrate(self, changes):

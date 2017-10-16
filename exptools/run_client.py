@@ -4,6 +4,7 @@ __all__ = ['run_client']
 
 import asyncio
 import argparse
+import base64
 import io
 import json
 import pprint
@@ -22,11 +23,12 @@ from exptools.param import get_param_id, get_name
 # pylint: disable=too-few-public-methods
 class CommandHandler:
   '''Handle a command.'''
-  def __init__(self, stdin, stdout, common_args, args, client_pool, loop):
+  def __init__(self, stdin, stdout, common_args, args, unknown_args, client_pool, loop):
     self.stdin = stdin
     self.stdout = stdout
     self.common_args = common_args
     self.args = args
+    self.unknown_args = unknown_args
     self.client_pool = client_pool
     self.loop = loop
 
@@ -35,7 +37,7 @@ class CommandHandler:
   def _init(self):
     command = self.args.command
 
-    if command not in ['c', 'ca', 'cat', 'select'] or self.args.history:
+    if command not in ['d', 'dum', 'dump', 'select'] or self.args.history:
       if 'client' not in self.client_pool:
         secret = json.load(open(self.common_args.secret_file))
         client = Client(self.common_args.host, self.common_args.port, secret, self.loop)
@@ -61,8 +63,11 @@ class CommandHandler:
     else:
       params = []
       for path in self.args.arguments:
-        with open(path) as file:
-          params.extend(json.loads(file.read()))
+        if path == '-':
+          params.extend(json.loads(self.stdin.read()))
+        else:
+          with open(path) as file:
+            params.extend(json.loads(file.read()))
 
     if 'param_id' in self.args and self.args.param_id:
       for param in params:
@@ -125,12 +130,32 @@ class CommandHandler:
       params = unique_params
     return params
 
-  async def _handle_c(self):
+  async def _get_job_id_from_job_or_param_id(self):
+    queue_state = await self.client.queue.get_state()
+    if self.args.arguments[0] == 'last':
+      if queue_state['started_jobs']:
+        job_id = queue_state['started_jobs'][-1]['job_id']
+      elif queue_state['finished_jobs']:
+        job_id = queue_state['finished_jobs'][-1]['job_id']
+      else:
+        raise RuntimeError(f'No last job found')
+    else:
+      if self.args.arguments[0].startswith('p-'):
+        job_id = (await self.client.history.get(self.args.arguments[0]))['job_id']
+        if job_id is None:
+          raise RuntimeError(f'No job found for parameter {self.args.arguments[0]}')
+      elif self.args.arguments[0].startswith('j-'):
+        job_id = self.args.arguments[0]
+      else:
+        raise RuntimeError(f'Invalid job or parameter {self.args.arguments[0]}')
+    return job_id
+
+  async def _handle_d(self):
     params = await self._read_params()
     for param in params:
       self.stdout.write(f'{get_param_id(param)}  {get_name(param)}\n')
 
-  async def _handle_ca(self):
+  async def _handle_dum(self):
     params = await self._read_params()
     for param in params:
       self.stdout.write(f'{get_param_id(param)}\n')
@@ -139,7 +164,7 @@ class CommandHandler:
         self.stdout.write('  ' + line + '\n')
       self.stdout.write('\n')
 
-  async def _handle_cat(self):
+  async def _handle_dump(self):
     params = await self._read_params()
     self.stdout.write(json.dumps(params, sort_keys=True, indent=2) + '\n')
 
@@ -294,7 +319,7 @@ class CommandHandler:
 
   async def _handle_retry(self):
     arguments = self.args.arguments
-    if not arguments:
+    if arguments[0] == 'last':
       job_ids = await self.client.queue.retry(None)
     else:
       job_ids = await self.client.queue.retry(arguments)
@@ -358,6 +383,24 @@ class CommandHandler:
 
     await self._handle_stat()
 
+  async def _handle_cat(self):
+    job_id = await self._get_job_id_from_job_or_param_id()
+    async for data in self.client.runner.cat(job_id, self.args.stdout, self.unknown_args):
+      data = base64.a85decode(data.encode('ascii')).decode('utf-8')
+      sys.stdout.write(data)
+
+  async def _handle_head(self):
+    job_id = await self._get_job_id_from_job_or_param_id()
+    async for data in self.client.runner.head(job_id, self.args.stdout, self.unknown_args):
+      data = base64.a85decode(data.encode('ascii')).decode('utf-8')
+      sys.stdout.write(data)
+
+  async def _handle_tail(self):
+    job_id = await self._get_job_id_from_job_or_param_id()
+    async for data in self.client.runner.tail(job_id, self.args.stdout, self.unknown_args):
+      data = base64.a85decode(data.encode('ascii')).decode('utf-8')
+      sys.stdout.write(data)
+
   async def _handle_migrate(self):
     # Use vars() on Namespace to access a field containing -
     old_params = json.load(open(vars(self.args)['old-params-file'][0]))
@@ -412,6 +455,8 @@ def make_parser():
   parser.add_argument('--secret-file', type=str,
                       default='secret.json', help='the secret file path (default: %(default)s)')
 
+  parser.add_argument('-v', '--verbose', help='be verbose')
+
   def _add_read_params_argument(sub_parser):
     sub_parser.add_argument('arguments', type=str, nargs='*',
                             help='path to json files containing parameters; ' + \
@@ -424,16 +469,27 @@ def make_parser():
     sub_parser.add_argument('arguments', type=str, nargs='*',
                             help='job IDs; leave empty to select all jobs')
 
+  def _add_stdout_sterr(sub_parser):
+    sub_parser.add_argument('--stdout', action='store_true', dest='stdout', default=True,
+                            help='read stdout (default)')
+    sub_parser.add_argument('--stderr', action='store_false', dest='stdout',
+                            help='read stderr instead of stdout',
+                            default=argparse.SUPPRESS)
+
+  def _add_job_or_param_id(sub_parser):
+    sub_parser.add_argument('arguments', type=str, nargs=1,
+                            help='a job or parameter ID; use "last" to select the last job')
+
   def _add_param_id(sub_parser):
     sub_parser.add_argument('--param-id', action='store_true', dest='param_id', default=True,
-                            help='augment parameters with parameter IDs if missing (default)',)
+                            help='augment parameters with parameter IDs if missing (default)')
     sub_parser.add_argument('--no-param-id', action='store_false', dest='param_id',
                             help='do not augment parameters with parameter IDs',
                             default=argparse.SUPPRESS)
 
   def _add_history(sub_parser):
     sub_parser.add_argument('--history', action='store_true', dest='history', default=False,
-                            help='augment parameters with history data',)
+                            help='augment parameters with history data')
     sub_parser.add_argument('--no-history', action='store_false', dest='history',
                             help='do not augment parameters with history data (default)',
                             default=argparse.SUPPRESS)
@@ -449,17 +505,17 @@ def make_parser():
 
   subparsers = parser.add_subparsers(dest='command')
 
-  sub_parser = subparsers.add_parser('c', help='summarize parameters concisely')
+  sub_parser = subparsers.add_parser('d', help='summarize parameters concisely')
   _add_param_id(sub_parser)
   _add_history(sub_parser)
   _add_read_params_argument(sub_parser)
 
-  sub_parser = subparsers.add_parser('ca', help='summarize parameters')
+  sub_parser = subparsers.add_parser('du', help='summarize parameters')
   _add_param_id(sub_parser)
   _add_history(sub_parser)
   _add_read_params_argument(sub_parser)
 
-  sub_parser = subparsers.add_parser('cat', help='dump parameters')
+  sub_parser = subparsers.add_parser('dump', help='dump parameters')
   _add_param_id(sub_parser)
   _add_history(sub_parser)
   _add_read_params_argument(sub_parser)
@@ -508,8 +564,8 @@ def make_parser():
   _add_read_params_argument(sub_parser)
 
   sub_parser = subparsers.add_parser('retry', help='retry finished jobs')
-  sub_parser.add_argument('arguments', type=str, nargs='*',
-                          help='job IDs; leave empty to select the last finished job')
+  sub_parser.add_argument('arguments', type=str, nargs='+',
+                          help='job IDs; use "last" to select the last finished job')
 
   sub_parser = subparsers.add_parser('rm', help='remove queued jobs')
   _add_job_ids_auto_select_all(sub_parser)
@@ -525,6 +581,18 @@ def make_parser():
 
   sub_parser = subparsers.add_parser('dismiss', help='clear finished jobs')
   _add_job_ids_auto_select_all(sub_parser)
+
+  sub_parser = subparsers.add_parser('cat', help='show the entire job output')
+  _add_stdout_sterr(sub_parser)
+  _add_job_or_param_id(sub_parser)
+
+  sub_parser = subparsers.add_parser('head', help='show the head of job output')
+  _add_stdout_sterr(sub_parser)
+  _add_job_or_param_id(sub_parser)
+
+  sub_parser = subparsers.add_parser('tail', help='show the tail of job output')
+  _add_stdout_sterr(sub_parser)
+  _add_job_or_param_id(sub_parser)
 
   sub_parser = subparsers.add_parser('migrate',
                                      help='migrate output data for new parameters')
@@ -563,45 +631,55 @@ def run_client():
   common_args = parser.parse_args(argv[:group_start] + ['start'])
 
   # Parse sub-arguments
+  def _parse_group(group_start, group_end):
+    if argv[group_start] in ['cat', 'head', 'tail']:
+      args, unknown_args = parser.parse_known_args(argv[group_start:group_end])
+    else:
+      args, unknown_args = parser.parse_args(argv[group_start:group_end]), None
+    return args, unknown_args
   args_list = []
   pipe_break = []
   for i in range(group_start, len(argv)):
     if argv[i] == ':' or argv[i] == '::':
-      args = parser.parse_args(argv[group_start:i])
+      args, unknown_args = _parse_group(group_start, i)
       args_list.append(args)
       group_start = i + 1
       if argv[i] == ':':
         pipe_break.append(False)
       else:
         pipe_break.append(True)
-  args = parser.parse_args(argv[group_start:])
-  args_list.append(args)
+  args, unknown_args = _parse_group(group_start, len(argv))
+  args_list.append((args, unknown_args))
   pipe_break.append(True)
 
-  # Construct and run chain
+  # Run commands
   loop = asyncio.get_event_loop()
 
-  client_pool = {}
-  stdin = sys.stdin
-  if pipe_break[0]:
-    stdout = sys.stdout
-  else:
-    stdout = io.StringIO()
-  for i, args in enumerate(args_list):
-    # Run a handler
-    handler = CommandHandler(stdin, stdout, common_args, args, client_pool, loop)
-    handle_future = asyncio.ensure_future(handler.handle(), loop=loop)
-    loop.run_until_complete(handle_future)
-
-    if pipe_break[i]:
-      stdin = sys.stdin
-    else:
-      # Connect stdout to stdin
-      assert isinstance(stdout, io.StringIO)
-      stdout.seek(0)
-      stdin = stdout
-
-    if i + 1 < len(args_list) and pipe_break[i + 1]:
+  try:
+    client_pool = {}
+    stdin = sys.stdin
+    if pipe_break[0]:
       stdout = sys.stdout
     else:
       stdout = io.StringIO()
+    for i, (args, unknown_args) in enumerate(args_list):
+      # Run a handler
+      handler = CommandHandler(stdin, stdout, common_args, args, unknown_args, client_pool, loop)
+      handle_future = asyncio.ensure_future(handler.handle(), loop=loop)
+      loop.run_until_complete(handle_future)
+
+      if pipe_break[i]:
+        stdin = sys.stdin
+      else:
+        # Connect stdout to stdin
+        assert isinstance(stdout, io.StringIO)
+        stdout.seek(0)
+        stdin = stdout
+
+      if i + 1 < len(args_list) and pipe_break[i + 1]:
+        stdout = sys.stdout
+      else:
+        stdout = io.StringIO()
+  except KeyboardInterrupt:
+    if common_args.verbose:
+      raise

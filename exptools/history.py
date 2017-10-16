@@ -18,6 +18,7 @@ class History:
   '''Manage the history data of previous job execution.'''
 
   stub = {
+      'job_id': None,
       'queued': None,
       'started': None,
       'finished': None,
@@ -73,42 +74,15 @@ class History:
       self.history['next_job_id'] = next_job_id + 1
       return 'j-' + base58.b58encode_int(next_job_id)
 
-  async def set_queued(self, param_id, now):
-    '''Record started time.'''
-    async with self.lock:
-      hist_data = self._get(param_id)
-      hist_data['queued'] = now
-      hist_data['started'] = None
-      hist_data['finished'] = None
-      # Keep duration for Estimator
-      hist_data['succeeded'] = None
-
-      self.history[param_id] = hist_data
-      self._schedule_dump()
-
-  async def set_started(self, param_id, now):
-    '''Record started time.'''
-    async with self.lock:
-      hist_data = self._get(param_id)
-      hist_data['started'] = now
-      hist_data['finished'] = None
-      # Keep duration for Estimator
-      hist_data['succeeded'] = None
-
-      self.history[param_id] = hist_data
-      self._schedule_dump()
-
-  async def set_finished(self, param_id, succeeded, now):
+  async def update(self, job):
     '''Record finished time and result.'''
+    param_id = job['param_id']
     async with self.lock:
       hist_data = self._get(param_id)
-      hist_data['finished'] = now
-      if hist_data['started'] is not None:
-        hist_data['duration'] = \
-            diff_sec(parse_utc(now), parse_utc(hist_data['started']))
-      hist_data['succeeded'] = succeeded
-
+      for key in self.stub:
+        hist_data[key] = job[key]
       self.history[param_id] = hist_data
+      self.logger.info(f'Updated history entry for parameter {param_id}')
       self._schedule_dump()
 
   @rpc_export_function
