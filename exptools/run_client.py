@@ -539,12 +539,10 @@ def run_client():
     loop.run_until_complete(handle_future)
 
     if pipe_break[i]:
-      # Spill output
-      stdout.seek(0)
-      sys.stdout.write(stdout.read())
       stdin = sys.stdin
     else:
       # Connect stdout to stdin
+      assert isinstance(stdout, io.StringIO)
       stdout.seek(0)
       stdin = stdout
 
