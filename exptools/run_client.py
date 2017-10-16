@@ -369,8 +369,8 @@ def make_parser():
   '''Return a new argument parser.'''
   parser = argparse.ArgumentParser(description=\
 '''Interact with the exptools server.
-Use "I" to pipe commands.
-Use "//" to chain commands without pipe connection.''')
+Use ":" to pipe commands.
+Use "::" to chain commands without pipe connection.''')
 
   parser.add_argument('--host', type=str, default='localhost',
                       help='the hostname of the server (default: %(default)s)')
@@ -511,11 +511,11 @@ def run_client():
   args_list = []
   pipe_break = []
   for i in range(group_start, len(argv)):
-    if argv[i] == 'I' or argv[i] == '//':
+    if argv[i] == ':' or argv[i] == '::':
       args = parser.parse_args(argv[group_start:i])
       args_list.append(args)
       group_start = i + 1
-      if argv[i] == 'I':
+      if argv[i] == ':':
         pipe_break.append(False)
       else:
         pipe_break.append(True)
