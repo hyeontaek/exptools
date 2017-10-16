@@ -5,8 +5,10 @@ __all__ = [
     'get_name',
     'get_command',
     'get_cwd',
+    'ParamBuilder',
     ]
 
+import collections
 import hashlib
 import json
 
@@ -53,3 +55,13 @@ def get_cwd(param):
   elif 'cwd' in param:
     cwd = param['cwd']
   return cwd
+
+class ParamBuilder(collections.ChainMap):
+  '''A parameter builder.'''
+  def __init__(self, *args, **kwargs):
+    super().__init__(*args, **kwargs)
+
+  def __add__(self, update):
+    child = self.new_child()
+    child.update(update)
+    return child
