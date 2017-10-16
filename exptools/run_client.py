@@ -528,7 +528,10 @@ def run_client():
 
   client_pool = {}
   stdin = sys.stdin
-  stdout = io.StringIO()
+  if pipe_break[0]:
+    stdout = sys.stdout
+  else:
+    stdout = io.StringIO()
   for i, args in enumerate(args_list):
     # Run a handler
     handler = CommandHandler(stdin, stdout, common_args, args, client_pool, loop)
@@ -545,4 +548,7 @@ def run_client():
       stdout.seek(0)
       stdin = stdout
 
-    stdout = io.StringIO()
+    if i + 1 < len(args_list) and pipe_break[i + 1]:
+      stdout = sys.stdout
+    else:
+      stdout = io.StringIO()
