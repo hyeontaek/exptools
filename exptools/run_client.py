@@ -64,24 +64,34 @@ class CommandHandler:
         with open(path) as file:
           params.extend(json.loads(file.read()))
 
-    for param in params:
-      if '_' not in param:
-        meta = param['_'] = {}
-      else:
-        meta = param['_']
+    if 'param_id' in self.args and self.args.param_id:
+      for param in params:
+        if '_' not in param:
+          meta = param['_'] = {}
+        else:
+          meta = param['_']
 
-      if 'param_id' not in meta:
-        param_id = get_param_id(param)
-        meta['param_id'] = param_id
+        if 'param_id' not in meta:
+          param_id = get_param_id(param)
+          meta['param_id'] = param_id
 
     if 'history' in self.args and self.args.history:
-      param_ids = [param['_']['param_id'] for param in params]
-      history = await self.client.history.get_all(param_ids)
+      param_ids = set()
       for param in params:
-        meta = param['_']
-        param_id = meta['param_id']
+        if '_' not in param:
+          meta = param['_'] = {}
+        else:
+          meta = param['_']
+
+        if 'succeeded' not in meta:
+          param_ids.add(get_param_id(param))
+
+      history = await self.client.history.get_all(list(param_ids))
+
+      for param in params:
+        param_id = get_param_id(param)
         if param_id in param_ids:
-          meta.update(history.get(param_id, {}))
+          param['_'].update(history[param_id])
 
     return params
 
@@ -143,7 +153,7 @@ class CommandHandler:
   async def _handle_select(self):
     filter_param_ids = self.args.filter[0].split(',')
     params = await self._read_params()
-    params_map = {param['_']['param_id']: param for param in params}
+    params_map = {get_param_id(param): param for param in params}
 
     selected_params = []
     for filter_param_id in filter_param_ids:
@@ -172,7 +182,8 @@ class CommandHandler:
 
   async def _handle_oneshot(self):
     succeeded = await self.client.scheduler.set_oneshot()
-    self.stdout.write('Scheduler oneshot mode set\n' if succeeded else 'Failed to set oneshot mode\n')
+    self.stdout.write('Scheduler oneshot mode set\n' \
+                      if succeeded else 'Failed to set oneshot mode\n')
 
     await self._handle_stat()
 
@@ -183,7 +194,8 @@ class CommandHandler:
   async def _handle_stat(self):
     queue_state = await self.client.queue.get_state()
     oneshot = await self.client.scheduler.is_oneshot()
-    self.stdout.write(await format_estimated_time(self.client.estimator, queue_state, oneshot) + '\n')
+    self.stdout.write(
+        await format_estimated_time(self.client.estimator, queue_state, oneshot) + '\n')
 
   async def _handle_status(self):
     queue_state = await self.client.queue.get_state()
@@ -244,7 +256,8 @@ class CommandHandler:
   async def _handle_monitor(self):
     async for queue_state in self.client_watch.queue.watch_state():
       oneshot = await self.client.scheduler.is_oneshot()
-      self.stdout.write(await format_estimated_time(self.client.estimator, queue_state, oneshot) + '\n')
+      self.stdout.write(
+          await format_estimated_time(self.client.estimator, queue_state, oneshot) + '\n')
       if not self.args.forever and \
          not queue_state['started_jobs'] and (oneshot or not queue_state['queued_jobs']):
         break
@@ -345,6 +358,27 @@ class CommandHandler:
 
     await self._handle_stat()
 
+  async def _handle_migrate(self):
+    # Use vars() on Namespace to access a field containing -
+    old_params = json.load(open(vars(self.args)['old-params-file'][0]))
+    new_params = await self._read_params()
+
+    if len(old_params) != len(new_params):
+      raise RuntimeError('Two inputs of parameters must have the same length''')
+
+    changes = []
+    for i, new_param in enumerate(new_params):
+      old_param = old_params[i]
+      old_param_id = get_param_id(old_param)
+      new_param_id = get_param_id(new_param)
+      if old_param_id != new_param_id:
+        changes.append((old_param_id, new_param_id))
+
+    symlink_count = await self.client.runner.migrate(changes)
+    entry_count = await self.client.history.migrate(changes)
+    self.stdout.write(f'Migrated: {symlink_count} symlinks, ' + \
+                      f'{entry_count} histroy entries\n')
+
   async def _handle_prune_matching(self):
     params = await self._read_params()
     param_ids = [get_param_id(param) for param in params]
@@ -391,6 +425,13 @@ Use "::" to chain commands without pipe connection.''')
     sub_parser.add_argument('arguments', type=str, nargs='*',
                             help='job IDs; leave empty to select all jobs')
 
+  def _add_param_id(sub_parser):
+    sub_parser.add_argument('--param-id', action='store_true', dest='param_id', default=True,
+                            help='augment parameters with parameter IDs if missing (default)',)
+    sub_parser.add_argument('--no-param-id', action='store_false', dest='param_id',
+                            help='do not augment parameters with parameter IDs',
+                            default=argparse.SUPPRESS)
+
   def _add_history(sub_parser):
     sub_parser.add_argument('--history', action='store_true', dest='history', default=False,
                             help='augment parameters with history data',)
@@ -399,7 +440,8 @@ Use "::" to chain commands without pipe connection.''')
                             default=argparse.SUPPRESS)
 
   def _add_omit(sub_parser):
-    sub_parser.add_argument('--omit', type=str, default='succeeded,started,queued,duplicated',
+    sub_parser.add_argument('--omit', type=str, dest='omit',
+                            default='succeeded,started,queued,duplicated',
                             help='omit parameters before adding if existing matches are found ' + \
                                  '(default: %(default)s)')
     sub_parser.add_argument('--no-omit', action='store_const', dest='omit', const='',
@@ -409,23 +451,28 @@ Use "::" to chain commands without pipe connection.''')
   subparsers = parser.add_subparsers(dest='command')
 
   sub_parser = subparsers.add_parser('c', help='summarize parameters concisely')
+  _add_param_id(sub_parser)
   _add_history(sub_parser)
   _add_read_params_argument(sub_parser)
 
   sub_parser = subparsers.add_parser('ca', help='summarize parameters')
+  _add_param_id(sub_parser)
   _add_history(sub_parser)
   _add_read_params_argument(sub_parser)
 
   sub_parser = subparsers.add_parser('cat', help='dump parameters')
+  _add_param_id(sub_parser)
   _add_history(sub_parser)
   _add_read_params_argument(sub_parser)
 
   sub_parser = subparsers.add_parser('filter', help='filter parameters using YAQL')
+  _add_param_id(sub_parser)
   _add_history(sub_parser)
   sub_parser.add_argument('filter', type=str, nargs=1, help='YAQL expression')
   _add_read_params_argument(sub_parser)
 
   sub_parser = subparsers.add_parser('select', help='select parameters by parameter IDs')
+  _add_param_id(sub_parser)
   _add_history(sub_parser)
   sub_parser.add_argument('filter', type=str, nargs=1, help='comma-separated parameter IDs')
   _add_read_params_argument(sub_parser)
@@ -452,10 +499,12 @@ Use "::" to chain commands without pipe connection.''')
   sub_parser.add_argument('arguments', type=str, nargs='+', help='adhoc command')
 
   sub_parser = subparsers.add_parser('estimate', help='estimate execution time for parameters')
+  _add_param_id(sub_parser)
   _add_omit(sub_parser)
   _add_read_params_argument(sub_parser)
 
   sub_parser = subparsers.add_parser('add', help='add parameters to the queue')
+  _add_param_id(sub_parser)
   _add_omit(sub_parser)
   _add_read_params_argument(sub_parser)
 
@@ -477,6 +526,12 @@ Use "::" to chain commands without pipe connection.''')
 
   sub_parser = subparsers.add_parser('dismiss', help='clear finished jobs')
   _add_job_ids_auto_select_all(sub_parser)
+
+  sub_parser = subparsers.add_parser('migrate',
+                                     help='migrate output data for new parameters')
+  sub_parser.add_argument('old-params-file', type=str, nargs=1,
+                          help='path to the file containing old parameters ')
+  _add_read_params_argument(sub_parser)
 
   sub_parser = subparsers.add_parser('prune-matching',
                                      help='prune output data that match parameters')

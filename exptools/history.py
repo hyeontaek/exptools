@@ -5,6 +5,7 @@ __all__ = ['History']
 import asyncio
 import json
 import os
+import logging
 
 import aiofiles
 import base58
@@ -28,6 +29,8 @@ class History:
     self.path = path
     self.loop = loop
 
+    self.logger = logging.getLogger('exptools.History')
+
     self.lock = asyncio.Lock()
     self._load()
 
@@ -41,8 +44,10 @@ class History:
     '''Load the history file.'''
     if os.path.exists(self.path):
       self.history = json.load(open(self.path, 'r'))
+      self.logger.info(f'Loaded history data at {self.path}')
     else:
       self.history = {'next_job_id': 0}
+      self.logger.info(f'Initialized new history data')
 
   def _schedule_dump(self):
     '''Schedule a dump operation.'''
@@ -59,6 +64,7 @@ class History:
       async with aiofiles.open(self.path + '.tmp', 'w') as file:
         await file.write(data)
       os.rename(self.path + '.tmp', self.path)
+      self.logger.debug(f'Stored history data at {self.path}')
 
   async def get_next_job_id(self):
     '''Return the next job ID.'''
@@ -107,44 +113,62 @@ class History:
 
   @rpc_export_function
   async def get_all(self, param_ids=None):
-    '''Get all history data.'''
+    '''Get all history entries.'''
     async with self.lock:
       if param_ids is None:
-        return {param_id: dict(self.history[param_id]) \
+        return {param_id: self._get(param_id) \
                 for param_id in self.history if param_id.startswith('p-')}
 
       param_ids = set(param_ids)
-      return {param_id: dict(self.history[param_id]) \
-              for param_id in self.history \
-              if param_id.startswith('p-') and param_id in param_ids}
+      return {param_id: self._get(param_id) for param_id in param_ids}
 
   @rpc_export_function
   async def get(self, param_id):
-    '''Get a parameter's history data.'''
+    '''Get a parameter's history entry.'''
     async with self.lock:
       return self._get(param_id)
 
   def _get(self, param_id):
-    '''Get a parameter's history data.'''
+    '''Get a parameter's history entry.'''
     assert self.lock.locked()
 
     if param_id in self.history:
-      return self.history[param_id]
+      return dict(self.history[param_id])
     return dict(self.stub)
 
   @rpc_export_function
   async def add(self, param_id, hist_data):
-    '''Add a parameter's history data manually.'''
+    '''Add a parameter's history entries manually.'''
     async with self.lock:
       self.history[param_id] = hist_data
       self._schedule_dump()
 
   @rpc_export_function
   async def remove(self, param_id):
-    '''Remove a parameter's history data manually.'''
+    '''Remove a parameter's history entries manually.'''
     async with self.lock:
       del self.history[param_id]
       self._schedule_dump()
+
+  @rpc_export_function
+  async def migrate(self, changes):
+    '''Migrate symlinks for parameter ID changes.'''
+    count = 0
+    async with self.lock:
+      for old_param_id, new_param_id in changes:
+        if old_param_id not in self.history:
+          self.logger.info(f'Ignoring missing history entry for old parameter {old_param_id}')
+          continue
+
+        if new_param_id in self.history:
+          self.logger.info(f'Ignoring existing history entry for new parameter {new_param_id}')
+          continue
+
+        self.history[new_param_id] = self.history[old_param_id]
+        self.logger.info(f'Migrated history entry of old parameter {old_param_id} ' + \
+                         f'to new parameter {new_param_id}')
+        count += 1
+    return count
 
   @rpc_export_function
   async def prune(self, param_ids, *, prune_matching=False, prune_mismatching=False):
@@ -159,6 +183,7 @@ class History:
         if (prune_matching and param_id in param_ids) or \
            (prune_mismatching and param_id not in param_ids):
           del self.history[param_id]
+          self.logger.info(f'Removed history entry of parameter {param_id}')
           entry_count += 1
 
       self._schedule_dump()

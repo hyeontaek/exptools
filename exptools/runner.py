@@ -137,6 +137,29 @@ class Runner:
     return count
 
   @rpc_export_function
+  async def migrate(self, changes):
+    '''Migrate symlinks for parameter ID changes.'''
+    count = 0
+    for old_param_id, new_param_id in changes:
+      old_param_path = get_param_path(self.base_dir, old_param_id)
+      new_param_path = get_param_path(self.base_dir, new_param_id)
+
+      if not os.path.exists(old_param_path):
+        self.logger.info(f'Ignoring missing symlink for old parameter {old_param_id}')
+        continue
+
+      if os.path.exists(new_param_path):
+        self.logger.info(f'Ignoring existing symlink for new parameter {new_param_id}')
+        continue
+
+      job_id = os.readlink(old_param_path).strip('/')
+      os.symlink(job_id, new_param_path, target_is_directory=True)
+      self.logger.info(f'Migrated symlink of old parameter {old_param_id} ' + \
+                       f'to new parameter {new_param_id}')
+      count += 1
+    return count
+
+  @rpc_export_function
   async def prune(self, param_ids, *, prune_matching=False, prune_mismatching=False):
     '''Prune output data.'''
     trash_dir = os.path.join(self.base_dir, 'trash')
