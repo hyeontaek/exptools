@@ -248,14 +248,6 @@ class CommandHandler:
 
     await self._handle_stat()
 
-  async def _handle_add(self):
-    params = await self._read_params()
-    params = await self._omit_params(params)
-    job_ids = await self.client.queue.add(params)
-    self.stdout.write(f'Added queued jobs: {" ".join(job_ids)}\n')
-
-    await self._handle_stat()
-
   async def _handle_estimate(self):
     params = await self._read_params()
     params = await self._omit_params(params)
@@ -268,6 +260,14 @@ class CommandHandler:
         [{'param_id': get_param_id(param), 'param': param} for param in params])
     self.stdout.write('Estimated: ' + \
         await format_estimated_time(self.client.estimator, queue_state) + '\n')
+
+  async def _handle_add(self):
+    params = await self._read_params()
+    params = await self._omit_params(params)
+    job_ids = await self.client.queue.add(params)
+    self.stdout.write(f'Added queued jobs: {" ".join(job_ids)}\n')
+
+    await self._handle_stat()
 
   async def _handle_retry(self):
     arguments = self.args.arguments
@@ -357,7 +357,10 @@ class CommandHandler:
 
 def make_parser():
   '''Return a new argument parser.'''
-  parser = argparse.ArgumentParser(description='Interact with the exptools server.')
+  parser = argparse.ArgumentParser(description=\
+'''Interact with the exptools server.
+Use "I" to pipe commands.
+Use "//" to chain commands without pipe connection.''')
 
   parser.add_argument('--host', type=str, default='localhost',
                       help='the hostname of the server (default: %(default)s)')
@@ -407,9 +410,9 @@ def make_parser():
   _add_history(sub_parser)
   _add_read_params_argument(sub_parser)
 
-  sub_parser = subparsers.add_parser('filter', help='filter parameters')
+  sub_parser = subparsers.add_parser('filter', help='filter parameters using YAQL')
   _add_history(sub_parser)
-  sub_parser.add_argument('filter', type=str, nargs=1, help='YAML expression')
+  sub_parser.add_argument('filter', type=str, nargs=1, help='YAQL expression')
   _add_read_params_argument(sub_parser)
 
   sub_parser = subparsers.add_parser('select', help='select parameters by parameter IDs')
@@ -436,11 +439,11 @@ def make_parser():
   sub_parser = subparsers.add_parser('run', help='run an adhoc command')
   sub_parser.add_argument('arguments', type=str, nargs='+', help='adhoc command')
 
-  sub_parser = subparsers.add_parser('add', help='add parameters to the queue')
+  sub_parser = subparsers.add_parser('estimate', help='estimate execution time for parameters')
   _add_omit(sub_parser)
   _add_read_params_argument(sub_parser)
 
-  sub_parser = subparsers.add_parser('estimate', help='estimate execution time for parameters')
+  sub_parser = subparsers.add_parser('add', help='add parameters to the queue')
   _add_omit(sub_parser)
   _add_read_params_argument(sub_parser)
 
@@ -454,7 +457,7 @@ def make_parser():
   sub_parser = subparsers.add_parser('up', help='priorize queued jobs')
   _add_job_ids(sub_parser)
 
-  sub_parser = subparsers.add_parser('down', help='depriorize queued jobs')
+  sub_parser = subparsers.add_parser('down', help='deprioritize queued jobs')
   _add_job_ids(sub_parser)
 
   sub_parser = subparsers.add_parser('kill', help='kill started jobs')
@@ -474,9 +477,7 @@ def make_parser():
   return parser
 
 def run_client():
-  '''Parse arguments and process a client command.
-    Use "I" to pipe commands.
-    Use "//" to chain commands without pipe connection.'''
+  '''Parse arguments and process a client command.'''
   parser = make_parser()
 
   argv = sys.argv[1:]
