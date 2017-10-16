@@ -49,9 +49,12 @@ setup(
     extras_require={
       'dev': [
         'wheel',
+        ],
+      'test': [
         'pylint',
         'pytest',
         'pytest-cov',
+        'asynctest',
         'tox',
         ],
       },
