@@ -58,7 +58,6 @@ class Queue:
         yield self._get_state()
         await self.lock.wait()
 
-  @rpc_export_generator
   async def notify(self):
     '''Notify listeners of the queue for a potential change.'''
     async with self.lock:
@@ -138,7 +137,6 @@ class Queue:
 
     return await self.add(params, append)
 
-  @rpc_export_function
   async def set_started(self, job_id):
     '''Mark a queued job as started.'''
     now = format_utc(utcnow())
@@ -159,7 +157,6 @@ class Queue:
           return True
     return False
 
-  @rpc_export_function
   async def set_pid(self, job_id, pid):
     '''Update pid of a started job.'''
     async with self.lock:
@@ -171,7 +168,6 @@ class Queue:
           return True
     return False
 
-  @rpc_export_function
   async def set_finished(self, job_id, succeeded):
     '''Mark an started job as finished.'''
     now = format_utc(utcnow())

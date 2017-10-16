@@ -67,7 +67,6 @@ class History:
       self.history['next_job_id'] = next_job_id + 1
       return 'j-' + base58.b58encode_int(next_job_id)
 
-  @rpc_export_function
   async def set_queued(self, param_id, now):
     '''Record started time.'''
     async with self.lock:
@@ -81,7 +80,6 @@ class History:
       self.history[param_id] = hist_data
       self._schedule_dump()
 
-  @rpc_export_function
   async def set_started(self, param_id, now):
     '''Record started time.'''
     async with self.lock:
@@ -94,7 +92,6 @@ class History:
       self.history[param_id] = hist_data
       self._schedule_dump()
 
-  @rpc_export_function
   async def set_finished(self, param_id, succeeded, now):
     '''Record finished time and result.'''
     async with self.lock:
