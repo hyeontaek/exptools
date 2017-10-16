@@ -1,3 +1,3 @@
 #!/bin/sh
 
-pip install -e .[dev,sample]
+pip install -e .[dev]
