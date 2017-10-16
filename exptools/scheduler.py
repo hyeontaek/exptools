@@ -34,22 +34,24 @@ class Scheduler:
     '''Start the scheduler.'''
     if self.running:
       self.logger.error('Already started')
-      return
+      return False
 
     self.logger.info('Started')
     self.running = True
 
     await self.queue.notify()
+    return True
 
   @rpc_export_function
   async def stop(self):
     '''Stop the runner.'''
     if not self.running:
       self.logger.error('Already stopped')
-      return
+      return False
 
     self.running = False
     self.logger.info('Stopped')
+    return True
 
   async def schedule(self):
     '''Schedule a job.'''

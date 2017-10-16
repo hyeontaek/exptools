@@ -4,10 +4,10 @@ __all__ = ['run_client']
 
 import asyncio
 import argparse
+import io
 import json
 import pprint
 import sys
-import traceback
 
 import termcolor
 
@@ -19,17 +19,51 @@ from exptools.time import (
     )
 from exptools.param import get_param_id, get_name
 
-async def _read_params(client, args):
-  if not args.arguments:
-    params = json.loads(sys.stdin.read())
-  else:
-    params = []
-    for path in args.arguments:
-      with open(path) as file:
-        params.extend(json.loads(file.read()))
+# pylint: disable=too-few-public-methods
+class CommandHandler:
+  '''Handle a command.'''
+  def __init__(self, stdin, stdout, common_args, args, client_pool, loop):
+    self.stdin = stdin
+    self.stdout = stdout
+    self.common_args = common_args
+    self.args = args
+    self.client_pool = client_pool
+    self.loop = loop
 
-  if 'history' in args and args.history:
-    param_ids = set()
+    self._init()
+
+  def _init(self):
+    command = self.args.command
+
+    if command not in ['c', 'ca', 'cat', 'select'] or self.args.history:
+      if 'client' not in self.client_pool:
+        secret = json.load(open(self.common_args.secret_file))
+        client = Client(self.common_args.host, self.common_args.port, secret, self.loop)
+        self.client_pool['client'] = client
+      self.client = self.client_pool['client']
+
+    if command in ['monitor']:
+      if 'client_watch' not in self.client_pool:
+        secret = json.load(open(self.common_args.secret_file))
+        client = Client(self.common_args.host, self.common_args.port, secret, self.loop)
+        self.client_pool['client_watch'] = client
+      self.client_watch = self.client_pool['client_watch']
+
+    self._handler = getattr(self, '_handle_' + command)
+
+  async def handle(self):
+    '''Handle a command.'''
+    await self._handler()
+
+  async def _read_params(self):
+    if not self.args.arguments:
+      params = json.loads(self.stdin.read())
+    else:
+      params = []
+      for path in self.args.arguments:
+        with open(path) as file:
+          params.extend(json.loads(file.read()))
+
     for param in params:
       if '_' not in param:
         meta = param['_'] = {}
@@ -40,355 +74,286 @@ async def _read_params(client, args):
         param_id = get_param_id(param)
         meta['param_id'] = param_id
 
-        param_ids.add(param_id)
-
-    if param_ids:
-      history = await client.history.get_all(list(param_ids))
+    if 'history' in self.args and self.args.history:
+      param_ids = [param['_']['param_id'] for param in params]
+      history = await self.client.history.get_all(param_ids)
       for param in params:
         meta = param['_']
         param_id = meta['param_id']
         if param_id in param_ids:
           meta.update(history.get(param_id, {}))
 
-  return params
-
-async def _omit_params(client, args, params):
-  '''Omit parameters.'''
-  if not args.omit:
     return params
 
-  omit = args.omit.split(',')
-  for entry in omit:
-    assert entry in (
-        'finished', 'succeeded', 'started', 'queued', 'duplicated',
-        ), f'Invalid omission: {entry}'
+  async def _omit_params(self, params):
+    '''Omit parameters.'''
+    if not self.args.omit:
+      return params
 
-  if 'finished' in omit:
-    params = await client.history.omit(params, only_succeeded=False)
-  if 'succeeded' in omit:
-    params = await client.history.omit(params, only_succeeded=True)
-  if 'started' in omit:
-    params = await client.queue.omit(params, queued=False, started=True, finished=False)
-  if 'queued' in omit:
-    params = await client.queue.omit(params, queued=True, started=False, finished=False)
-  if 'duplicated' in omit:
-    seen_param_ids = set()
-    unique_params = []
+    omit = self.args.omit.split(',')
+    for entry in omit:
+      assert entry in (
+          'finished', 'succeeded', 'started', 'queued', 'duplicated',
+          ), f'Invalid omission: {entry}'
+
+    if 'finished' in omit:
+      params = await self.client.history.omit(params, only_succeeded=False)
+    if 'succeeded' in omit:
+      params = await self.client.history.omit(params, only_succeeded=True)
+    if 'started' in omit:
+      params = await self.client.queue.omit(params, queued=False, started=True, finished=False)
+    if 'queued' in omit:
+      params = await self.client.queue.omit(params, queued=True, started=False, finished=False)
+    if 'duplicated' in omit:
+      seen_param_ids = set()
+      unique_params = []
+      for param in params:
+        param_id = get_param_id(param)
+        if param_id not in seen_param_ids:
+          seen_param_ids.add(param_id)
+          unique_params.append(param)
+      params = unique_params
+    return params
+
+  async def _handle_c(self):
+    params = await self._read_params()
     for param in params:
-      param_id = get_param_id(param)
-      if param_id not in seen_param_ids:
-        seen_param_ids.add(param_id)
-        unique_params.append(param)
-    params = unique_params
-  return params
+      self.stdout.write(f'{get_param_id(param)}  {get_name(param)}\n')
 
-async def _handle_c(client, args):
-  params = await _read_params(client, args)
-  for param in params:
-    print(f'{get_param_id(param)}  {get_name(param)}')
+  async def _handle_ca(self):
+    params = await self._read_params()
+    for param in params:
+      self.stdout.write(f'{get_param_id(param)}\n')
+      #for line in json.dumps(params, sort_keys=True, indent=2).split('\n'):
+      for line in pprint.pformat(param).split('\n'):
+        self.stdout.write('  ' + line + '\n')
+      self.stdout.write('\n')
 
-async def _handle_ca(client, args):
-  params = await _read_params(client, args)
-  for param in params:
-    print(f'{get_param_id(param)}')
-    #for line in json.dumps(params, sort_keys=True, indent=2).split('\n'):
-    for line in pprint.pformat(param).split('\n'):
-      print('  ' + line)
-    print()
+  async def _handle_cat(self):
+    params = await self._read_params()
+    self.stdout.write(json.dumps(params, sort_keys=True, indent=2) + '\n')
 
-async def _handle_cat(client, args):
-  params = await _read_params(client, args)
-  print(json.dumps(params, sort_keys=True, indent=2))
+  async def _handle_filter(self):
+    filter_expr = self.args.filter[0]
+    params = await self._read_params()
 
-async def _handle_filter(client, args):
-  filter_expr = args.filter[0]
-  params = await _read_params(client, args)
+    params = await self.client.filter.filter(filter_expr, params)
+    self.stdout.write(json.dumps(params, sort_keys=True, indent=2) + '\n')
 
-  params = await client.filter.filter(filter_expr, params)
-  print(json.dumps(params, sort_keys=True, indent=2))
+  async def _handle_select(self):
+    filter_param_ids = self.args.filter[0].split(',')
+    params = await self._read_params()
+    params_map = {param['_']['param_id']: param for param in params}
 
-async def _handle_select(client, args):
-  filter_param_ids = args.filter[0].split(',')
-  params = await _read_params(client, args)
-  params_map = {param['_']['param_id']: param for param in params}
+    selected_params = []
+    for filter_param_id in filter_param_ids:
+      if filter_param_id in params_map:
+        # exact match
+        selected_params.append(params_map[filter_param_id])
+        continue
 
-  selected_params = []
-  for filter_param_id in filter_param_ids:
-    if filter_param_id in params_map:
-      # exact match
-      selected_params.append(params_map[filter_param_id])
-      continue
+      # partial match
+      selected_param = None
+      for param_id in params_map:
+        if param_id.startswith(filter_param_id):
+          if selected_param is not None:
+            raise RuntimeError(f'Ambiguous parameter ID: {param_id}')
+          selected_param = params_map[param_id]
+      selected_params.append(selected_param)
 
-    # partial match
-    selected_param = None
-    for param_id in params_map:
-      if param_id.startswith(filter_param_id):
-        if selected_param is not None:
-          raise RuntimeError(f'Ambiguous parameter ID: {param_id}')
-        selected_param = params_map[param_id]
-    selected_params.append(selected_param)
+    params = selected_params
+    self.stdout.write(json.dumps(params, sort_keys=True, indent=2) + '\n')
 
-  params = selected_params
-  print(json.dumps(params, sort_keys=True, indent=2))
+  async def _handle_start(self):
+    succeeded = await self.client.scheduler.start()
+    self.stdout.write('Scheduler started\n' if succeeded else 'Failed to start scheduler\n')
 
-# pylint: disable=unused-argument
-async def _handle_start(client, args):
-  await client.scheduler.start()
+    await self._handle_stat()
 
-# pylint: disable=unused-argument
-async def _handle_stop(client, args):
-  await client.scheduler.stop()
+  async def _handle_stop(self):
+    succeeded = await self.client.scheduler.stop()
+    self.stdout.write('Scheduler stopped\n' if succeeded else 'Failed to stop scheduler\n')
 
-async def _handle_stat(client, args):
-  queue_state = await client.queue.get_state()
-  print(await format_estimated_time(client.estimator, queue_state))
+  async def _handle_stat(self):
+    queue_state = await self.client.queue.get_state()
+    self.stdout.write(await format_estimated_time(self.client.estimator, queue_state) + '\n')
 
-async def _handle_status(client, args):
-  queue_state = await client.queue.get_state()
+  async def _handle_status(self):
+    queue_state = await self.client.queue.get_state()
 
-  show = set(args.show.split(','))
+    show = set(self.args.show.split(','))
 
-  output = ''
+    output = ''
 
-  if 'finished' in show:
-    output += f"Finished jobs ({len(queue_state['finished_jobs'])}):\n"
-    for job in queue_state['finished_jobs']:
-      line = f"  {job['job_id']} {job['param_id']}"
-      line += f' [{format_elapsed_time_short(job)}]'
-      if job['succeeded']:
-        line += ' succeeded:'
-      else:
-        line += ' FAILED:'
-      line += f" {job['name']}"
-      if not job['succeeded']:
-        line = termcolor.colored(line, 'red')
-      output += line + '\n'
-    output += '\n'
+    if 'finished' in show:
+      output += f"Finished jobs ({len(queue_state['finished_jobs'])}):\n"
+      for job in queue_state['finished_jobs']:
+        line = f"  {job['job_id']} {job['param_id']}"
+        line += f' [{format_elapsed_time_short(job)}]'
+        if job['succeeded']:
+          line += ' succeeded:'
+        else:
+          line += ' FAILED:'
+        line += f" {job['name']}"
+        if not job['succeeded']:
+          line = termcolor.colored(line, 'red')
+        output += line + '\n'
+      output += '\n'
 
-  partial_state = {'finished_jobs': queue_state['finished_jobs'],
-                   'started_jobs': [], 'queued_jobs': [],
-                   'concurrency': queue_state['concurrency']}
+    partial_state = {'finished_jobs': queue_state['finished_jobs'],
+                     'started_jobs': [], 'queued_jobs': [],
+                     'concurrency': queue_state['concurrency']}
 
-  if 'started' in show:
-    output += f"Started jobs ({len(queue_state['started_jobs'])}):\n"
-    for job in queue_state['started_jobs']:
-      partial_state['started_jobs'].append(job)
-      line = f"  {job['job_id']} {job['param_id']}"
-      rem = await format_remaining_time_short(client.estimator, partial_state)
-      line += f' [{format_elapsed_time_short(job)}+{rem}]:'
-      line += f" {job['name']}"
-      line = termcolor.colored(line, 'yellow')
-      output += line + '\n'
-    output += '\n'
-  else:
-    for job in queue_state['started_jobs']:
-      partial_state['started_jobs'].append(job)
-
-  if 'queued' in show:
-    output += f"Queued jobs ({len(queue_state['queued_jobs'])}):\n"
-    for job in queue_state['queued_jobs']:
-      partial_state['queued_jobs'].append(job)
-      line = f"  {job['job_id']} {job['param_id']}"
-      rem = await format_remaining_time_short(client.estimator, partial_state)
-      line += f' [+{rem}]:'
-      line += f" {job['name']}"
-      line = termcolor.colored(line, 'blue')
-      output += line + '\n'
-    output += '\n'
-
-  #output += f"Concurrency: {queue_state['concurrency']}"
-  print(output.strip() + '\n')
-
-async def _handle_monitor(client, client_watch, args):
-  async for queue_state in client_watch.queue.watch_state():
-    print(await format_estimated_time(client.estimator, queue_state))
-    if not args.forever and \
-       not queue_state['started_jobs'] and not queue_state['queued_jobs']:
-      break
-
-async def _handle_run(client, args):
-  params = [{'command': args.arguments}]
-  job_ids = await client.queue.add(params)
-  print(f'Added queued jobs: {job_ids[0]}')
-
-async def _handle_add(client, args):
-  params = await _read_params(client, args)
-  params = await _omit_params(client, args, params)
-  job_ids = await client.queue.add(params)
-  print(f'Added queued jobs: {" ".join(job_ids)}')
-
-async def _handle_estimate(client, args):
-  params = await _read_params(client, args)
-  params = await _omit_params(client, args, params)
-
-  queue_state = await client.queue.get_state()
-  print('Current:   ' + await format_estimated_time(client.estimator, queue_state))
-
-  queue_state['queued_jobs'].extend(
-      [{'param_id': get_param_id(param), 'param': param} for param in params])
-  print('Estimated: ' + await format_estimated_time(client.estimator, queue_state))
-
-async def _handle_retry(client, args):
-  arguments = args.arguments
-  if not arguments:
-    job_ids = await client.queue.retry(None)
-  else:
-    job_ids = await client.queue.retry(arguments)
-  print(f'Added queued jobs: {" ".join(job_ids)}')
-
-async def _handle_rm(client, args):
-  arguments = args.arguments
-  if not arguments:
-    count = await client.queue.remove_queued(None)
-  else:
-    count = await client.queue.remove_queued(arguments)
-  print(f'Removed queued jobs: {count}')
-
-async def _handle_up(client, args):
-  changed_job_ids = set(args.arguments)
-  queue_state = await client.queue.get_state()
-
-  job_ids = [job['job_id'] for job in queue_state['queued_jobs']]
-  for i in range(1, len(job_ids)):
-    if job_ids[i] in changed_job_ids:
-      job_ids[i - 1], job_ids[i] = job_ids[i], job_ids[i - 1]
-  count = await client.queue.reorder(job_ids)
-  print(f'Reordered queued jobs: {count}')
-
-async def _handle_down(client, args):
-  changed_job_ids = set(args.arguments)
-  queue_state = await client.queue.get_state()
-
-  job_ids = [job['job_id'] for job in queue_state['queued_jobs']]
-  for i in range(len(job_ids) - 2, -1, -1):
-    if job_ids[i] in changed_job_ids:
-      job_ids[i], job_ids[i + 1] = job_ids[i + 1], job_ids[i]
-  count = await client.queue.reorder(job_ids)
-  print(f'Reordered queued jobs: {count}')
-
-async def _handle_kill(client, args):
-  arguments = args.arguments
-  force = False
-  if arguments and arguments[0] == 'force':
-    force = True
-    arguments = arguments[1:]
-  if not arguments:
-    count = await client.runner.kill(None, force=force)
-  else:
-    count = await client.runner.kill(arguments, force=force)
-  print(f'Killed jobs: {count}')
-
-async def _handle_dismiss(client, args):
-  arguments = args.arguments
-  if not arguments:
-    count = await client.queue.remove_finished(None)
-  else:
-    count = await client.queue.remove_finished(arguments)
-  print(f'Removed finished jobs: {count}')
-
-async def _handle_prune_matching(client, args):
-  params = await _read_params(client, args)
-  param_ids = [get_param_id(param) for param in params]
-
-  symlink_count, dir_count = await client.runner.prune(param_ids, prune_matching=True)
-  entry_count = await client.history.prune(param_ids, prune_matching=True)
-  print(f'Pruned: {symlink_count} symlinks, ' + \
-        f'{dir_count} output directories, ' + \
-        f'{entry_count} histroy entries')
-
-async def _handle_prune_mismatching(client, args):
-  params = await _read_params(client, args)
-  param_ids = [get_param_id(param) for param in params]
-
-  symlink_count, dir_count = await client.runner.prune(param_ids, prune_mismatching=True)
-  entry_count = await client.history.prune(param_ids, prune_mismatching=True)
-  print(f'Pruned: {symlink_count} symlinks, ' + \
-        f'{dir_count} output directories, ' + \
-        f'{entry_count} histroy entries')
-
-async def handle_command(client, client_watch, args):
-  '''Handle a client command.'''
-
-  try:
-    if args.command == 'c':
-      await _handle_c(client, args)
-
-    elif args.command == 'ca':
-      await _handle_ca(client, args)
-
-    elif args.command == 'cat':
-      await _handle_cat(client, args)
-
-    elif args.command == 'filter':
-      await _handle_filter(client, args)
-
-    elif args.command == 'select':
-      await _handle_select(client, args)
-
-    elif args.command == 'start':
-      await _handle_start(client, args)
-      await _handle_stat(client, args)
-
-    elif args.command == 'stop':
-      await _handle_stop(client, args)
-
-    elif args.command == 'stat':
-      await _handle_stat(client, args)
-
-    elif args.command == 'status':
-      await _handle_status(client, args)
-
-    elif args.command == 'monitor':
-      await _handle_monitor(client, client_watch, args)
-
-    elif args.command == 'run':
-      await _handle_run(client, args)
-      await _handle_stat(client, args)
-
-    elif args.command == 'add':
-      await _handle_add(client, args)
-      await _handle_stat(client, args)
-
-    elif args.command == 'estimate':
-      await _handle_estimate(client, args)
-
-    elif args.command == 'retry':
-      await _handle_retry(client, args)
-      await _handle_stat(client, args)
-
-    elif args.command == 'rm':
-      await _handle_rm(client, args)
-      await _handle_stat(client, args)
-
-    elif args.command == 'up':
-      await _handle_up(client, args)
-
-    elif args.command == 'down':
-      await _handle_down(client, args)
-
-    elif args.command == 'kill':
-      await _handle_kill(client, args)
-      await _handle_stat(client, args)
-
-    elif args.command == 'dismiss':
-      await _handle_dismiss(client, args)
-      await _handle_stat(client, args)
-
-    elif args.command == 'prune-matching':
-      await _handle_prune_matching(client, args)
-
-    elif args.command == 'prune-mismatching':
-      await _handle_prune_mismatching(client, args)
-
+    if 'started' in show:
+      output += f"Started jobs ({len(queue_state['started_jobs'])}):\n"
+      for job in queue_state['started_jobs']:
+        partial_state['started_jobs'].append(job)
+        line = f"  {job['job_id']} {job['param_id']}"
+        rem = await format_remaining_time_short(self.client.estimator, partial_state)
+        line += f' [{format_elapsed_time_short(job)}+{rem}]:'
+        line += f" {job['name']}"
+        line = termcolor.colored(line, 'yellow')
+        output += line + '\n'
+      output += '\n'
     else:
-      print(f'Invalid command: {args.command}')
-      return 1
+      for job in queue_state['started_jobs']:
+        partial_state['started_jobs'].append(job)
 
-    return 0
+    if 'queued' in show:
+      output += f"Queued jobs ({len(queue_state['queued_jobs'])}):\n"
+      for job in queue_state['queued_jobs']:
+        partial_state['queued_jobs'].append(job)
+        line = f"  {job['job_id']} {job['param_id']}"
+        rem = await format_remaining_time_short(self.client.estimator, partial_state)
+        line += f' [+{rem}]:'
+        line += f" {job['name']}"
+        line = termcolor.colored(line, 'blue')
+        output += line + '\n'
+      output += '\n'
 
-  except Exception: # pylint: disable=broad-except
-    traceback.print_exc()
-    return 1
+    #output += f"Concurrency: {queue_state['concurrency']}"
+    self.stdout.write(output.strip() + '\n')
+
+  async def _handle_monitor(self):
+    async for queue_state in self.client_watch.queue.watch_state():
+      self.stdout.write(await format_estimated_time(self.client.estimator, queue_state) + '\n')
+      if not self.args.forever and \
+         not queue_state['started_jobs'] and not queue_state['queued_jobs']:
+        break
+
+  async def _handle_run(self):
+    params = [{'command': self.args.arguments}]
+    job_ids = await self.client.queue.add(params)
+    self.stdout.write(f'Added queued jobs: {job_ids[0]}\n')
+
+    await self._handle_stat()
+
+  async def _handle_add(self):
+    params = await self._read_params()
+    params = await self._omit_params(params)
+    job_ids = await self.client.queue.add(params)
+    self.stdout.write(f'Added queued jobs: {" ".join(job_ids)}\n')
+
+    await self._handle_stat()
+
+  async def _handle_estimate(self):
+    params = await self._read_params()
+    params = await self._omit_params(params)
+
+    queue_state = await self.client.queue.get_state()
+    self.stdout.write('Current:   ' + \
+        await format_estimated_time(self.client.estimator, queue_state) + '\n')
+
+    queue_state['queued_jobs'].extend(
+        [{'param_id': get_param_id(param), 'param': param} for param in params])
+    self.stdout.write('Estimated: ' + \
+        await format_estimated_time(self.client.estimator, queue_state) + '\n')
+
+  async def _handle_retry(self):
+    arguments = self.args.arguments
+    if not arguments:
+      job_ids = await self.client.queue.retry(None)
+    else:
+      job_ids = await self.client.queue.retry(arguments)
+    self.stdout.write(f'Added queued jobs: {" ".join(job_ids)}\n')
+
+    await self._handle_stat()
+
+  async def _handle_rm(self):
+    arguments = self.args.arguments
+    if not arguments:
+      count = await self.client.queue.remove_queued(None)
+    else:
+      count = await self.client.queue.remove_queued(arguments)
+    self.stdout.write(f'Removed queued jobs: {count}\n')
+
+    await self._handle_stat()
+
+  async def _handle_up(self):
+    changed_job_ids = set(self.args.arguments)
+    queue_state = await self.client.queue.get_state()
+
+    job_ids = [job['job_id'] for job in queue_state['queued_jobs']]
+    for i in range(1, len(job_ids)):
+      if job_ids[i] in changed_job_ids:
+        job_ids[i - 1], job_ids[i] = job_ids[i], job_ids[i - 1]
+    count = await self.client.queue.reorder(job_ids)
+    self.stdout.write(f'Reordered queued jobs: {count}\n')
+
+  async def _handle_down(self):
+    changed_job_ids = set(self.args.arguments)
+    queue_state = await self.client.queue.get_state()
+
+    job_ids = [job['job_id'] for job in queue_state['queued_jobs']]
+    for i in range(len(job_ids) - 2, -1, -1):
+      if job_ids[i] in changed_job_ids:
+        job_ids[i], job_ids[i + 1] = job_ids[i + 1], job_ids[i]
+    count = await self.client.queue.reorder(job_ids)
+    self.stdout.write(f'Reordered queued jobs: {count}\n')
+
+  async def _handle_kill(self):
+    arguments = self.args.arguments
+    force = False
+    if arguments and arguments[0] == 'force':
+      force = True
+      arguments = arguments[1:]
+    if not arguments:
+      count = await self.client.runner.kill(None, force=force)
+    else:
+      count = await self.client.runner.kill(arguments, force=force)
+    self.stdout.write(f'Killed jobs: {count}\n')
+
+    await self._handle_stat()
+
+  async def _handle_dismiss(self):
+    arguments = self.args.arguments
+    if not arguments:
+      count = await self.client.queue.remove_finished(None)
+    else:
+      count = await self.client.queue.remove_finished(arguments)
+    self.stdout.write(f'Removed finished jobs: {count}\n')
+
+    await self._handle_stat()
+
+  async def _handle_prune_matching(self):
+    params = await self._read_params()
+    param_ids = [get_param_id(param) for param in params]
+
+    symlink_count, dir_count = await self.client.runner.prune(param_ids, prune_matching=True)
+    entry_count = await self.client.history.prune(param_ids, prune_matching=True)
+    self.stdout.write(f'Pruned: {symlink_count} symlinks, ' + \
+                      f'{dir_count} output directories, ' + \
+                      f'{entry_count} histroy entries\n')
+
+  async def _handle_prune_mismatching(self):
+    params = await self._read_params()
+    param_ids = [get_param_id(param) for param in params]
+
+    symlink_count, dir_count = await self.client.runner.prune(param_ids, prune_mismatching=True)
+    entry_count = await self.client.history.prune(param_ids, prune_mismatching=True)
+    self.stdout.write(f'Pruned: {symlink_count} symlinks, ' + \
+                      f'{dir_count} output directories, ' + \
+                      f'{entry_count} histroy entries\n')
 
 def make_parser():
   '''Return a new argument parser.'''
@@ -414,10 +379,10 @@ def make_parser():
                             help='job IDs; leave empty to select all jobs')
 
   def _add_history(sub_parser):
-    sub_parser.add_argument('--history', action='store_true', dest='history', default=True,
-                            help='augment parameters with history data (default)',)
+    sub_parser.add_argument('--history', action='store_true', dest='history', default=False,
+                            help='augment parameters with history data',)
     sub_parser.add_argument('--no-history', action='store_false', dest='history',
-                            help='do not augment parameters with history data',
+                            help='do not augment parameters with history data (default)',
                             default=argparse.SUPPRESS)
 
   def _add_omit(sub_parser):
@@ -506,31 +471,66 @@ def make_parser():
                                      help='prune output data that do not match parameters')
   _add_read_params_argument(sub_parser)
 
-
-  #  elif args.command == 'estimate':
-
   return parser
 
-
 def run_client():
-  '''Parse arguments and process a client command.'''
-  args = make_parser().parse_args()
+  '''Parse arguments and process a client command.
+    Use "I" to pipe commands.
+    Use "//" to chain commands without pipe connection.'''
+  parser = make_parser()
 
-  secret = json.load(open(args.secret_file))
+  argv = sys.argv[1:]
 
+  group_start = -1
+  for i, arg in enumerate(argv):
+    if not arg.startswith('-'):
+      group_start = i
+      break
+
+  if group_start == -1:
+    parser.parse_args(argv)
+    assert False, 'This line must be unreachable'
+
+  # Use a dummy start command to parse the main arguments
+  common_args = parser.parse_args(argv[:group_start] + ['start'])
+
+  # Parse sub-arguments
+  args_list = []
+  pipe_break = []
+  for i in range(group_start, len(argv)):
+    if argv[i] == 'I' or argv[i] == '//':
+      args = parser.parse_args(argv[group_start:i])
+      args_list.append(args)
+      group_start = i + 1
+      if argv[i] == 'I':
+        pipe_break.append(False)
+      else:
+        pipe_break.append(True)
+  args = parser.parse_args(argv[group_start:])
+  args_list.append(args)
+  pipe_break.append(True)
+
+  # Construct and run chain
   loop = asyncio.get_event_loop()
 
-  if args.command in ['c', 'ca', 'cat', 'filter', 'select'] and not args.history:
-    client = None
-  else:
-    client = Client(args.host, args.port, secret, loop)
+  client_pool = {}
+  stdin = sys.stdin
+  stdout = io.StringIO()
+  for i, args in enumerate(args_list):
+    # Run a handler
+    handler = CommandHandler(stdin, stdout, common_args, args, client_pool, loop)
+    handle_future = asyncio.ensure_future(handler.handle(), loop=loop)
+    loop.run_until_complete(handle_future)
 
-  if args.command in ['monitor']:
-    client_watch = Client(args.host, args.port, secret, loop)
-  else:
-    client_watch = None
+    if pipe_break[i]:
+      # Spill output
+      stdout.seek(0)
+      sys.stdout.write(stdout.read())
+      stdin = io.StringIO()
+      stdin.close()
+    else:
+      # Connect stdout to stdin
+      stdout.seek(0)
+      stdin = stdout
 
-  handle_command_future = asyncio.ensure_future(
-      handle_command(client, client_watch, args), loop=loop)
-  loop.run_until_complete(handle_command_future)
-  return handle_command_future.result()
+    stdout = io.StringIO()
