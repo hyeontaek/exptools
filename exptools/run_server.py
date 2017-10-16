@@ -57,9 +57,6 @@ def run_server():
     logger.info(f'Using secret file at {args.secret_file}')
   secret = json.load(open(args.secret_file))
 
-  if args.history_file is not None:
-    logger.info(f'Using history file {args.history_file}')
-
   loop = asyncio.get_event_loop()
 
   history = History(args.history_file, loop)
