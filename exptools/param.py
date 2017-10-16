@@ -18,6 +18,11 @@ _HASH_FUNC = hashlib.blake2b # pylint: disable=no-member
 
 def get_param_id(param):
   '''Return the parameter ID of a parameter.'''
+  if '_' in param and 'param_id' in param['_']:
+    param_id = param['_']['param_id']
+    if not param_id.startswith('p-'):
+      raise RuntimeError(f'Invalid param_id: {param_id}')
+    return param_id
   filtered_param = {key: value for key, value in param.items() if not key.startswith('_')}
   param_str = json.dumps(filtered_param, sort_keys=True)
   # Skip first few bytes because they are typically skewed to a few characters in base58
