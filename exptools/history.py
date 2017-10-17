@@ -66,7 +66,7 @@ class History:
       async with aiofiles.open(self.path + '.tmp', 'w') as file:
         await file.write(data)
       os.rename(self.path + '.tmp', self.path)
-      self.logger.debug(f'Stored history data at {self.path}')
+      self.logger.info(f'Stored history data at {self.path}')
 
   async def update(self, job):
     '''Record finished time and result.'''

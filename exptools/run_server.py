@@ -27,8 +27,11 @@ def make_parser():
   parser.add_argument('--secret-file', type=str,
                       default='secret.json', help='the secret file path (default: %(default)s)')
 
-  parser.add_argument('--scheduler', type=str, default='serial',
+  parser.add_argument('--scheduler-type', type=str, default='serial',
                       help='the scheduler type')
+  parser.add_argument('--scheduler-mode', type=str, default='start',
+                      choices=['start', 'stop', 'oneshot'],
+                      help='initial scheduler mode')
   parser.add_argument('--scheduler-file', type=str, default=None,
                       help='the scheduler configuration file path')
 
@@ -71,7 +74,8 @@ def run_server():
 
   history = History(args.history_file, loop)
   queue = Queue(args.queue_file, history, loop)
-  scheduler = get_scheduler(args.scheduler)(args.scheduler_file, history, queue, loop)
+  scheduler = get_scheduler(args.scheduler_type)(
+      args.scheduler_mode, args.scheduler_file, history, queue, loop)
   runner = Runner(args.output_dir, queue, scheduler, loop)
   filter_ = Filter(loop)
   server = Server(args.host, args.port, secret, history, queue, scheduler, runner, filter_, loop)

@@ -65,6 +65,9 @@ class Queue:
           }
       self.logger.info(f'Initialized new queue state')
 
+    if not self.state['started_jobs'] and not self.state['queued_jobs']:
+      self.logger.warning('Queue empty')
+
   def _schedule_dump(self):
     self._dump_scheduled = True
 
@@ -78,7 +81,7 @@ class Queue:
       async with aiofiles.open(self.path + '.tmp', 'w') as file:
         await file.write(data)
       os.rename(self.path + '.tmp', self.path)
-      self.logger.debug(f'Stored state data at {self.path}')
+      self.logger.info(f'Stored state data at {self.path}')
 
   async def _get_next_job_id(self):
     '''Return the next job ID.'''
@@ -281,4 +284,4 @@ class Queue:
   def _check_empty(self):
     assert self.lock.locked()
     if not self.state['started_jobs'] and not self.state['queued_jobs']:
-      self.logger.info('Queue empty')
+      self.logger.warning('Queue empty')

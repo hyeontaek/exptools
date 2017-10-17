@@ -16,7 +16,8 @@ from exptools.rpc_helper import rpc_export_function
 class Scheduler:
   '''A scheduler interface.'''
 
-  def __init__(self, path, history, queue, loop):
+  def __init__(self, initial_mode, path, history, queue, loop):
+    self.initial_mode = initial_mode
     self.path = path
     self.history = history
     self.queue = queue
@@ -31,7 +32,14 @@ class Scheduler:
 
   async def run_forever(self):
     '''Run the scheduler.  Note that scheduling jobs is done by schedule().'''
-    await self.start()
+    if self.initial_mode == 'start':
+      await self.start()
+    elif self.initial_mode == 'stop':
+      pass
+    elif self.initial_mode == 'oneshot':
+      await self.set_oneshot()
+    else:
+      assert False
 
   @rpc_export_function
   async def is_running(self):
