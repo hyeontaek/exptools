@@ -8,6 +8,7 @@ import base64
 import collections
 import io
 import json
+import os
 import pprint
 import re
 import sys
@@ -189,15 +190,22 @@ class CommandHandler:
     return params
 
   @arg_export('common_get_queue_state')
-  @arg_define('-f', '--follow', action='store_true', default=False, help='follow state changes')
+  @arg_define('-f', '--follow', action='store_true', default=False, help='follow queue changes')
   @arg_define('-s', '--stop-empty', action='store_true', default=False,
               help='stop upon empty queue')
+  @arg_define('-c', '--clear-screen', action='store_true', default=False,
+              help='clear screen before showing the queue')
   async def _get_queue_state(self):
     if self.args.follow:
       async for queue_state in self.client_watch.queue.watch_state():
+        if self.args.clear_screen:
+          os.system('clear')
         yield queue_state
     else:
-      yield await self.client.queue.get_state()
+      state = await self.client.queue.get_state()
+      if self.args.clear_screen:
+        os.system('clear')
+      yield state
 
   @arg_export('common_get_job_ids')
   @arg_define('job_ids', type=str, nargs='*', help='job IDs; use "last" to select the last job')
