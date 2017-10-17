@@ -5,6 +5,7 @@ __all__ = ['run_client']
 import asyncio
 import argparse
 import base64
+import collections
 import io
 import json
 import pprint
@@ -19,6 +20,45 @@ from exptools.time import (
     format_estimated_time,
     )
 from exptools.param import get_param_id, get_name
+
+_ARG_EXPORTS = collections.OrderedDict()
+
+def arg_export(name):
+  '''Export an argument set.'''
+  def _wrapper(func):
+    _ARG_EXPORTS[name] = func
+    if 'arg_defs' not in dir(func):
+      func.arg_defs = []
+    return func
+  return _wrapper
+
+def arg_import(name):
+  '''Import an argument set.'''
+  def _wrapper(func):
+    if 'arg_defs' not in dir(func):
+      func.arg_defs = []
+    func.arg_defs.insert(0, ('import', name))
+    return func
+  return _wrapper
+
+def arg_define(*args, **kwargs):
+  '''Add an argument option.'''
+  def _wrapper(func):
+    if 'arg_defs' not in dir(func):
+      func.arg_defs = []
+    func.arg_defs.insert(0, ('add', args, kwargs))
+    return func
+  return _wrapper
+
+def arg_add_options(parser, func):
+  '''Add argument options defined for the function to the parser.'''
+  for arg_def in func.arg_defs:
+    if arg_def[0] == 'import':
+      arg_add_options(parser, _ARG_EXPORTS[arg_def[1]])
+    elif arg_def[0] == 'add':
+      parser.add_argument(*arg_def[1], **arg_def[2])
+    else:
+      assert False
 
 # pylint: disable=too-few-public-methods
 class CommandHandler:
@@ -51,12 +91,20 @@ class CommandHandler:
         self.client_pool['client_watch'] = client
       self.client_watch = self.client_pool['client_watch']
 
-    self._handler = getattr(self, '_handle_' + command.replace('-', '_'))
+    self._handler = _ARG_EXPORTS['command_' + command]
 
   async def handle(self):
     '''Handle a command.'''
-    await self._handler()
+    await self._handler(self)
 
+  @arg_export('common_read_params')
+  @arg_define('params_files', type=str, nargs='*',
+              help='path to json files containing parameters; ' + \
+                   'leave empty to read from standard input')
+  @arg_define('-p', '--param-id', action='store_true', default=False,
+              help='augment parameters with parameter IDs')
+  @arg_define('-H', '--history', action='store_true', default=False,
+              help='augment parameters with history data')
   async def _read_params(self):
     if not self.args.params_files:
       params = json.loads(self.stdin.read())
@@ -69,7 +117,7 @@ class CommandHandler:
           with open(path) as file:
             params.extend(json.loads(file.read()))
 
-    if 'param_id' in self.args and self.args.param_id:
+    if self.args.param_id:
       for param in params:
         if '_' not in param:
           meta = param['_'] = {}
@@ -80,7 +128,7 @@ class CommandHandler:
           param_id = get_param_id(param)
           meta['param_id'] = param_id
 
-    if 'history' in self.args and self.args.history:
+    if self.args.history:
       param_ids = set()
       for param in params:
         if '_' not in param:
@@ -100,6 +148,10 @@ class CommandHandler:
 
     return params
 
+  @arg_export('common_omit_params')
+  @arg_define('-o', '--omit', action='append',
+              choices=['succeeded', 'finished', 'started', 'queued', 'duplicate'],
+              help='omit specified parameter types')
   async def _omit_params(self, params):
     '''Omit parameters.'''
 
@@ -122,14 +174,35 @@ class CommandHandler:
       params = unique_params
     return params
 
+  @arg_export('common_get_queue_state')
+  @arg_define('-f', '--follow', action='store_true', default=False, help='follow state changes')
+  @arg_define('-s', '--stop-empty', action='store_true', default=False,
+              help='stop upon empty queue')
   async def _get_queue_state(self):
-    if 'follow' in self.args and self.args.follow:
+    if self.args.follow:
       async for queue_state in self.client_watch.queue.watch_state():
         yield queue_state
     else:
       yield await self.client.queue.get_state()
 
-  async def _get_job_id_from_job_or_param_id(self):
+  @arg_export('common_get_job_ids')
+  @arg_define('job_ids', type=str, nargs='*', help='job IDs')
+  @arg_define('-a', '--all', action='store_true', default=False, help='select all jobs')
+  @arg_define('-l', '--last', action='store_true', default=False, help='select the last job')
+  async def _get_job_ids(self, job_type):
+    job_ids = list(self.args.job_ids)
+    if self.args.all:
+      queue_state = await self.client.queue.get_state()
+      job_ids.extend([job['job_id'] for job in queue_state[job_type]])
+    elif self.args.last:
+      queue_state = await self.client.queue.get_state()
+      job_ids.append(queue_state[job_type][-1]['job_id'])
+    return job_ids
+
+  @arg_export('common_get_job_or_param_id')
+  @arg_define('job_or_param_id', type=str,
+              help='a job or parameter ID; use "last" to select the last job')
+  async def _get_job_or_param_id(self):
     queue_state = await self.client.queue.get_state()
     if self.args.job_or_param_id == 'last':
       if queue_state['started_jobs']:
@@ -149,6 +222,9 @@ class CommandHandler:
         raise RuntimeError(f'Invalid job or parameter {self.args.job_or_param_id}')
     return job_id
 
+  @arg_export('common_estimate')
+  @arg_define('-e', '--estimate', action='store_true', default=False,
+              help='estimate execution time instead of adding')
   async def _estimate(self, params):
     queue_state = await self.client.queue.get_state()
     oneshot = await self.client.scheduler.is_oneshot()
@@ -161,13 +237,29 @@ class CommandHandler:
     self.stdout.write('Estimated: ' + \
         await format_estimated_time(self.client.estimator, queue_state, oneshot) + '\n')
 
+  @arg_export('common_get_stdout_stderr')
+  @arg_define('-o', '--stdout', action='store_true', default=True,
+              help='read stdout (default)')
+  @arg_define('-e', '--stderr', action='store_false', dest='stdout',
+              help='read stderr instead of stdout', default=argparse.SUPPRESS)
+  async def _get_stdout_stderr(self):
+    return self.args.stdout
+
+  @arg_export('command_d')
+  @arg_import('common_read_params')
+  @arg_import('common_omit_params')
   async def _handle_d(self):
+    '''summarize parameters concisely'''
     params = await self._read_params()
     params = await self._omit_params(params)
     for param in params:
       self.stdout.write(f'{get_param_id(param)}  {get_name(param)}\n')
 
+  @arg_export('command_dum')
+  @arg_import('common_read_params')
+  @arg_import('common_omit_params')
   async def _handle_dum(self):
+    '''summarize parameters'''
     params = await self._read_params()
     params = await self._omit_params(params)
     for param in params:
@@ -177,12 +269,21 @@ class CommandHandler:
         self.stdout.write('  ' + line + '\n')
       self.stdout.write('\n')
 
+  @arg_export('command_dump')
+  @arg_import('common_read_params')
+  @arg_import('common_omit_params')
   async def _handle_dump(self):
+    '''dump parameters'''
     params = await self._read_params()
     params = await self._omit_params(params)
     self.stdout.write(json.dumps(params, sort_keys=True, indent=2) + '\n')
 
+  @arg_export('command_filter')
+  @arg_define('filter', type=str, help='YAQL expression')
+  @arg_import('common_read_params')
+  @arg_import('common_omit_params')
   async def _handle_filter(self):
+    '''filter parameters using YAQL'''
     filter_expr = self.args.filter
     params = await self._read_params()
     params = await self._omit_params(params)
@@ -190,7 +291,12 @@ class CommandHandler:
     params = await self.client.filter.filter(filter_expr, params)
     self.stdout.write(json.dumps(params, sort_keys=True, indent=2) + '\n')
 
+  @arg_export('command_select')
+  @arg_define('filter', type=str, help='comma-separated parameter IDs')
+  @arg_import('common_read_params')
+  @arg_import('common_omit_params')
   async def _handle_select(self):
+    '''select parameters by parameter IDs'''
     filter_param_ids = self.args.filter.split(',')
     params = await self._read_params()
     params = await self._omit_params(params)
@@ -215,24 +321,31 @@ class CommandHandler:
     params = selected_params
     self.stdout.write(json.dumps(params, sort_keys=True, indent=2) + '\n')
 
+  @arg_export('command_start')
   async def _handle_start(self):
+    '''start the scheduler'''
     succeeded = await self.client.scheduler.start()
     self.stdout.write('Scheduler started\n' if succeeded else 'Failed to start scheduler\n')
 
-    await self._handle_stat()
-
+  @arg_export('command_stop')
   async def _handle_stop(self):
+    '''stop the scheduler'''
     succeeded = await self.client.scheduler.stop()
     self.stdout.write('Scheduler stopped\n' if succeeded else 'Failed to stop scheduler\n')
 
+  @arg_export('command_oneshot')
   async def _handle_oneshot(self):
+    '''schedule only one job and stop'''
     succeeded = await self.client.scheduler.set_oneshot()
     self.stdout.write('Scheduler oneshot mode set\n' \
                       if succeeded else 'Failed to set oneshot mode\n')
 
-    await self._handle_stat()
-
+  @arg_export('command_resource')
+  @arg_define('operation', type=str, choices=['add', 'rm'], help='operation')
+  @arg_define('key', type=str, help='resource key')
+  @arg_define('value', type=str, help='resource value')
   async def _handle_resource(self):
+    '''add or remove a resource'''
     if self.args.operation == 'add':
       succeeded = await self.client.scheduler.add_resource(self.args.key, self.args.value)
     elif self.args.operation == 'remove':
@@ -241,20 +354,27 @@ class CommandHandler:
       assert False
     self.stdout.write('Resource updated\n' if succeeded else 'Failed to update resource\n')
 
-    await self._handle_stat()
-
+  @arg_export('command_stat')
+  @arg_import('common_get_queue_state')
   async def _handle_stat(self):
+    '''summarize the queue state'''
     async for queue_state in self._get_queue_state():
       oneshot = await self.client.scheduler.is_oneshot()
 
       self.stdout.write(
           await format_estimated_time(self.client.estimator, queue_state, oneshot) + '\n')
 
-      if 'stop_empty' in self.args and self.args.stop_empty and \
+      if self.args.stop_empty and \
          not queue_state['started_jobs'] and (oneshot or not queue_state['queued_jobs']):
         break
 
+  @arg_export('command_status')
+  @arg_import('common_get_queue_state')
+  @arg_define('job_types', type=str, nargs='*',
+              choices=['all', 'finished', 'started', 'queued'], default='all',
+              help='specify job types to show (default: %(default)s)')
   async def _handle_status(self):
+    '''show the queue state'''
     if self.args.job_types == 'all':
       job_types = set(['finished', 'started', 'queued'])
     else:
@@ -318,7 +438,12 @@ class CommandHandler:
          not queue_state['started_jobs'] and (oneshot or not queue_state['queued_jobs']):
         break
 
+  @arg_export('command_run')
+  @arg_import('common_omit_params')
+  @arg_import('common_estimate')
+  @arg_define('command', type=str, nargs='+', help='adhoc command')
   async def _handle_run(self):
+    '''run an adhoc command'''
     params = [{'command': self.args.command}]
     params = await self._omit_params(params)
 
@@ -329,9 +454,12 @@ class CommandHandler:
     job_ids = await self.client.queue.add(params)
     self.stdout.write(f'Added queued jobs: {job_ids[0]}\n')
 
-    await self._handle_stat()
-
+  @arg_export('command_add')
+  @arg_import('common_read_params')
+  @arg_import('common_omit_params')
+  @arg_import('common_estimate')
   async def _handle_add(self):
+    '''add parameters to the queue'''
     params = await self._read_params()
     params = await self._omit_params(params)
 
@@ -342,28 +470,22 @@ class CommandHandler:
     job_ids = await self.client.queue.add(params)
     self.stdout.write(f'Added queued jobs: {" ".join(job_ids)}\n')
 
-    await self._handle_stat()
-
+  @arg_export('command_retry')
+  @arg_import('common_get_job_ids')
+  @arg_import('common_omit_params')
+  @arg_import('common_estimate')
   async def _handle_retry(self):
+    '''retry finished jobs'''
     params = []
     queue_state = await self.client.queue.get_state()
-    for job_id in self.args.job_ids:
-      if job_id == 'last':
-        if queue_state['finished_jobs']:
-          params.append(queue_state['finished_jobs'][-1]['param'])
-        continue
 
+    for job_id in await self._get_job_ids('finished_jobs'):
       for job in queue_state['finished_jobs']:
         if job['job_id'] == job_id:
           params.append(job['param'])
           break
       else:
-        for job in queue_state['started_jobs']:
-          if job['job_id'] == job_id:
-            params.append(job['param'])
-            break
-        else:
-          raise RuntimeError(f'No job or parameter ID {job_id}')
+        raise RuntimeError(f'No parameter for job {job_id}')
 
     params = await self._omit_params(params)
 
@@ -374,21 +496,21 @@ class CommandHandler:
     job_ids = await self.client.queue.add(params)
     self.stdout.write(f'Added queued jobs: {" ".join(job_ids)}\n')
 
-    await self._handle_stat()
-
+  @arg_export('command_rm')
+  @arg_import('common_get_job_ids')
   async def _handle_rm(self):
-    if not self.args.job_ids:
-      count = await self.client.queue.remove_queued(None)
-    else:
-      count = await self.client.queue.remove_queued(self.args.job_ids)
+    '''remove queued jobs'''
+    job_ids = await self._get_job_ids('queued_jobs')
+    count = await self.client.queue.remove_queued(job_ids)
     self.stdout.write(f'Removed queued jobs: {count}\n')
 
-    await self._handle_stat()
-
+  @arg_export('command_up')
+  @arg_import('common_get_job_ids')
   async def _handle_up(self):
-    changed_job_ids = set(self.args.job_ids)
-    queue_state = await self.client.queue.get_state()
+    '''priorize queued jobs'''
+    changed_job_ids = await self._get_job_ids('queued_jobs')
 
+    queue_state = await self.client.queue.get_state()
     job_ids = [job['job_id'] for job in queue_state['queued_jobs']]
     for i in range(1, len(job_ids)):
       if job_ids[i] in changed_job_ids:
@@ -396,10 +518,13 @@ class CommandHandler:
     count = await self.client.queue.reorder(job_ids)
     self.stdout.write(f'Reordered queued jobs: {count}\n')
 
+  @arg_export('command_down')
+  @arg_import('common_get_job_ids')
   async def _handle_down(self):
-    changed_job_ids = set(self.args.job_ids)
-    queue_state = await self.client.queue.get_state()
+    '''depriorize queued jobs'''
+    changed_job_ids = await self._get_job_ids('queued_jobs')
 
+    queue_state = await self.client.queue.get_state()
     job_ids = [job['job_id'] for job in queue_state['queued_jobs']]
     for i in range(len(job_ids) - 2, -1, -1):
       if job_ids[i] in changed_job_ids:
@@ -407,43 +532,61 @@ class CommandHandler:
     count = await self.client.queue.reorder(job_ids)
     self.stdout.write(f'Reordered queued jobs: {count}\n')
 
+  @arg_export('command_kill')
+  @arg_import('common_get_job_ids')
+  @arg_define('-f', '--force', action='store_true', default=False, help='kill forcefully')
   async def _handle_kill(self):
-    if not self.args.job_ids:
-      count = await self.client.runner.kill(None, force=self.args.force)
-    else:
-      count = await self.client.runner.kill(self.args.job_ids, force=self.args.force)
+    '''kill started jobs'''
+    job_ids = await self._get_job_ids('started_jobs')
+    count = await self.client.runner.kill(job_ids, force=self.args.force)
     self.stdout.write(f'Killed jobs: {count}\n')
 
-    await self._handle_stat()
-
+  @arg_export('command_dismiss')
+  @arg_import('common_get_job_ids')
   async def _handle_dismiss(self):
-    if not self.args.job_ids:
-      count = await self.client.queue.remove_finished(None)
-    else:
-      count = await self.client.queue.remove_finished(self.args.job_ids)
+    '''clear finished jobs'''
+    job_ids = await self._get_job_ids('finished_jobs')
+    count = await self.client.queue.remove_finished(job_ids)
     self.stdout.write(f'Removed finished jobs: {count}\n')
 
-    await self._handle_stat()
-
+  @arg_export('command_cat')
+  @arg_import('common_get_stdout_stderr')
+  @arg_import('common_get_job_or_param_id')
   async def _handle_cat(self):
-    job_id = await self._get_job_id_from_job_or_param_id()
-    async for data in self.client.runner.cat(job_id, self.args.stdout, self.unknown_args):
+    '''show the job output'''
+    stdout = await self._get_stdout_stderr()
+    job_id = await self._get_job_or_param_id()
+    async for data in self.client.runner.cat(job_id, stdout, self.unknown_args):
       data = base64.a85decode(data.encode('ascii')).decode('utf-8')
       sys.stdout.write(data)
 
+  @arg_export('command_head')
+  @arg_import('common_get_stdout_stderr')
+  @arg_import('common_get_job_or_param_id')
   async def _handle_head(self):
-    job_id = await self._get_job_id_from_job_or_param_id()
-    async for data in self.client.runner.head(job_id, self.args.stdout, self.unknown_args):
+    '''show the head of job output'''
+    stdout = await self._get_stdout_stderr()
+    job_id = await self._get_job_or_param_id()
+    async for data in self.client.runner.head(job_id, stdout, self.unknown_args):
       data = base64.a85decode(data.encode('ascii')).decode('utf-8')
       sys.stdout.write(data)
 
+  @arg_export('command_tail')
+  @arg_import('common_get_stdout_stderr')
+  @arg_import('common_get_job_or_param_id')
   async def _handle_tail(self):
-    job_id = await self._get_job_id_from_job_or_param_id()
-    async for data in self.client.runner.tail(job_id, self.args.stdout, self.unknown_args):
+    '''show the tail of job output'''
+    stdout = await self._get_stdout_stderr()
+    job_id = await self._get_job_or_param_id()
+    async for data in self.client.runner.tail(job_id, stdout, self.unknown_args):
       data = base64.a85decode(data.encode('ascii')).decode('utf-8')
       sys.stdout.write(data)
 
+  @arg_export('command_migrate')
+  @arg_define('old_params_file', type=str, help='path to the file containing old parameters ')
+  @arg_import('common_read_params')
   async def _handle_migrate(self):
+    '''migrate output data for new parameters'''
     # Use vars() on Namespace to access a field containing -
     old_params = json.load(open(self.args.old_params_file))
     new_params = await self._read_params()
@@ -464,7 +607,11 @@ class CommandHandler:
     self.stdout.write(f'Migrated: {symlink_count} symlinks, ' + \
                       f'{entry_count} histroy entries\n')
 
+  @arg_export('command_prune')
+  @arg_define('type', type=str, choices=['matching', 'mismatching'], help='type')
+  @arg_import('common_read_params')
   async def _handle_prune(self):
+    '''prune output data matching or mismatching parameters'''
     params = await self._read_params()
     param_ids = [get_param_id(param) for param in params]
 
@@ -496,163 +643,14 @@ def make_parser():
 
   parser.add_argument('-v', '--verbose', help='be verbose')
 
-  def _add_param_id(sub_parser):
-    sub_parser.add_argument('-p', '--param-id', action='store_true', default=False,
-                            help='augment parameters with parameter IDs')
-
-  def _add_history(sub_parser):
-    sub_parser.add_argument('-H', '--history', action='store_true', default=False,
-                            help='augment parameters with history data')
-
-  def _add_read_params_argument(sub_parser):
-    sub_parser.add_argument('params_files', type=str, nargs='*',
-                            help='path to json files containing parameters; ' + \
-                                 'leave empty to read from standard input')
-
-  def _add_omit(sub_parser):
-    sub_parser.add_argument('-o', '--omit', action='append',
-                            choices=['succeeded', 'finished', 'started', 'queued', 'duplicate'],
-                            help='omit specified parameter types')
-
-  def _add_estimate(sub_parser):
-    sub_parser.add_argument('-e', '--estimate', action='store_true', default=False,
-                            help='estimate execution time instead of adding')
-
-  def _add_follow(sub_parser):
-    sub_parser.add_argument('-f', '--follow', action='store_true', default=False,
-                            help='follow state changes')
-    sub_parser.add_argument('-s', '--stop-empty', action='store_true', default=False,
-                            help='stop upon empty queue')
-
-  def _add_job_ids_auto_select_all(sub_parser):
-    sub_parser.add_argument('job_ids', type=str, nargs='*',
-                            help='job IDs; leave empty to select all jobs')
-
-  def _add_job_ids(sub_parser):
-    sub_parser.add_argument('job_ids', type=str, nargs='+', help='job IDs')
-
-  def _add_stdout_sterr(sub_parser):
-    sub_parser.add_argument('-o', '--stdout', action='store_true', default=True,
-                            help='read stdout (default)')
-    sub_parser.add_argument('-e', '--stderr', action='store_false', dest='stdout',
-                            help='read stderr instead of stdout',
-                            default=argparse.SUPPRESS)
-
-  def _add_job_or_param_id(sub_parser):
-    sub_parser.add_argument('job_or_param_id', type=str,
-                            help='a job or parameter ID; use "last" to select the last job')
-
   subparsers = parser.add_subparsers(dest='command')
 
-  sub_parser = subparsers.add_parser('d', help='summarize parameters concisely')
-  _add_param_id(sub_parser)
-  _add_history(sub_parser)
-  _add_read_params_argument(sub_parser)
-  _add_omit(sub_parser)
+  for name, func in _ARG_EXPORTS.items():
+    if name.startswith('command_'):
+      command = name.partition('_')[2]
+      subparser = subparsers.add_parser(command, help=func.__doc__)
 
-  sub_parser = subparsers.add_parser('du', help='summarize parameters')
-  _add_param_id(sub_parser)
-  _add_history(sub_parser)
-  _add_read_params_argument(sub_parser)
-  _add_omit(sub_parser)
-
-  sub_parser = subparsers.add_parser('dump', help='dump parameters')
-  _add_param_id(sub_parser)
-  _add_history(sub_parser)
-  _add_read_params_argument(sub_parser)
-  _add_omit(sub_parser)
-
-  sub_parser = subparsers.add_parser('filter', help='filter parameters using YAQL')
-  _add_param_id(sub_parser)
-  _add_history(sub_parser)
-  sub_parser.add_argument('filter', type=str, help='YAQL expression')
-  _add_read_params_argument(sub_parser)
-  _add_omit(sub_parser)
-
-  sub_parser = subparsers.add_parser('select', help='select parameters by parameter IDs')
-  _add_param_id(sub_parser)
-  _add_history(sub_parser)
-  sub_parser.add_argument('filter', type=str, help='comma-separated parameter IDs')
-  _add_read_params_argument(sub_parser)
-  _add_omit(sub_parser)
-
-  sub_parser = subparsers.add_parser('start', help='start the scheduler')
-
-  sub_parser = subparsers.add_parser('stop', help='stop the scheduler')
-
-  sub_parser = subparsers.add_parser('oneshot', help='schedule only one job and stop')
-
-  sub_parser = subparsers.add_parser('resource', help='add or remove a resource')
-  sub_parser.add_argument('operation', type=str, choices=['add', 'rm'], help='operation')
-  sub_parser.add_argument('key', type=str, help='resource key')
-  sub_parser.add_argument('value', type=str, help='resource value')
-
-  sub_parser = subparsers.add_parser('stat', help='summarize the queue state')
-  _add_follow(sub_parser)
-
-  sub_parser = subparsers.add_parser('status', help='show the queue state')
-  _add_follow(sub_parser)
-  sub_parser.add_argument('job_types', type=str, nargs='*',
-                          choices=['all', 'finished', 'started', 'queued'],
-                          default='all',
-                          help='specify job types to show (default: %(default)s)')
-
-  sub_parser = subparsers.add_parser('run', help='run an adhoc command')
-  _add_omit(sub_parser)
-  _add_estimate(sub_parser)
-  sub_parser.add_argument('command', type=str, nargs='+', help='adhoc command')
-
-  sub_parser = subparsers.add_parser('add', help='add parameters to the queue')
-  _add_param_id(sub_parser)
-  _add_read_params_argument(sub_parser)
-  _add_omit(sub_parser)
-  _add_estimate(sub_parser)
-
-  sub_parser = subparsers.add_parser('retry', help='retry finished jobs')
-  _add_omit(sub_parser)
-  _add_estimate(sub_parser)
-  sub_parser.add_argument('job_ids', type=str, nargs='+',
-                          help='job IDs; use "last" to select the last finished job')
-
-  sub_parser = subparsers.add_parser('rm', help='remove queued jobs')
-  _add_job_ids_auto_select_all(sub_parser)
-
-  sub_parser = subparsers.add_parser('up', help='priorize queued jobs')
-  _add_job_ids(sub_parser)
-
-  sub_parser = subparsers.add_parser('down', help='deprioritize queued jobs')
-  _add_job_ids(sub_parser)
-
-  sub_parser = subparsers.add_parser('kill', help='kill started jobs')
-  sub_parser.add_argument('-f', '--force', action='store_true', default=False,
-                          help='terminate started jobs forcefully')
-  _add_job_ids_auto_select_all(sub_parser)
-
-  sub_parser = subparsers.add_parser('dismiss', help='clear finished jobs')
-  _add_job_ids_auto_select_all(sub_parser)
-
-  sub_parser = subparsers.add_parser('cat', help='show the job output')
-  _add_stdout_sterr(sub_parser)
-  _add_job_or_param_id(sub_parser)
-
-  sub_parser = subparsers.add_parser('head', help='show the head of job output')
-  _add_stdout_sterr(sub_parser)
-  _add_job_or_param_id(sub_parser)
-
-  sub_parser = subparsers.add_parser('tail', help='show the tail of job output')
-  _add_stdout_sterr(sub_parser)
-  _add_job_or_param_id(sub_parser)
-
-  sub_parser = subparsers.add_parser('migrate',
-                                     help='migrate output data for new parameters')
-  sub_parser.add_argument('old_params_file', type=str,
-                          help='path to the file containing old parameters ')
-  _add_read_params_argument(sub_parser)
-
-  sub_parser = subparsers.add_parser('prune',
-                                     help='prune output data matching or mismatching parameters')
-  sub_parser.add_argument('type', type=str, choices=['matching', 'mismatching'], help='type')
-  _add_read_params_argument(sub_parser)
+      arg_add_options(subparser, func)
 
   return parser
 
