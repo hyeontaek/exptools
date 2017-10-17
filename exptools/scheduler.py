@@ -7,6 +7,7 @@ __all__ = [
     ]
 
 import asyncio
+import json
 import logging
 
 from exptools.rpc_helper import rpc_export_function
@@ -15,11 +16,11 @@ from exptools.rpc_helper import rpc_export_function
 class Scheduler:
   '''A scheduler interface.'''
 
-  def __init__(self, history, queue, conf, loop):
+  def __init__(self, path, history, queue, loop):
+    self.path = path
     self.history = history
     self.queue = queue
     self.loop = loop
-    self.conf = dict(conf)
 
     self.lock = asyncio.Condition(loop=self.loop)
 
@@ -28,7 +29,9 @@ class Scheduler:
     self.running = False
     self.oneshot = False
 
-    asyncio.ensure_future(self.start(), loop=loop)
+  async def run_forever(self):
+    '''Run the scheduler.  Note that scheduling jobs is done by schedule().'''
+    await self.start()
 
   @rpc_export_function
   async def is_running(self):
@@ -125,9 +128,10 @@ class SerialScheduler(Scheduler):
     '''Remove a resource.'''
     return False
 
-def get_scheduler(scheduler_conf):
+def get_scheduler(scheduler):
   '''Return a matching scheduler.'''
   schedulers = {
+      None: SerialScheduler,
       'serial': SerialScheduler,
       }
-  return schedulers[scheduler_conf['scheduler']]
+  return schedulers[scheduler]

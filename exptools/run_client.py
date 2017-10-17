@@ -645,7 +645,7 @@ def make_parser():
   parser.add_argument('--secret-file', type=str,
                       default='secret.json', help='the secret file path (default: %(default)s)')
 
-  parser.add_argument('-v', '--verbose', help='be verbose')
+  parser.add_argument('-v', '--verbose', action='store_true', default=False, help='be verbose')
 
   subparsers = parser.add_subparsers(dest='command')
 
@@ -713,8 +713,7 @@ def run_client():
     for i, (args, unknown_args) in enumerate(args_list):
       # Run a handler
       handler = CommandHandler(stdin, stdout, common_args, args, unknown_args, client_pool, loop)
-      handle_future = asyncio.ensure_future(handler.handle(), loop=loop)
-      loop.run_until_complete(handle_future)
+      loop.run_until_complete(handler.handle())
 
       if pipe_break[i]:
         stdin = sys.stdin
@@ -729,5 +728,4 @@ def run_client():
       else:
         stdout = io.StringIO()
   except KeyboardInterrupt:
-    if common_args.verbose:
-      raise
+    pass

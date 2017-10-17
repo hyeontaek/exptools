@@ -140,26 +140,22 @@ class Server:
       # Ignore closed connection
       pass
 
-  def serve_forever(self):
-    '''Serve websocket requests forever.'''
+  async def run_forever(self):
+    '''Serve websocket requests.'''
     # pylint: disable=unused-argument
     async def _serve(websocket, path):
       try:
         if not await self._authenticate(websocket):
           return
 
-        _, pending = await asyncio.wait([
+        tasks = [
             asyncio.ensure_future(self._send_pings(websocket), loop=self.loop),
             asyncio.ensure_future(self._handle_requests(websocket), loop=self.loop),
-            ], return_when=asyncio.FIRST_COMPLETED)
-        for task in pending:
-          task.cancel()
+            ]
+        await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
 
       except websockets.exceptions.ConnectionClosed:
         self.logger.debug('Connection closed')
 
-    start_server = websockets.serve(_serve, self.host, self.port)
     self.logger.info(f'Listening on ws://{self.host}:{self.port}/')
-
-    self.loop.run_until_complete(start_server)
-    self.loop.run_forever()
+    await websockets.serve(_serve, self.host, self.port)

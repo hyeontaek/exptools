@@ -28,15 +28,6 @@ class Client:
     self.secret = secret
     self.loop = loop
 
-    websocket_conn = asyncio.ensure_future(
-        websockets.connect(f'ws://{self.host}:{self.port}'), loop=loop)
-    loop.run_until_complete(websocket_conn)
-    self.websocket = websocket_conn.result()
-
-    auth = asyncio.ensure_future(self._authenticate(self.websocket), loop=loop)
-    loop.run_until_complete(auth)
-    assert auth.result(), 'Authentication failed'
-
     self.history = ObjectProxy(self, 'history', History)
     self.filter = ObjectProxy(self, 'filter', Filter)
     self.queue = ObjectProxy(self, 'queue', Queue)
@@ -46,6 +37,18 @@ class Client:
     self.estimator = Estimator(self.history)
 
     self.next_id = 0
+    self._connect()
+
+  def _connect(self):
+    '''Connect to the server.'''
+    connect_task = asyncio.ensure_future(
+        websockets.connect(f'ws://{self.host}:{self.port}'), loop=self.loop)
+    self.loop.run_until_complete(connect_task)
+    self.websocket = connect_task.result()
+
+    auth = asyncio.ensure_future(self._authenticate(self.websocket), loop=self.loop)
+    self.loop.run_until_complete(auth)
+    assert auth.result(), 'Authentication failed'
 
   async def _authenticate(self, websocket):
     '''Perform authentication.'''

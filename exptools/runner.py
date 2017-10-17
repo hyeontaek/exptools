@@ -26,13 +26,19 @@ class Runner:
     if not os.path.exists(self.base_dir):
       mkdirs(self.base_dir, ignore_errors=False)
 
-    asyncio.ensure_future(self._wait_for_schedule(), loop=loop)
+  async def run_forever(self):
+    '''Run scheduled jobs.'''
 
-  async def _wait_for_schedule(self):
-    '''Request to run a scheduled job.'''
+    tasks = []
+    try:
+      async for job in self.scheduler.schedule():
+        task = asyncio.ensure_future(self._run(job), loop=self.loop)
+        tasks.append(task)
 
-    async for job in self.scheduler.schedule():
-      asyncio.ensure_future(self._run(job), loop=self.loop)
+        tasks = list(filter(lambda task: not task.done(), tasks))
+    finally:
+      for task in tasks:
+        task.cancel()
 
   @staticmethod
   def _create_job_files(job, job_dir):
@@ -89,6 +95,7 @@ class Runner:
         os.unlink(param_path + '_tmp')
       os.symlink(job_id, param_path + '_tmp', target_is_directory=True)
 
+      terminated = False
       with open(os.path.join(job_dir, 'stdout'), 'wb', buffering=0) as stdout, \
            open(os.path.join(job_dir, 'stderr'), 'wb', buffering=0) as stderr:
         proc = await asyncio.create_subprocess_exec(
@@ -102,9 +109,22 @@ class Runner:
 
         await self.queue.set_pid(job_id, proc.pid)
 
-        await proc.communicate()
+        try:
+          await proc.communicate()
+        except Exception: # pylint: disable=broad-except
+          self.logger.info(f'Terminating started job {job_id}')
+          terminated = True
+          try:
+            proc.terminate()
+          except Exception: # pylint: disable=broad-except
+            pass
+        finally:
+          try:
+            await proc.wait()
+          except Exception: # pylint: disable=broad-except
+            self.logger.exception('Exception while waiting for process')
 
-      if proc.returncode == 0:
+      if not terminated and proc.returncode == 0:
         os.rename(param_path + '_tmp', param_path)
         await self.queue.set_finished(job_id, True)
       else:
@@ -179,12 +199,10 @@ class Runner:
         if not data:
           break
         yield base64.b64encode(data).decode('ascii')
+    except Exception: # pylint: disable=broad-except
+      proc.terminate()
+      raise
     finally:
-      try:
-        proc.terminate()
-      except Exception: # pylint: disable=broad-except
-        #self.logger.exception('Exception while termining process')
-        pass
       try:
         await proc.wait()
       except Exception: # pylint: disable=broad-except
