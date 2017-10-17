@@ -12,7 +12,6 @@ import base58
 
 from exptools.param import get_param_id
 from exptools.rpc_helper import rpc_export_function
-from exptools.time import diff_sec, parse_utc
 
 class History:
   '''Manage the history data of previous job execution.'''
@@ -32,7 +31,7 @@ class History:
 
     self.logger = logging.getLogger('exptools.History')
 
-    self.lock = asyncio.Lock()
+    self.lock = asyncio.Lock(loop=self.loop)
     self._load()
 
     self.dump_future = None

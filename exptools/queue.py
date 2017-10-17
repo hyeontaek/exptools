@@ -18,7 +18,7 @@ class Queue:
     self.history = history
     self.loop = loop
 
-    self.lock = asyncio.Condition()
+    self.lock = asyncio.Condition(loop=self.loop)
     self.finished_jobs = []
     self.started_jobs = []
     self.queued_jobs = []
@@ -142,8 +142,6 @@ class Queue:
     async with self.lock:
       for i, job in enumerate(self.queued_jobs):
         if job['job_id'] == job_id:
-          param_id = job['param_id']
-
           job['started'] = now
           job['pid'] = None
 
@@ -172,8 +170,6 @@ class Queue:
     async with self.lock:
       for i, job in enumerate(self.started_jobs):
         if job['job_id'] == job_id:
-          param_id = job['param_id']
-
           job['finished'] = now
           job['duration'] = \
               diff_sec(parse_utc(now), parse_utc(job['started']))

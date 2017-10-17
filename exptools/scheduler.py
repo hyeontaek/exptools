@@ -3,6 +3,7 @@
 __all__ = [
     'Scheduler',
     'SerialScheduler',
+    'get_scheduler',
     ]
 
 import asyncio
@@ -14,9 +15,13 @@ from exptools.rpc_helper import rpc_export_function
 class Scheduler:
   '''A scheduler interface.'''
 
-  def __init__(self, queue, loop):
+  def __init__(self, history, queue, conf, loop):
+    self.history = history
     self.queue = queue
     self.loop = loop
+    self.conf = dict(conf)
+
+    self.lock = asyncio.Condition(loop=self.loop)
 
     self.logger = logging.getLogger('exptools.Scheduler')
 
@@ -89,10 +94,6 @@ class Scheduler:
 class SerialScheduler(Scheduler):
   '''A scheduler that runs a single job at a time in order.'''
 
-  #def __init__(self, *args, **kwargs):
-  #  super().__init__(*args, **kwargs)
-  #  self.logger = logging.getLogger('exptools.SerialScheduler')
-
   async def schedule(self):
     '''Schedule a job.'''
     async for queue_state in self.queue.watch_state():
@@ -114,10 +115,19 @@ class SerialScheduler(Scheduler):
       # Choose the first queued job
       yield queue_state['queued_jobs'][0]
 
+  @rpc_export_function
   async def add_resource(self, key, value):
     '''Add a resource.'''
-    pass
+    return False
 
+  @rpc_export_function
   async def remove_resource(self, key, value):
     '''Remove a resource.'''
-    pass
+    return False
+
+def get_scheduler(scheduler_conf):
+  '''Return a matching scheduler.'''
+  schedulers = {
+      'serial': SerialScheduler,
+      }
+  return schedulers[scheduler_conf['scheduler']]

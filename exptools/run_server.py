@@ -13,7 +13,7 @@ from exptools.filter import Filter
 from exptools.history import History
 from exptools.queue import Queue
 from exptools.runner import Runner
-from exptools.scheduler import SerialScheduler
+from exptools.scheduler import get_scheduler
 from exptools.server import Server
 
 def make_parser():
@@ -26,6 +26,9 @@ def make_parser():
                       help='the port number of the server (default: %(default)s)')
   parser.add_argument('--secret-file', type=str,
                       default='secret.json', help='the secret file path (default: %(default)s)')
+
+  parser.add_argument('--scheduler-file', type=str, default=None,
+                      help='the scheduler configuration file path')
 
   parser.add_argument('--history-file', type=str, default='history.json',
                       help='the history file path (default: %(default)s)')
@@ -57,11 +60,16 @@ def run_server():
     logger.info(f'Using secret file at {args.secret_file}')
   secret = json.load(open(args.secret_file))
 
+  if args.scheduler_file:
+    scheduler_conf = json.load(open(args.scheduler_file))
+  else:
+    scheduler_conf = {'scheduler': 'serial'}
+
   loop = asyncio.get_event_loop()
 
   history = History(args.history_file, loop)
   queue = Queue(history, loop)
-  scheduler = SerialScheduler(queue, loop)
+  scheduler = get_scheduler(scheduler_conf)(history, queue, scheduler_conf, loop)
   runner = Runner(args.output_dir, queue, scheduler, loop)
   filter_ = Filter(loop)
 

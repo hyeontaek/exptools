@@ -132,7 +132,7 @@ class CommandHandler:
 
   async def _get_job_id_from_job_or_param_id(self):
     queue_state = await self.client.queue.get_state()
-    if self.args.arguments[0] == 'last':
+    if self.args.job_or_param_id == 'last':
       if queue_state['started_jobs']:
         job_id = queue_state['started_jobs'][-1]['job_id']
       elif queue_state['finished_jobs']:
@@ -140,14 +140,14 @@ class CommandHandler:
       else:
         raise RuntimeError(f'No last job found')
     else:
-      if self.args.arguments[0].startswith('p-'):
-        job_id = (await self.client.history.get(self.args.arguments[0]))['job_id']
+      if self.args.job_or_param_id.startswith('p-'):
+        job_id = (await self.client.history.get(self.args.job_or_param_id))['job_id']
         if job_id is None:
-          raise RuntimeError(f'No job found for parameter {self.args.arguments[0]}')
-      elif self.args.arguments[0].startswith('j-'):
-        job_id = self.args.arguments[0]
+          raise RuntimeError(f'No job found for parameter {self.args.job_or_param_id}')
+      elif self.args.job_or_param_id.startswith('j-'):
+        job_id = self.args.job_or_param_id
       else:
-        raise RuntimeError(f'Invalid job or parameter {self.args.arguments[0]}')
+        raise RuntimeError(f'Invalid job or parameter {self.args.job_or_param_id}')
     return job_id
 
   async def _handle_d(self):
@@ -169,14 +169,14 @@ class CommandHandler:
     self.stdout.write(json.dumps(params, sort_keys=True, indent=2) + '\n')
 
   async def _handle_filter(self):
-    filter_expr = self.args.filter[0]
+    filter_expr = self.args.filter
     params = await self._read_params()
 
     params = await self.client.filter.filter(filter_expr, params)
     self.stdout.write(json.dumps(params, sort_keys=True, indent=2) + '\n')
 
   async def _handle_select(self):
-    filter_param_ids = self.args.filter[0].split(',')
+    filter_param_ids = self.args.filter.split(',')
     params = await self._read_params()
     params_map = {get_param_id(param): param for param in params}
 
@@ -215,6 +215,17 @@ class CommandHandler:
   async def _handle_stop(self):
     succeeded = await self.client.scheduler.stop()
     self.stdout.write('Scheduler stopped\n' if succeeded else 'Failed to stop scheduler\n')
+
+  async def _handle_resource(self):
+    if self.args.operation == 'add':
+      succeeded = await self.client.scheduler.add_resource(self.args.key, self.args.value)
+    elif self.args.operation == 'remove':
+      succeeded = await self.client.scheduler.remove_resource(self.args.key, self.args.value)
+    else:
+      assert False
+    self.stdout.write('Resource updated\n' if succeeded else 'Failed to update resource\n')
+
+    await self._handle_stat()
 
   async def _handle_stat(self):
     queue_state = await self.client.queue.get_state()
@@ -403,7 +414,7 @@ class CommandHandler:
 
   async def _handle_migrate(self):
     # Use vars() on Namespace to access a field containing -
-    old_params = json.load(open(vars(self.args)['old-params-file'][0]))
+    old_params = json.load(open(self.args.old_params_file))
     new_params = await self._read_params()
 
     if len(old_params) != len(new_params):
@@ -477,7 +488,7 @@ def make_parser():
                             default=argparse.SUPPRESS)
 
   def _add_job_or_param_id(sub_parser):
-    sub_parser.add_argument('arguments', type=str, nargs=1,
+    sub_parser.add_argument('job_or_param_id', type=str,
                             help='a job or parameter ID; use "last" to select the last job')
 
   def _add_param_id(sub_parser):
@@ -523,13 +534,13 @@ def make_parser():
   sub_parser = subparsers.add_parser('filter', help='filter parameters using YAQL')
   _add_param_id(sub_parser)
   _add_history(sub_parser)
-  sub_parser.add_argument('filter', type=str, nargs=1, help='YAQL expression')
+  sub_parser.add_argument('filter', type=str, help='YAQL expression')
   _add_read_params_argument(sub_parser)
 
   sub_parser = subparsers.add_parser('select', help='select parameters by parameter IDs')
   _add_param_id(sub_parser)
   _add_history(sub_parser)
-  sub_parser.add_argument('filter', type=str, nargs=1, help='comma-separated parameter IDs')
+  sub_parser.add_argument('filter', type=str, help='comma-separated parameter IDs')
   _add_read_params_argument(sub_parser)
 
   sub_parser = subparsers.add_parser('start', help='start the scheduler')
@@ -537,6 +548,11 @@ def make_parser():
   sub_parser = subparsers.add_parser('oneshot', help='schedule only one job and stop')
 
   sub_parser = subparsers.add_parser('stop', help='stop the scheduler')
+
+  sub_parser = subparsers.add_parser('resource', help='add or remove a resource')
+  sub_parser.add_argument('operation', type=str, choices=['add', 'rm'], help='operation')
+  sub_parser.add_argument('key', type=str, help='resource key')
+  sub_parser.add_argument('value', type=str, help='resource value')
 
   sub_parser = subparsers.add_parser('stat', help='summarize the queue state')
 
@@ -596,7 +612,7 @@ def make_parser():
 
   sub_parser = subparsers.add_parser('migrate',
                                      help='migrate output data for new parameters')
-  sub_parser.add_argument('old-params-file', type=str, nargs=1,
+  sub_parser.add_argument('old_params_file', type=str,
                           help='path to the file containing old parameters ')
   _add_read_params_argument(sub_parser)
 
@@ -642,7 +658,7 @@ def run_client():
   for i in range(group_start, len(argv)):
     if argv[i] == ':' or argv[i] == '::':
       args, unknown_args = _parse_group(group_start, i)
-      args_list.append(args)
+      args_list.append((args, unknown_args))
       group_start = i + 1
       if argv[i] == ':':
         pipe_break.append(False)

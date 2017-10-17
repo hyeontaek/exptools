@@ -148,7 +148,7 @@ class Server:
         if not await self._authenticate(websocket):
           return
 
-        done, pending = await asyncio.wait([
+        _, pending = await asyncio.wait([
             asyncio.ensure_future(self._send_pings(websocket), loop=self.loop),
             asyncio.ensure_future(self._handle_requests(websocket), loop=self.loop),
             ], return_when=asyncio.FIRST_COMPLETED)
