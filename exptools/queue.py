@@ -63,7 +63,7 @@ class Queue:
 
     # Make all started jobs failed
     for job in list(self.state['started_jobs']):
-      self.loop.run_until_complete(self.set_finished(job['job_id']))
+      self.loop.run_until_complete(self.set_finished(job['job_id'], False))
 
     if not self.state['started_jobs'] and not self.state['queued_jobs']:
       self.logger.warning('Queue empty')
