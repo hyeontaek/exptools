@@ -16,8 +16,8 @@ import termcolor
 
 from exptools.client import Client
 from exptools.time import (
-    format_elapsed_time_short,
-    format_remaining_time_short,
+    job_elapsed_time,
+    format_sec_short,
     format_estimated_time,
     )
 from exptools.param import get_param_id, get_name
@@ -412,11 +412,15 @@ class CommandHandler:
 
   @arg_export('command_status')
   @arg_import('common_get_queue_state')
+  @arg_define('-l', '--limit', type=int, default=0,
+              help='limit the number of jobs for each job type; use 0 to show all')
   @arg_define('job_types', type=str, nargs='*',
               choices=['all', 'finished', 'started', 'queued'], default='all',
               help='specify job types to show (default: %(default)s)')
   async def _handle_status(self):
     '''show the queue state'''
+    limit = self.args.limit
+
     if self.args.job_types == 'all':
       job_types = set(['finished', 'started', 'queued'])
     else:
@@ -427,9 +431,16 @@ class CommandHandler:
 
       if 'finished' in job_types:
         output += f"Finished jobs ({len(queue_state['finished_jobs'])}):\n"
-        for job in queue_state['finished_jobs']:
+        if limit and len(queue_state['finished_jobs']) > limit:
+          output += '  ...\n'
+
+        jobs = queue_state['finished_jobs']
+        if limit:
+          jobs = jobs[-limit:]
+
+        for job in jobs:
           line = f"  {job['job_id']} {job['param_id']}"
-          line += f' [{format_elapsed_time_short(job)}]'
+          line += f' [{format_sec_short(job_elapsed_time(job))}]'
           if job['succeeded']:
             line += ' succeeded:'
           else:
@@ -438,37 +449,60 @@ class CommandHandler:
           if not job['succeeded']:
             line = termcolor.colored(line, 'red')
           output += line + '\n'
+
         output += '\n'
 
       partial_state = {'finished_jobs': queue_state['finished_jobs'],
                        'started_jobs': [], 'queued_jobs': [],
                        'concurrency': queue_state['concurrency']}
 
+      last_rem = 0.
       if 'started' in job_types:
         output += f"Started jobs ({len(queue_state['started_jobs'])}):\n"
-        for job in queue_state['started_jobs']:
+        if limit and len(queue_state['started_jobs']) > limit:
+          output += '  ...\n'
+
+        jobs = queue_state['started_jobs']
+        if limit:
+          jobs = jobs[-limit:]
+
+        for job in jobs:
           partial_state['started_jobs'].append(job)
           line = f"  {job['job_id']} {job['param_id']}"
-          rem = await format_remaining_time_short(self.client.estimator, partial_state, False)
-          line += f' [{format_elapsed_time_short(job)}+{rem}]:'
+          rem = await self.client.estimator.estimate_remaining_time(partial_state, False)
+          line += f' [{format_sec_short(job_elapsed_time(job))}+{format_sec_short(max(rem - last_rem, 0))}]:'
+          last_rem = rem
           line += f" {job['name']}"
           line = termcolor.colored(line, 'yellow')
           output += line + '\n'
+
         output += '\n'
       else:
         for job in queue_state['started_jobs']:
           partial_state['started_jobs'].append(job)
+        rem = await self.client.estimator.estimate_remaining_time(partial_state, False)
+        last_rem = rem
 
       if 'queued' in job_types:
         output += f"Queued jobs ({len(queue_state['queued_jobs'])}):\n"
-        for job in queue_state['queued_jobs']:
+
+        jobs = queue_state['queued_jobs']
+        if limit:
+          jobs = jobs[:limit]
+
+        for job in jobs:
           partial_state['queued_jobs'].append(job)
           line = f"  {job['job_id']} {job['param_id']}"
-          rem = await format_remaining_time_short(self.client.estimator, partial_state, False)
-          line += f' [+{rem}]:'
+          rem = await self.client.estimator.estimate_remaining_time(partial_state, False)
+          line += f' [+{format_sec_short(max(rem - last_rem, 0))}]:'
+          last_rem = rem
           line += f" {job['name']}"
           line = termcolor.colored(line, 'blue')
           output += line + '\n'
+
+        if limit and len(queue_state['queued_jobs']) > limit:
+          output += '  ...\n'
+
         output += '\n'
 
       #output += f"Concurrency: {queue_state['concurrency']}"

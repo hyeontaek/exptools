@@ -6,8 +6,10 @@ __all__ = [
     'format_utc', 'format_local',
     'parse_utc', 'parse_local',
     'diff_sec',
+    'job_elapsed_time',
     'format_sec', 'format_sec_short',
-    'format_elapsed_time_short', 'format_job_count',
+    'format_job_count',
+    'format_estimated_time',
     ]
 
 import datetime
@@ -62,6 +64,15 @@ def diff_sec(time1, time2):
   #return (as_utc(time1) - as_utc(time2)).total_seconds()
   return (time1 - time2).total_seconds()
 
+def job_elapsed_time(job):
+  '''Format elapsed time of a job.'''
+  now = utcnow()
+  if job['finished']:
+    sec = job['duration']
+  else:
+    sec = diff_sec(now, parse_utc(job['started']))
+  return sec
+
 def format_sec(sec):
   '''Format seconds in a human-readable format.'''
   sec = round(sec)
@@ -86,20 +97,6 @@ def format_sec(sec):
 def format_sec_short(sec):
   '''Format seconds in a short format.'''
   return '%d:%02d:%02d' % (int(sec / 3600), int(sec % 3600 / 60), int(round(sec % 60)))
-
-def format_elapsed_time_short(job):
-  '''Format elapsed time of a job.'''
-  now = utcnow()
-  if job['finished']:
-    sec = job['duration']
-  else:
-    sec = diff_sec(now, parse_utc(job['started']))
-  return format_sec_short(sec)
-
-async def format_remaining_time_short(estimator, queue_state, oneshot):
-  '''Format remaining time to finish jobs.'''
-  sec = await estimator.estimate_remaining_time(queue_state, oneshot)
-  return format_sec_short(sec)
 
 def format_job_count(queue_state):
   '''Format job count.'''
