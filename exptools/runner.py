@@ -183,7 +183,8 @@ class Runner:
       try:
         proc.terminate()
       except Exception: # pylint: disable=broad-except
-        self.logger.exception('Exception while termining process')
+        #self.logger.exception('Exception while termining process')
+        pass
       try:
         await proc.wait()
       except Exception: # pylint: disable=broad-except
