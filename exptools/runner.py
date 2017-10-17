@@ -178,7 +178,7 @@ class Runner:
         data = await proc.stdout.read(4096)
         if not data:
           break
-        yield base64.a85encode(data).decode('ascii')
+        yield base64.b64encode(data).decode('ascii')
     finally:
       try:
         proc.terminate()

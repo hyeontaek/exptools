@@ -561,7 +561,7 @@ class CommandHandler:
     stdout = await self._get_stdout_stderr()
     job_id = await self._get_job_or_param_id()
     async for data in self.client.runner.cat(job_id, stdout, self.unknown_args):
-      data = base64.a85decode(data.encode('ascii')).decode('utf-8')
+      data = base64.b64decode(data.encode('ascii')).decode('utf-8')
       sys.stdout.write(data)
 
   @arg_export('command_head')
@@ -572,7 +572,7 @@ class CommandHandler:
     stdout = await self._get_stdout_stderr()
     job_id = await self._get_job_or_param_id()
     async for data in self.client.runner.head(job_id, stdout, self.unknown_args):
-      data = base64.a85decode(data.encode('ascii')).decode('utf-8')
+      data = base64.b64decode(data.encode('ascii')).decode('utf-8')
       sys.stdout.write(data)
 
   @arg_export('command_tail')
@@ -583,7 +583,7 @@ class CommandHandler:
     stdout = await self._get_stdout_stderr()
     job_id = await self._get_job_or_param_id()
     async for data in self.client.runner.tail(job_id, stdout, self.unknown_args):
-      data = base64.a85decode(data.encode('ascii')).decode('utf-8')
+      data = base64.b64decode(data.encode('ascii')).decode('utf-8')
       sys.stdout.write(data)
 
   @arg_export('command_migrate')
