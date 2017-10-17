@@ -186,22 +186,29 @@ class CommandHandler:
       yield await self.client.queue.get_state()
 
   @arg_export('common_get_job_ids')
-  @arg_define('job_ids', type=str, nargs='*', help='job IDs')
+  @arg_define('job_ids', type=str, nargs='*', help='job IDs; use "last" to select the last job')
   @arg_define('-a', '--all', action='store_true', default=False, help='select all jobs')
-  @arg_define('-l', '--last', action='store_true', default=False, help='select the last job')
   async def _get_job_ids(self, job_type):
-    job_ids = list(self.args.job_ids)
+    job_ids = []
+
+    for job_id in self.args.job_ids:
+      if job_id == 'last':
+        queue_state = await self.client.queue.get_state()
+        if not queue_state[job_type]:
+          raise RuntimeError(f'No last job found')
+        job_ids.append(queue_state[job_type][-1]['job_id'])
+      else:
+        job_ids.append(job_id)
+
     if self.args.all:
       queue_state = await self.client.queue.get_state()
       job_ids.extend([job['job_id'] for job in queue_state[job_type]])
-    elif self.args.last:
-      queue_state = await self.client.queue.get_state()
-      job_ids.append(queue_state[job_type][-1]['job_id'])
+
     return job_ids
 
   @arg_export('common_get_job_or_param_id')
   @arg_define('job_or_param_id', type=str,
-              help='a job or parameter ID; use "last" to select the last job')
+              help='a job or parameter ID; use "last" to select the last started or finished job')
   async def _get_job_or_param_id(self):
     queue_state = await self.client.queue.get_state()
     if self.args.job_or_param_id == 'last':
@@ -211,15 +218,16 @@ class CommandHandler:
         job_id = queue_state['finished_jobs'][-1]['job_id']
       else:
         raise RuntimeError(f'No last job found')
+      return job_id
+
+    if self.args.job_or_param_id.startswith('p-'):
+      job_id = (await self.client.history.get(self.args.job_or_param_id))['job_id']
+      if job_id is None:
+        raise RuntimeError(f'No job found for parameter {self.args.job_or_param_id}')
+    elif self.args.job_or_param_id.startswith('j-'):
+      job_id = self.args.job_or_param_id
     else:
-      if self.args.job_or_param_id.startswith('p-'):
-        job_id = (await self.client.history.get(self.args.job_or_param_id))['job_id']
-        if job_id is None:
-          raise RuntimeError(f'No job found for parameter {self.args.job_or_param_id}')
-      elif self.args.job_or_param_id.startswith('j-'):
-        job_id = self.args.job_or_param_id
-      else:
-        raise RuntimeError(f'Invalid job or parameter {self.args.job_or_param_id}')
+      raise RuntimeError(f'Invalid job or parameter {self.args.job_or_param_id}')
     return job_id
 
   @arg_export('common_estimate')
@@ -249,7 +257,7 @@ class CommandHandler:
   @arg_import('common_read_params')
   @arg_import('common_omit_params')
   async def _handle_d(self):
-    '''summarize parameters concisely'''
+    '''summarize parameters'''
     params = await self._read_params()
     params = await self._omit_params(params)
     for param in params:
@@ -259,12 +267,11 @@ class CommandHandler:
   @arg_import('common_read_params')
   @arg_import('common_omit_params')
   async def _handle_dum(self):
-    '''summarize parameters'''
+    '''dump parameters in Python'''
     params = await self._read_params()
     params = await self._omit_params(params)
     for param in params:
       self.stdout.write(f'{get_param_id(param)}\n')
-      #for line in json.dumps(params, sort_keys=True, indent=2).split('\n'):
       for line in pprint.pformat(param).split('\n'):
         self.stdout.write('  ' + line + '\n')
       self.stdout.write('\n')
@@ -273,7 +280,7 @@ class CommandHandler:
   @arg_import('common_read_params')
   @arg_import('common_omit_params')
   async def _handle_dump(self):
-    '''dump parameters'''
+    '''dump parameters in JSON'''
     params = await self._read_params()
     params = await self._omit_params(params)
     self.stdout.write(json.dumps(params, sort_keys=True, indent=2) + '\n')
@@ -292,7 +299,8 @@ class CommandHandler:
     self.stdout.write(json.dumps(params, sort_keys=True, indent=2) + '\n')
 
   @arg_export('command_select')
-  @arg_define('filter', type=str, help='comma-separated parameter IDs')
+  @arg_define('filter', type=str,
+              help='comma-separated parameter IDs; partial matches are supported')
   @arg_import('common_read_params')
   @arg_import('common_omit_params')
   async def _handle_select(self):
@@ -354,9 +362,9 @@ class CommandHandler:
       assert False
     self.stdout.write('Resource updated\n' if succeeded else 'Failed to update resource\n')
 
-  @arg_export('command_stat')
+  @arg_export('command_s')
   @arg_import('common_get_queue_state')
-  async def _handle_stat(self):
+  async def _handle_s(self):
     '''summarize the queue state'''
     async for queue_state in self._get_queue_state():
       oneshot = await self.client.scheduler.is_oneshot()
@@ -470,6 +478,47 @@ class CommandHandler:
     job_ids = await self.client.queue.add(params)
     self.stdout.write(f'Added queued jobs: {" ".join(job_ids)}\n')
 
+  @arg_export('command_rm')
+  @arg_import('common_get_job_ids')
+  async def _handle_rm(self):
+    '''remove queued jobs'''
+    job_ids = await self._get_job_ids('queued_jobs')
+    count = await self.client.queue.remove_queued(job_ids)
+    self.stdout.write(f'Removed queued jobs: {count}\n')
+
+  @arg_export('command_move')
+  @arg_define('operation', type=str, choices=['up', 'down'], help='operation')
+  @arg_import('common_get_job_ids')
+  async def _handle_up(self):
+    '''priorize (up) or depriorize (down) queued jobs'''
+    changed_job_ids = await self._get_job_ids('queued_jobs')
+
+    queue_state = await self.client.queue.get_state()
+    job_ids = [job['job_id'] for job in queue_state['queued_jobs']]
+
+    if self.args.operation == 'up':
+      for i in range(1, len(job_ids)):
+        if job_ids[i] in changed_job_ids:
+          job_ids[i - 1], job_ids[i] = job_ids[i], job_ids[i - 1]
+    elif self.args.operation == 'down':
+      for i in range(len(job_ids) - 2, -1, -1):
+        if job_ids[i] in changed_job_ids:
+          job_ids[i], job_ids[i + 1] = job_ids[i + 1], job_ids[i]
+    else:
+      assert False
+
+    count = await self.client.queue.reorder(job_ids)
+    self.stdout.write(f'Reordered queued jobs: {count}\n')
+
+  @arg_export('command_kill')
+  @arg_import('common_get_job_ids')
+  @arg_define('-f', '--force', action='store_true', default=False, help='kill forcefully')
+  async def _handle_kill(self):
+    '''kill started jobs'''
+    job_ids = await self._get_job_ids('started_jobs')
+    count = await self.client.runner.kill(job_ids, force=self.args.force)
+    self.stdout.write(f'Killed jobs: {count}\n')
+
   @arg_export('command_retry')
   @arg_import('common_get_job_ids')
   @arg_import('common_omit_params')
@@ -495,51 +544,6 @@ class CommandHandler:
 
     job_ids = await self.client.queue.add(params)
     self.stdout.write(f'Added queued jobs: {" ".join(job_ids)}\n')
-
-  @arg_export('command_rm')
-  @arg_import('common_get_job_ids')
-  async def _handle_rm(self):
-    '''remove queued jobs'''
-    job_ids = await self._get_job_ids('queued_jobs')
-    count = await self.client.queue.remove_queued(job_ids)
-    self.stdout.write(f'Removed queued jobs: {count}\n')
-
-  @arg_export('command_up')
-  @arg_import('common_get_job_ids')
-  async def _handle_up(self):
-    '''priorize queued jobs'''
-    changed_job_ids = await self._get_job_ids('queued_jobs')
-
-    queue_state = await self.client.queue.get_state()
-    job_ids = [job['job_id'] for job in queue_state['queued_jobs']]
-    for i in range(1, len(job_ids)):
-      if job_ids[i] in changed_job_ids:
-        job_ids[i - 1], job_ids[i] = job_ids[i], job_ids[i - 1]
-    count = await self.client.queue.reorder(job_ids)
-    self.stdout.write(f'Reordered queued jobs: {count}\n')
-
-  @arg_export('command_down')
-  @arg_import('common_get_job_ids')
-  async def _handle_down(self):
-    '''depriorize queued jobs'''
-    changed_job_ids = await self._get_job_ids('queued_jobs')
-
-    queue_state = await self.client.queue.get_state()
-    job_ids = [job['job_id'] for job in queue_state['queued_jobs']]
-    for i in range(len(job_ids) - 2, -1, -1):
-      if job_ids[i] in changed_job_ids:
-        job_ids[i], job_ids[i + 1] = job_ids[i + 1], job_ids[i]
-    count = await self.client.queue.reorder(job_ids)
-    self.stdout.write(f'Reordered queued jobs: {count}\n')
-
-  @arg_export('command_kill')
-  @arg_import('common_get_job_ids')
-  @arg_define('-f', '--force', action='store_true', default=False, help='kill forcefully')
-  async def _handle_kill(self):
-    '''kill started jobs'''
-    job_ids = await self._get_job_ids('started_jobs')
-    count = await self.client.runner.kill(job_ids, force=self.args.force)
-    self.stdout.write(f'Killed jobs: {count}\n')
 
   @arg_export('command_dismiss')
   @arg_import('common_get_job_ids')
