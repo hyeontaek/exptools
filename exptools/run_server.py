@@ -81,15 +81,15 @@ def run_server():
   server = Server(args.host, args.port, secret, history, queue, scheduler, runner, filter_, loop)
 
   state_tasks = [
-    asyncio.ensure_future(history.run_forever(), loop=loop),
-    asyncio.ensure_future(queue.run_forever(), loop=loop),
-    asyncio.ensure_future(scheduler.run_forever(), loop=loop),
-  ]
+      asyncio.ensure_future(history.run_forever(), loop=loop),
+      asyncio.ensure_future(queue.run_forever(), loop=loop),
+      asyncio.ensure_future(scheduler.run_forever(), loop=loop),
+      ]
 
   execution_tasks = [
-    asyncio.ensure_future(runner.run_forever(), loop=loop),
-    asyncio.ensure_future(server.run_forever(), loop=loop),
-    ]
+      asyncio.ensure_future(runner.run_forever(), loop=loop),
+      asyncio.ensure_future(server.run_forever(), loop=loop),
+      ]
 
   try:
     loop.run_forever()

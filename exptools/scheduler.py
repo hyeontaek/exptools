@@ -7,7 +7,6 @@ __all__ = [
     ]
 
 import asyncio
-import json
 import logging
 
 from exptools.rpc_helper import rpc_export_function

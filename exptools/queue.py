@@ -36,7 +36,7 @@ class Queue:
         async with self.lock:
           # Update the current concurrency
           alpha = 0.9
-          self.concurrency = max(
+          self.state['concurrency'] = max(
               1.,
               alpha * self.state['concurrency'] + (1. - alpha) * len(self.state['started_jobs']))
 
