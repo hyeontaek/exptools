@@ -438,7 +438,9 @@ class CommandHandler:
       output = ''
 
       if 'finished' in job_types:
-        output += f"Finished jobs ({len(queue_state['finished_jobs'])}):\n"
+        succeeded_count = len([job for job in queue_state['finished_jobs'] if job['succeeded']])
+        failed_count = len(queue_state['finished_jobs']) - succeeded_count
+        output += f"Finished jobs (S:{succeeded_count} / F:{failed_count})\n"
         if limit and len(queue_state['finished_jobs']) > limit:
           output += '  ...\n'
 
@@ -466,7 +468,7 @@ class CommandHandler:
 
       last_rem = 0.
       if 'started' in job_types:
-        output += f"Started jobs ({len(queue_state['started_jobs'])}):\n"
+        output += f"Started jobs ({len(queue_state['started_jobs'])})\n"
         if limit and len(queue_state['started_jobs']) > limit:
           output += '  ...\n'
 
@@ -493,7 +495,7 @@ class CommandHandler:
         last_rem = rem
 
       if 'queued' in job_types:
-        output += f"Queued jobs ({len(queue_state['queued_jobs'])}):\n"
+        output += f"Queued jobs ({len(queue_state['queued_jobs'])})\n"
 
         jobs = queue_state['queued_jobs']
         if limit:
