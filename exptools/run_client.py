@@ -440,24 +440,30 @@ class CommandHandler:
       if 'finished' in job_types:
         succeeded_count = len([job for job in queue_state['finished_jobs'] if job['succeeded']])
         failed_count = len(queue_state['finished_jobs']) - succeeded_count
-        output += f"Finished jobs (S:{succeeded_count} / F:{failed_count})\n"
+        output += termcolor.colored(
+            f"Finished jobs (S:{succeeded_count} / F:{failed_count})",
+            'yellow', attrs=['reverse', 'dark']) + '\n'
+
         if limit and len(queue_state['finished_jobs']) > limit:
-          output += '  ...\n'
+          line = termcolor.colored('  ', 'yellow', attrs=['reverse', 'dark'])
+          output += line + '...\n'
 
         jobs = queue_state['finished_jobs']
         if limit:
           jobs = jobs[-limit:]
 
         for job in jobs:
-          line = f"  {job['job_id']} {job['param_id']}"
+          if job['succeeded']:
+            line = termcolor.colored('  ', 'green', attrs=['reverse'])
+          else:
+            line = termcolor.colored('  ', 'red', attrs=['reverse'])
+          line += f"{job['job_id']} {job['param_id']}"
           line += f' [{format_sec_short(job_elapsed_time(job))}]'
           if job['succeeded']:
             line += ' succeeded:'
           else:
             line += ' FAILED:'
           line += f" {job['name']}"
-          if not job['succeeded']:
-            line = termcolor.colored(line, 'red')
           output += line + '\n'
 
         output += '\n'
@@ -468,23 +474,27 @@ class CommandHandler:
 
       last_rem = 0.
       if 'started' in job_types:
-        output += f"Started jobs ({len(queue_state['started_jobs'])})\n"
+        output += termcolor.colored(
+            f"Started jobs ({len(queue_state['started_jobs'])})",
+            'yellow', attrs=['reverse']) + '\n'
+
         if limit and len(queue_state['started_jobs']) > limit:
-          output += '  ...\n'
+          line = termcolor.colored('  ', 'yellow', attrs=['reverse'])
+          output += line + '...\n'
 
         jobs = queue_state['started_jobs']
         if limit:
           jobs = jobs[-limit:]
 
         for job in jobs:
+          line = termcolor.colored('  ', 'yellow', attrs=['reverse'])
           partial_state['started_jobs'].append(job)
-          line = f"  {job['job_id']} {job['param_id']}"
+          line += f"{job['job_id']} {job['param_id']}"
           rem = await self.client.estimator.estimate_remaining_time(partial_state, False)
           line += f' [{format_sec_short(job_elapsed_time(job))}' + \
                   f'+{format_sec_short(max(rem - last_rem, 0))}]:'
           last_rem = rem
           line += f" {job['name']}"
-          line = termcolor.colored(line, 'yellow')
           output += line + '\n'
 
         output += '\n'
@@ -495,24 +505,27 @@ class CommandHandler:
         last_rem = rem
 
       if 'queued' in job_types:
-        output += f"Queued jobs ({len(queue_state['queued_jobs'])})\n"
+        output += termcolor.colored(
+            f"Queued jobs ({len(queue_state['queued_jobs'])})",
+            'cyan', attrs=['reverse']) + '\n'
 
         jobs = queue_state['queued_jobs']
         if limit:
           jobs = jobs[:limit]
 
         for job in jobs:
+          line = termcolor.colored('  ', 'cyan', attrs=['reverse'])
           partial_state['queued_jobs'].append(job)
-          line = f"  {job['job_id']} {job['param_id']}"
+          line += f"{job['job_id']} {job['param_id']}"
           rem = await self.client.estimator.estimate_remaining_time(partial_state, False)
           line += f' [+{format_sec_short(max(rem - last_rem, 0))}]:'
           last_rem = rem
           line += f" {job['name']}"
-          line = termcolor.colored(line, 'blue')
           output += line + '\n'
 
         if limit and len(queue_state['queued_jobs']) > limit:
-          output += '  ...\n'
+          line = termcolor.colored('  ', 'cyan', attrs=['reverse'])
+          output += line + '...\n'
 
         output += '\n'
 
