@@ -470,7 +470,8 @@ class CommandHandler:
           partial_state['started_jobs'].append(job)
           line = f"  {job['job_id']} {job['param_id']}"
           rem = await self.client.estimator.estimate_remaining_time(partial_state, False)
-          line += f' [{format_sec_short(job_elapsed_time(job))}+{format_sec_short(max(rem - last_rem, 0))}]:'
+          line += f' [{format_sec_short(job_elapsed_time(job))}' + \
+                  f'+{format_sec_short(max(rem - last_rem, 0))}]:'
           last_rem = rem
           line += f" {job['name']}"
           line = termcolor.colored(line, 'yellow')
