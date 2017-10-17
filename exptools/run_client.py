@@ -58,11 +58,11 @@ class CommandHandler:
     await self._handler()
 
   async def _read_params(self):
-    if not self.args.arguments:
+    if not self.args.params_files:
       params = json.loads(self.stdin.read())
     else:
       params = []
-      for path in self.args.arguments:
+      for path in self.args.params_files:
         if path == '-':
           params.extend(json.loads(self.stdin.read()))
         else:
@@ -103,15 +103,15 @@ class CommandHandler:
   async def _omit_params(self, params):
     '''Omit parameters.'''
 
-    if 'finished' in self.args.omit:
+    if self.args.omit and 'finished' in self.args.omit:
       params = await self.client.history.omit(params, only_succeeded=False)
-    if 'succeeded' in self.args.omit:
+    if self.args.omit and 'succeeded' in self.args.omit:
       params = await self.client.history.omit(params, only_succeeded=True)
-    if 'started' in self.args.omit:
+    if self.args.omit and 'started' in self.args.omit:
       params = await self.client.queue.omit(params, queued=False, started=True, finished=False)
-    if 'queued' in self.args.omit:
+    if self.args.omit and 'queued' in self.args.omit:
       params = await self.client.queue.omit(params, queued=True, started=False, finished=False)
-    if 'duplicate' in self.args.omit:
+    if self.args.omit and 'duplicate' in self.args.omit:
       seen_param_ids = set()
       unique_params = []
       for param in params:
@@ -148,6 +148,18 @@ class CommandHandler:
       else:
         raise RuntimeError(f'Invalid job or parameter {self.args.job_or_param_id}')
     return job_id
+
+  async def _estimate(self, params):
+    queue_state = await self.client.queue.get_state()
+    oneshot = await self.client.scheduler.is_oneshot()
+    self.stdout.write('Current:   ' + \
+        await format_estimated_time(self.client.estimator, queue_state, oneshot) + '\n')
+
+    queue_state['queued_jobs'].extend(
+        [{'param_id': get_param_id(param), 'param': param} for param in params])
+    oneshot = await self.client.scheduler.is_oneshot()
+    self.stdout.write('Estimated: ' + \
+        await format_estimated_time(self.client.estimator, queue_state, oneshot) + '\n')
 
   async def _handle_d(self):
     params = await self._read_params()
@@ -307,57 +319,74 @@ class CommandHandler:
         break
 
   async def _handle_run(self):
-    params = [{'command': self.args.arguments}]
+    params = [{'command': self.args.command}]
+    params = await self._omit_params(params)
+
+    if self.args.estimate:
+      await self._estimate(params)
+      return
+
     job_ids = await self.client.queue.add(params)
     self.stdout.write(f'Added queued jobs: {job_ids[0]}\n')
 
     await self._handle_stat()
 
-  async def _handle_estimate(self):
-    params = await self._read_params()
-    params = await self._omit_params(params)
-
-    queue_state = await self.client.queue.get_state()
-    oneshot = await self.client.scheduler.is_oneshot()
-    self.stdout.write('Current:   ' + \
-        await format_estimated_time(self.client.estimator, queue_state, oneshot) + '\n')
-
-    queue_state['queued_jobs'].extend(
-        [{'param_id': get_param_id(param), 'param': param} for param in params])
-    oneshot = await self.client.scheduler.is_oneshot()
-    self.stdout.write('Estimated: ' + \
-        await format_estimated_time(self.client.estimator, queue_state, oneshot) + '\n')
-
   async def _handle_add(self):
     params = await self._read_params()
     params = await self._omit_params(params)
+
+    if self.args.estimate:
+      await self._estimate(params)
+      return
+
     job_ids = await self.client.queue.add(params)
     self.stdout.write(f'Added queued jobs: {" ".join(job_ids)}\n')
 
     await self._handle_stat()
 
   async def _handle_retry(self):
-    arguments = self.args.arguments
-    if arguments[0] == 'last':
-      job_ids = await self.client.queue.retry(None)
-    else:
-      job_ids = await self.client.queue.retry(arguments)
+    params = []
+    queue_state = await self.client.queue.get_state()
+    for job_id in self.args.job_ids:
+      if job_id == 'last':
+        if queue_state['finished_jobs']:
+          params.append(queue_state['finished_jobs'][-1]['param'])
+        continue
+
+      for job in queue_state['finished_jobs']:
+        if job['job_id'] == job_id:
+          params.append(job['param'])
+          break
+      else:
+        for job in queue_state['started_jobs']:
+          if job['job_id'] == job_id:
+            params.append(job['param'])
+            break
+        else:
+          raise RuntimeError(f'No job or parameter ID {job_id}')
+
+    params = await self._omit_params(params)
+
+    if self.args.estimate:
+      await self._estimate(params)
+      return
+
+    job_ids = await self.client.queue.add(params)
     self.stdout.write(f'Added queued jobs: {" ".join(job_ids)}\n')
 
     await self._handle_stat()
 
   async def _handle_rm(self):
-    arguments = self.args.arguments
-    if not arguments:
+    if not self.args.job_ids:
       count = await self.client.queue.remove_queued(None)
     else:
-      count = await self.client.queue.remove_queued(arguments)
+      count = await self.client.queue.remove_queued(self.args.job_ids)
     self.stdout.write(f'Removed queued jobs: {count}\n')
 
     await self._handle_stat()
 
   async def _handle_up(self):
-    changed_job_ids = set(self.args.arguments)
+    changed_job_ids = set(self.args.job_ids)
     queue_state = await self.client.queue.get_state()
 
     job_ids = [job['job_id'] for job in queue_state['queued_jobs']]
@@ -368,7 +397,7 @@ class CommandHandler:
     self.stdout.write(f'Reordered queued jobs: {count}\n')
 
   async def _handle_down(self):
-    changed_job_ids = set(self.args.arguments)
+    changed_job_ids = set(self.args.job_ids)
     queue_state = await self.client.queue.get_state()
 
     job_ids = [job['job_id'] for job in queue_state['queued_jobs']]
@@ -379,25 +408,19 @@ class CommandHandler:
     self.stdout.write(f'Reordered queued jobs: {count}\n')
 
   async def _handle_kill(self):
-    arguments = self.args.arguments
-    force = False
-    if arguments and arguments[0] == 'force':
-      force = True
-      arguments = arguments[1:]
-    if not arguments:
-      count = await self.client.runner.kill(None, force=force)
+    if not self.args.job_ids:
+      count = await self.client.runner.kill(None, force=self.args.force)
     else:
-      count = await self.client.runner.kill(arguments, force=force)
+      count = await self.client.runner.kill(self.args.job_ids, force=self.args.force)
     self.stdout.write(f'Killed jobs: {count}\n')
 
     await self._handle_stat()
 
   async def _handle_dismiss(self):
-    arguments = self.args.arguments
-    if not arguments:
+    if not self.args.job_ids:
       count = await self.client.queue.remove_finished(None)
     else:
-      count = await self.client.queue.remove_finished(arguments)
+      count = await self.client.queue.remove_finished(self.args.job_ids)
     self.stdout.write(f'Removed finished jobs: {count}\n')
 
     await self._handle_stat()
@@ -482,7 +505,7 @@ def make_parser():
                             help='augment parameters with history data')
 
   def _add_read_params_argument(sub_parser):
-    sub_parser.add_argument('arguments', type=str, nargs='*',
+    sub_parser.add_argument('params_files', type=str, nargs='*',
                             help='path to json files containing parameters; ' + \
                                  'leave empty to read from standard input')
 
@@ -491,6 +514,10 @@ def make_parser():
                             choices=['succeeded', 'finished', 'started', 'queued', 'duplicate'],
                             help='omit specified parameter types')
 
+  def _add_estimate(sub_parser):
+    sub_parser.add_argument('-e', '--estimate', action='store_true', default=False,
+                            help='estimate execution time instead of adding')
+
   def _add_follow(sub_parser):
     sub_parser.add_argument('-f', '--follow', action='store_true', default=False,
                             help='follow state changes')
@@ -498,11 +525,11 @@ def make_parser():
                             help='stop upon empty queue')
 
   def _add_job_ids_auto_select_all(sub_parser):
-    sub_parser.add_argument('arguments', type=str, nargs='*',
+    sub_parser.add_argument('job_ids', type=str, nargs='*',
                             help='job IDs; leave empty to select all jobs')
 
   def _add_job_ids(sub_parser):
-    sub_parser.add_argument('arguments', type=str, nargs='+', help='job IDs')
+    sub_parser.add_argument('job_ids', type=str, nargs='+', help='job IDs')
 
   def _add_stdout_sterr(sub_parser):
     sub_parser.add_argument('-o', '--stdout', action='store_true', default=True,
@@ -571,20 +598,20 @@ def make_parser():
                           help='specify job types to show (default: %(default)s)')
 
   sub_parser = subparsers.add_parser('run', help='run an adhoc command')
-  sub_parser.add_argument('arguments', type=str, nargs='+', help='adhoc command')
-
-  sub_parser = subparsers.add_parser('estimate', help='estimate execution time for parameters')
-  _add_param_id(sub_parser)
-  _add_read_params_argument(sub_parser)
   _add_omit(sub_parser)
+  _add_estimate(sub_parser)
+  sub_parser.add_argument('command', type=str, nargs='+', help='adhoc command')
 
   sub_parser = subparsers.add_parser('add', help='add parameters to the queue')
   _add_param_id(sub_parser)
   _add_read_params_argument(sub_parser)
   _add_omit(sub_parser)
+  _add_estimate(sub_parser)
 
   sub_parser = subparsers.add_parser('retry', help='retry finished jobs')
-  sub_parser.add_argument('arguments', type=str, nargs='+',
+  _add_omit(sub_parser)
+  _add_estimate(sub_parser)
+  sub_parser.add_argument('job_ids', type=str, nargs='+',
                           help='job IDs; use "last" to select the last finished job')
 
   sub_parser = subparsers.add_parser('rm', help='remove queued jobs')
@@ -597,6 +624,8 @@ def make_parser():
   _add_job_ids(sub_parser)
 
   sub_parser = subparsers.add_parser('kill', help='kill started jobs')
+  sub_parser.add_argument('-f', '--force', action='store_true', default=False,
+                          help='terminate started jobs forcefully')
   _add_job_ids_auto_select_all(sub_parser)
 
   sub_parser = subparsers.add_parser('dismiss', help='clear finished jobs')

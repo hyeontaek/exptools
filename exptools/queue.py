@@ -113,29 +113,6 @@ class Queue:
       self.lock.notify_all()
     return job_ids
 
-  @rpc_export_function
-  async def retry(self, job_ids, append=False):
-    '''Re-add finished jobs.'''
-    params = []
-    async with self.lock:
-      if job_ids is None:
-        # Retry the last finished job
-        if self.finished_jobs:
-          params.append(self.finished_jobs[-1]['param'])
-      else:
-        # Iterate over job_ids so that we preserve the order
-        for job_id in job_ids:
-          for job in self.finished_jobs:
-            if job['job_id'] == job_id:
-              params.append(job['param'])
-              break
-          else:
-            for job in self.started_jobs:
-              if job['job_id'] == job_id:
-                params.append(job['param'])
-
-    return await self.add(params, append)
-
   async def set_started(self, job_id):
     '''Mark a queued job as started.'''
     now = format_utc(utcnow())
