@@ -51,10 +51,6 @@ class Queue:
     if os.path.exists(self.path):
       self.state = json.load(open(self.path))
       self.logger.info(f'Loaded queue state at {self.path}')
-
-      # Make all started jobs failed
-      #for job in list(self.state['started_jobs']):
-      #  async def set_finished(self, job_id, succeeded):
     else:
       self.state = {
           'finished_jobs': [],
@@ -64,6 +60,10 @@ class Queue:
           'next_job_id': 0,
           }
       self.logger.info(f'Initialized new queue state')
+
+    # Make all started jobs failed
+    for job in list(self.state['started_jobs']):
+      self.loop.run_until_complete(self.set_finished(job['job_id']))
 
     if not self.state['started_jobs'] and not self.state['queued_jobs']:
       self.logger.warning('Queue empty')
