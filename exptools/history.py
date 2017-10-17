@@ -58,9 +58,9 @@ class History:
 
   async def _dump(self):
     '''Dump the current state to the history file.'''
-    if not self._dump_scheduled:
-      return
     async with self.lock:
+      if not self._dump_scheduled:
+        return
       self._dump_scheduled = False
       data = json.dumps(self.state, sort_keys=True, indent=2)
       async with aiofiles.open(self.path + '.tmp', 'w') as file:

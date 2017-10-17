@@ -39,6 +39,7 @@ class Runner:
     finally:
       for task in tasks:
         task.cancel()
+      await asyncio.wait(tasks, loop=self.loop)
 
   @staticmethod
   def _create_job_files(job, job_dir):
@@ -95,7 +96,6 @@ class Runner:
         os.unlink(param_path + '_tmp')
       os.symlink(job_id, param_path + '_tmp', target_is_directory=True)
 
-      terminated = False
       with open(os.path.join(job_dir, 'stdout'), 'wb', buffering=0) as stdout, \
            open(os.path.join(job_dir, 'stderr'), 'wb', buffering=0) as stderr:
         proc = await asyncio.create_subprocess_exec(
@@ -112,20 +112,15 @@ class Runner:
         try:
           await proc.communicate()
         except Exception: # pylint: disable=broad-except
-          self.logger.info(f'Terminating started job {job_id}')
-          terminated = True
-          try:
-            # Do not use proc.terminate() to allow the job to exit gracefully
-            await self.kill([job_id])
-          except Exception: # pylint: disable=broad-except
-            pass
+          # Do not use proc.terminate() to allow the job to exit gracefully
+          await self.kill([job_id])
         finally:
           try:
             await proc.wait()
           except Exception: # pylint: disable=broad-except
             self.logger.exception('Exception while waiting for process')
 
-      if not terminated and proc.returncode == 0:
+      if proc.returncode == 0:
         os.rename(param_path + '_tmp', param_path)
         await self.queue.set_finished(job_id, True)
       else:
