@@ -334,14 +334,14 @@ class CommandHandler:
   @arg_define('filter', type=str, help='regular expression')
   @arg_import('common_read_params')
   @arg_import('common_omit_params')
-  async def _handle_filter(self):
+  async def _handle_grep(self):
     '''filter parameters using a regular expression on parameter names'''
     filter_expr = self.args.filter
     params = await self._read_params()
     params = await self._omit_params(params)
 
     selected_params = []
-    pat = re.compile(self.args.filter)
+    pat = re.compile(filter_expr)
     for param in params:
       mat = pat.fullmatch(get_name(param))
       if mat is not None:
@@ -354,7 +354,7 @@ class CommandHandler:
   @arg_define('filter', type=str, help='YAQL expression')
   @arg_import('common_read_params')
   @arg_import('common_omit_params')
-  async def _handle_filter(self):
+  async def _handle_yaql(self):
     '''filter parameters using YAQL'''
     filter_expr = self.args.filter
     params = await self._read_params()
