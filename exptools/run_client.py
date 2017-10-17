@@ -449,10 +449,10 @@ class CommandHandler:
   @arg_export('command_run')
   @arg_import('common_omit_params')
   @arg_import('common_estimate')
-  @arg_define('command', type=str, nargs='+', help='adhoc command')
+  @arg_define('adhoc_command', type=str, nargs='+', help='adhoc command')
   async def _handle_run(self):
     '''run an adhoc command'''
-    params = [{'command': self.args.command}]
+    params = [{'command': self.args.adhoc_command}]
     params = await self._omit_params(params)
 
     if self.args.estimate:
