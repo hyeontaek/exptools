@@ -40,7 +40,7 @@ class History:
       while True:
         await self._dump()
 
-        await asyncio.sleep(1)
+        await asyncio.sleep(10, loop=self.loop)
     finally:
       await self._dump()
 
