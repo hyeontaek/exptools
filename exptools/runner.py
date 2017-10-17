@@ -116,7 +116,7 @@ class Runner:
           terminated = True
           try:
             # Do not use proc.terminate() to allow the job to exit gracefully
-            self.kill([job_id])
+            await self.kill([job_id])
           except Exception: # pylint: disable=broad-except
             pass
         finally:
