@@ -9,6 +9,7 @@ import collections
 import io
 import json
 import pprint
+import re
 import sys
 
 import termcolor
@@ -77,7 +78,7 @@ class CommandHandler:
   def _init(self):
     command = self.args.command
 
-    if command not in ['d', 'dum', 'dump', 'select'] or self.args.history:
+    if command not in ['d', 'dum', 'dump', 'select', 'grep'] or self.args.history:
       if 'client' not in self.client_pool:
         secret = json.load(open(self.common_args.secret_file))
         client = Client(self.common_args.host, self.common_args.port, secret, self.loop)
@@ -103,6 +104,8 @@ class CommandHandler:
                    'leave empty to read from standard input')
   @arg_define('-p', '--param-id', action='store_true', default=False,
               help='augment parameters with parameter IDs')
+  @arg_define('-n', '--name', action='store_true', default=False,
+              help='augment parameters with automatic names')
   @arg_define('-H', '--history', action='store_true', default=False,
               help='augment parameters with history data')
   async def _read_params(self):
@@ -127,6 +130,17 @@ class CommandHandler:
         if 'param_id' not in meta:
           param_id = get_param_id(param)
           meta['param_id'] = param_id
+
+    if self.args.name:
+      for param in params:
+        if '_' not in param:
+          meta = param['_'] = {}
+        else:
+          meta = param['_']
+
+        if 'name' not in meta:
+          name = get_name(param)
+          meta['name'] = name
 
     if self.args.history:
       param_ids = set()
@@ -285,19 +299,6 @@ class CommandHandler:
     params = await self._omit_params(params)
     self.stdout.write(json.dumps(params, sort_keys=True, indent=2) + '\n')
 
-  @arg_export('command_filter')
-  @arg_define('filter', type=str, help='YAQL expression')
-  @arg_import('common_read_params')
-  @arg_import('common_omit_params')
-  async def _handle_filter(self):
-    '''filter parameters using YAQL'''
-    filter_expr = self.args.filter
-    params = await self._read_params()
-    params = await self._omit_params(params)
-
-    params = await self.client.filter.filter(filter_expr, params)
-    self.stdout.write(json.dumps(params, sort_keys=True, indent=2) + '\n')
-
   @arg_export('command_select')
   @arg_define('filter', type=str,
               help='comma-separated parameter IDs; partial matches are supported')
@@ -327,6 +328,39 @@ class CommandHandler:
       selected_params.append(selected_param)
 
     params = selected_params
+    self.stdout.write(json.dumps(params, sort_keys=True, indent=2) + '\n')
+
+  @arg_export('command_grep')
+  @arg_define('filter', type=str, help='regular expression')
+  @arg_import('common_read_params')
+  @arg_import('common_omit_params')
+  async def _handle_filter(self):
+    '''filter parameters using a regular expression on parameter names'''
+    filter_expr = self.args.filter
+    params = await self._read_params()
+    params = await self._omit_params(params)
+
+    selected_params = []
+    pat = re.compile(self.args.filter)
+    for param in params:
+      mat = pat.fullmatch(get_name(param))
+      if mat is not None:
+        selected_params.append(param)
+
+    params = selected_params
+    self.stdout.write(json.dumps(params, sort_keys=True, indent=2) + '\n')
+
+  @arg_export('command_yaql')
+  @arg_define('filter', type=str, help='YAQL expression')
+  @arg_import('common_read_params')
+  @arg_import('common_omit_params')
+  async def _handle_filter(self):
+    '''filter parameters using YAQL'''
+    filter_expr = self.args.filter
+    params = await self._read_params()
+    params = await self._omit_params(params)
+
+    params = await self.client.filter.filter(filter_expr, params)
     self.stdout.write(json.dumps(params, sort_keys=True, indent=2) + '\n')
 
   @arg_export('command_start')
