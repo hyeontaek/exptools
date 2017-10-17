@@ -44,7 +44,7 @@ class CommandHandler:
         self.client_pool['client'] = client
       self.client = self.client_pool['client']
 
-    if command in ['monitor']:
+    if 'follow' in self.args and self.args.follow:
       if 'client_watch' not in self.client_pool:
         secret = json.load(open(self.common_args.secret_file))
         client = Client(self.common_args.host, self.common_args.port, secret, self.loop)
@@ -102,24 +102,16 @@ class CommandHandler:
 
   async def _omit_params(self, params):
     '''Omit parameters.'''
-    if not self.args.omit:
-      return params
 
-    omit = self.args.omit.split(',')
-    for entry in omit:
-      assert entry in (
-          'finished', 'succeeded', 'started', 'queued', 'duplicated',
-          ), f'Invalid omission: {entry}'
-
-    if 'finished' in omit:
+    if 'finished' in self.args.omit:
       params = await self.client.history.omit(params, only_succeeded=False)
-    if 'succeeded' in omit:
+    if 'succeeded' in self.args.omit:
       params = await self.client.history.omit(params, only_succeeded=True)
-    if 'started' in omit:
+    if 'started' in self.args.omit:
       params = await self.client.queue.omit(params, queued=False, started=True, finished=False)
-    if 'queued' in omit:
+    if 'queued' in self.args.omit:
       params = await self.client.queue.omit(params, queued=True, started=False, finished=False)
-    if 'duplicated' in omit:
+    if 'duplicate' in self.args.omit:
       seen_param_ids = set()
       unique_params = []
       for param in params:
@@ -129,6 +121,13 @@ class CommandHandler:
           unique_params.append(param)
       params = unique_params
     return params
+
+  async def _get_queue_state(self):
+    if 'follow' in self.args and self.args.follow:
+      async for queue_state in self.client_watch.queue.watch_state():
+        yield queue_state
+    else:
+      yield await self.client.queue.get_state()
 
   async def _get_job_id_from_job_or_param_id(self):
     queue_state = await self.client.queue.get_state()
@@ -152,11 +151,13 @@ class CommandHandler:
 
   async def _handle_d(self):
     params = await self._read_params()
+    params = await self._omit_params(params)
     for param in params:
       self.stdout.write(f'{get_param_id(param)}  {get_name(param)}\n')
 
   async def _handle_dum(self):
     params = await self._read_params()
+    params = await self._omit_params(params)
     for param in params:
       self.stdout.write(f'{get_param_id(param)}\n')
       #for line in json.dumps(params, sort_keys=True, indent=2).split('\n'):
@@ -166,11 +167,13 @@ class CommandHandler:
 
   async def _handle_dump(self):
     params = await self._read_params()
+    params = await self._omit_params(params)
     self.stdout.write(json.dumps(params, sort_keys=True, indent=2) + '\n')
 
   async def _handle_filter(self):
     filter_expr = self.args.filter
     params = await self._read_params()
+    params = await self._omit_params(params)
 
     params = await self.client.filter.filter(filter_expr, params)
     self.stdout.write(json.dumps(params, sort_keys=True, indent=2) + '\n')
@@ -178,6 +181,7 @@ class CommandHandler:
   async def _handle_select(self):
     filter_param_ids = self.args.filter.split(',')
     params = await self._read_params()
+    params = await self._omit_params(params)
     params_map = {get_param_id(param): param for param in params}
 
     selected_params = []
@@ -205,16 +209,16 @@ class CommandHandler:
 
     await self._handle_stat()
 
+  async def _handle_stop(self):
+    succeeded = await self.client.scheduler.stop()
+    self.stdout.write('Scheduler stopped\n' if succeeded else 'Failed to stop scheduler\n')
+
   async def _handle_oneshot(self):
     succeeded = await self.client.scheduler.set_oneshot()
     self.stdout.write('Scheduler oneshot mode set\n' \
                       if succeeded else 'Failed to set oneshot mode\n')
 
     await self._handle_stat()
-
-  async def _handle_stop(self):
-    succeeded = await self.client.scheduler.stop()
-    self.stdout.write('Scheduler stopped\n' if succeeded else 'Failed to stop scheduler\n')
 
   async def _handle_resource(self):
     if self.args.operation == 'add':
@@ -228,73 +232,77 @@ class CommandHandler:
     await self._handle_stat()
 
   async def _handle_stat(self):
-    queue_state = await self.client.queue.get_state()
-    oneshot = await self.client.scheduler.is_oneshot()
-    self.stdout.write(
-        await format_estimated_time(self.client.estimator, queue_state, oneshot) + '\n')
-
-  async def _handle_status(self):
-    queue_state = await self.client.queue.get_state()
-
-    show = set(self.args.show.split(','))
-
-    output = ''
-
-    if 'finished' in show:
-      output += f"Finished jobs ({len(queue_state['finished_jobs'])}):\n"
-      for job in queue_state['finished_jobs']:
-        line = f"  {job['job_id']} {job['param_id']}"
-        line += f' [{format_elapsed_time_short(job)}]'
-        if job['succeeded']:
-          line += ' succeeded:'
-        else:
-          line += ' FAILED:'
-        line += f" {job['name']}"
-        if not job['succeeded']:
-          line = termcolor.colored(line, 'red')
-        output += line + '\n'
-      output += '\n'
-
-    partial_state = {'finished_jobs': queue_state['finished_jobs'],
-                     'started_jobs': [], 'queued_jobs': [],
-                     'concurrency': queue_state['concurrency']}
-
-    if 'started' in show:
-      output += f"Started jobs ({len(queue_state['started_jobs'])}):\n"
-      for job in queue_state['started_jobs']:
-        partial_state['started_jobs'].append(job)
-        line = f"  {job['job_id']} {job['param_id']}"
-        rem = await format_remaining_time_short(self.client.estimator, partial_state, False)
-        line += f' [{format_elapsed_time_short(job)}+{rem}]:'
-        line += f" {job['name']}"
-        line = termcolor.colored(line, 'yellow')
-        output += line + '\n'
-      output += '\n'
-    else:
-      for job in queue_state['started_jobs']:
-        partial_state['started_jobs'].append(job)
-
-    if 'queued' in show:
-      output += f"Queued jobs ({len(queue_state['queued_jobs'])}):\n"
-      for job in queue_state['queued_jobs']:
-        partial_state['queued_jobs'].append(job)
-        line = f"  {job['job_id']} {job['param_id']}"
-        rem = await format_remaining_time_short(self.client.estimator, partial_state, False)
-        line += f' [+{rem}]:'
-        line += f" {job['name']}"
-        line = termcolor.colored(line, 'blue')
-        output += line + '\n'
-      output += '\n'
-
-    #output += f"Concurrency: {queue_state['concurrency']}"
-    self.stdout.write(output.strip() + '\n')
-
-  async def _handle_monitor(self):
-    async for queue_state in self.client_watch.queue.watch_state():
+    async for queue_state in self._get_queue_state():
       oneshot = await self.client.scheduler.is_oneshot()
+
       self.stdout.write(
           await format_estimated_time(self.client.estimator, queue_state, oneshot) + '\n')
-      if not self.args.forever and \
+
+      if 'stop_empty' in self.args and self.args.stop_empty and \
+         not queue_state['started_jobs'] and (oneshot or not queue_state['queued_jobs']):
+        break
+
+  async def _handle_status(self):
+    if self.args.job_types == 'all':
+      job_types = set(['finished', 'started', 'queued'])
+    else:
+      job_types = set(self.args.job_types)
+
+    async for queue_state in self._get_queue_state():
+      output = ''
+
+      if 'finished' in job_types:
+        output += f"Finished jobs ({len(queue_state['finished_jobs'])}):\n"
+        for job in queue_state['finished_jobs']:
+          line = f"  {job['job_id']} {job['param_id']}"
+          line += f' [{format_elapsed_time_short(job)}]'
+          if job['succeeded']:
+            line += ' succeeded:'
+          else:
+            line += ' FAILED:'
+          line += f" {job['name']}"
+          if not job['succeeded']:
+            line = termcolor.colored(line, 'red')
+          output += line + '\n'
+        output += '\n'
+
+      partial_state = {'finished_jobs': queue_state['finished_jobs'],
+                       'started_jobs': [], 'queued_jobs': [],
+                       'concurrency': queue_state['concurrency']}
+
+      if 'started' in job_types:
+        output += f"Started jobs ({len(queue_state['started_jobs'])}):\n"
+        for job in queue_state['started_jobs']:
+          partial_state['started_jobs'].append(job)
+          line = f"  {job['job_id']} {job['param_id']}"
+          rem = await format_remaining_time_short(self.client.estimator, partial_state, False)
+          line += f' [{format_elapsed_time_short(job)}+{rem}]:'
+          line += f" {job['name']}"
+          line = termcolor.colored(line, 'yellow')
+          output += line + '\n'
+        output += '\n'
+      else:
+        for job in queue_state['started_jobs']:
+          partial_state['started_jobs'].append(job)
+
+      if 'queued' in job_types:
+        output += f"Queued jobs ({len(queue_state['queued_jobs'])}):\n"
+        for job in queue_state['queued_jobs']:
+          partial_state['queued_jobs'].append(job)
+          line = f"  {job['job_id']} {job['param_id']}"
+          rem = await format_remaining_time_short(self.client.estimator, partial_state, False)
+          line += f' [+{rem}]:'
+          line += f" {job['name']}"
+          line = termcolor.colored(line, 'blue')
+          output += line + '\n'
+        output += '\n'
+
+      #output += f"Concurrency: {queue_state['concurrency']}"
+      self.stdout.write(output + '\n')
+
+      oneshot = await self.client.scheduler.is_oneshot()
+
+      if self.args.stop_empty and \
          not queue_state['started_jobs'] and (oneshot or not queue_state['queued_jobs']):
         break
 
@@ -433,22 +441,19 @@ class CommandHandler:
     self.stdout.write(f'Migrated: {symlink_count} symlinks, ' + \
                       f'{entry_count} histroy entries\n')
 
-  async def _handle_prune_matching(self):
+  async def _handle_prune(self):
     params = await self._read_params()
     param_ids = [get_param_id(param) for param in params]
 
-    symlink_count, dir_count = await self.client.runner.prune(param_ids, prune_matching=True)
-    entry_count = await self.client.history.prune(param_ids, prune_matching=True)
-    self.stdout.write(f'Pruned: {symlink_count} symlinks, ' + \
-                      f'{dir_count} output directories, ' + \
-                      f'{entry_count} histroy entries\n')
+    if self.args.type == 'matching':
+      symlink_count, dir_count = await self.client.runner.prune(param_ids, prune_matching=True)
+      entry_count = await self.client.history.prune(param_ids, prune_matching=True)
+    elif self.args.type == 'mismatching':
+      symlink_count, dir_count = await self.client.runner.prune(param_ids, prune_mismatching=True)
+      entry_count = await self.client.history.prune(param_ids, prune_mismatching=True)
+    else:
+      assert False
 
-  async def _handle_prune_mismatching(self):
-    params = await self._read_params()
-    param_ids = [get_param_id(param) for param in params]
-
-    symlink_count, dir_count = await self.client.runner.prune(param_ids, prune_mismatching=True)
-    entry_count = await self.client.history.prune(param_ids, prune_mismatching=True)
     self.stdout.write(f'Pruned: {symlink_count} symlinks, ' + \
                       f'{dir_count} output directories, ' + \
                       f'{entry_count} histroy entries\n')
@@ -468,22 +473,41 @@ def make_parser():
 
   parser.add_argument('-v', '--verbose', help='be verbose')
 
+  def _add_param_id(sub_parser):
+    sub_parser.add_argument('-p', '--param-id', action='store_true', default=False,
+                            help='augment parameters with parameter IDs')
+
+  def _add_history(sub_parser):
+    sub_parser.add_argument('-H', '--history', action='store_true', default=False,
+                            help='augment parameters with history data')
+
   def _add_read_params_argument(sub_parser):
     sub_parser.add_argument('arguments', type=str, nargs='*',
                             help='path to json files containing parameters; ' + \
                                  'leave empty to read from standard input')
 
-  def _add_job_ids(sub_parser):
-    sub_parser.add_argument('arguments', type=str, nargs='+', help='job IDs')
+  def _add_omit(sub_parser):
+    sub_parser.add_argument('-o', '--omit', action='append',
+                            choices=['succeeded', 'finished', 'started', 'queued', 'duplicate'],
+                            help='omit specified parameter types')
+
+  def _add_follow(sub_parser):
+    sub_parser.add_argument('-f', '--follow', action='store_true', default=False,
+                            help='follow state changes')
+    sub_parser.add_argument('-s', '--stop-empty', action='store_true', default=False,
+                            help='stop upon empty queue')
 
   def _add_job_ids_auto_select_all(sub_parser):
     sub_parser.add_argument('arguments', type=str, nargs='*',
                             help='job IDs; leave empty to select all jobs')
 
+  def _add_job_ids(sub_parser):
+    sub_parser.add_argument('arguments', type=str, nargs='+', help='job IDs')
+
   def _add_stdout_sterr(sub_parser):
-    sub_parser.add_argument('--stdout', action='store_true', dest='stdout', default=True,
+    sub_parser.add_argument('-o', '--stdout', action='store_true', default=True,
                             help='read stdout (default)')
-    sub_parser.add_argument('--stderr', action='store_false', dest='stdout',
+    sub_parser.add_argument('-e', '--stderr', action='store_false', dest='stdout',
                             help='read stderr instead of stdout',
                             default=argparse.SUPPRESS)
 
@@ -491,63 +515,45 @@ def make_parser():
     sub_parser.add_argument('job_or_param_id', type=str,
                             help='a job or parameter ID; use "last" to select the last job')
 
-  def _add_param_id(sub_parser):
-    sub_parser.add_argument('--param-id', action='store_true', dest='param_id', default=True,
-                            help='augment parameters with parameter IDs if missing (default)')
-    sub_parser.add_argument('--no-param-id', action='store_false', dest='param_id',
-                            help='do not augment parameters with parameter IDs',
-                            default=argparse.SUPPRESS)
-
-  def _add_history(sub_parser):
-    sub_parser.add_argument('--history', action='store_true', dest='history', default=False,
-                            help='augment parameters with history data')
-    sub_parser.add_argument('--no-history', action='store_false', dest='history',
-                            help='do not augment parameters with history data (default)',
-                            default=argparse.SUPPRESS)
-
-  def _add_omit(sub_parser):
-    sub_parser.add_argument('--omit', type=str, dest='omit',
-                            default='succeeded,started,queued,duplicated',
-                            help='omit parameters before adding if existing matches are found ' + \
-                                 '(default: %(default)s)')
-    sub_parser.add_argument('--no-omit', action='store_const', dest='omit', const='',
-                            help='do not omit parameters',
-                            default=argparse.SUPPRESS)
-
   subparsers = parser.add_subparsers(dest='command')
 
   sub_parser = subparsers.add_parser('d', help='summarize parameters concisely')
   _add_param_id(sub_parser)
   _add_history(sub_parser)
   _add_read_params_argument(sub_parser)
+  _add_omit(sub_parser)
 
   sub_parser = subparsers.add_parser('du', help='summarize parameters')
   _add_param_id(sub_parser)
   _add_history(sub_parser)
   _add_read_params_argument(sub_parser)
+  _add_omit(sub_parser)
 
   sub_parser = subparsers.add_parser('dump', help='dump parameters')
   _add_param_id(sub_parser)
   _add_history(sub_parser)
   _add_read_params_argument(sub_parser)
+  _add_omit(sub_parser)
 
   sub_parser = subparsers.add_parser('filter', help='filter parameters using YAQL')
   _add_param_id(sub_parser)
   _add_history(sub_parser)
   sub_parser.add_argument('filter', type=str, help='YAQL expression')
   _add_read_params_argument(sub_parser)
+  _add_omit(sub_parser)
 
   sub_parser = subparsers.add_parser('select', help='select parameters by parameter IDs')
   _add_param_id(sub_parser)
   _add_history(sub_parser)
   sub_parser.add_argument('filter', type=str, help='comma-separated parameter IDs')
   _add_read_params_argument(sub_parser)
+  _add_omit(sub_parser)
 
   sub_parser = subparsers.add_parser('start', help='start the scheduler')
 
-  sub_parser = subparsers.add_parser('oneshot', help='schedule only one job and stop')
-
   sub_parser = subparsers.add_parser('stop', help='stop the scheduler')
+
+  sub_parser = subparsers.add_parser('oneshot', help='schedule only one job and stop')
 
   sub_parser = subparsers.add_parser('resource', help='add or remove a resource')
   sub_parser.add_argument('operation', type=str, choices=['add', 'rm'], help='operation')
@@ -555,29 +561,27 @@ def make_parser():
   sub_parser.add_argument('value', type=str, help='resource value')
 
   sub_parser = subparsers.add_parser('stat', help='summarize the queue state')
+  _add_follow(sub_parser)
 
   sub_parser = subparsers.add_parser('status', help='show the queue state')
-  sub_parser.add_argument('--show', type=str, default='finished,started,queued',
+  _add_follow(sub_parser)
+  sub_parser.add_argument('job_types', type=str, nargs='*',
+                          choices=['all', 'finished', 'started', 'queued'],
+                          default='all',
                           help='specify job types to show (default: %(default)s)')
-
-  sub_parser = subparsers.add_parser('monitor', help='monitor the queue state')
-  sub_parser.add_argument('--forever', action='store_true', dest='forever', default=True,
-                          help='run forever (default)')
-  sub_parser.add_argument('--no-forever', action='store_false', dest='forever',
-                          default=argparse.SUPPRESS, help='stop upon empty queue')
 
   sub_parser = subparsers.add_parser('run', help='run an adhoc command')
   sub_parser.add_argument('arguments', type=str, nargs='+', help='adhoc command')
 
   sub_parser = subparsers.add_parser('estimate', help='estimate execution time for parameters')
   _add_param_id(sub_parser)
-  _add_omit(sub_parser)
   _add_read_params_argument(sub_parser)
+  _add_omit(sub_parser)
 
   sub_parser = subparsers.add_parser('add', help='add parameters to the queue')
   _add_param_id(sub_parser)
-  _add_omit(sub_parser)
   _add_read_params_argument(sub_parser)
+  _add_omit(sub_parser)
 
   sub_parser = subparsers.add_parser('retry', help='retry finished jobs')
   sub_parser.add_argument('arguments', type=str, nargs='+',
@@ -598,7 +602,7 @@ def make_parser():
   sub_parser = subparsers.add_parser('dismiss', help='clear finished jobs')
   _add_job_ids_auto_select_all(sub_parser)
 
-  sub_parser = subparsers.add_parser('cat', help='show the entire job output')
+  sub_parser = subparsers.add_parser('cat', help='show the job output')
   _add_stdout_sterr(sub_parser)
   _add_job_or_param_id(sub_parser)
 
@@ -616,12 +620,9 @@ def make_parser():
                           help='path to the file containing old parameters ')
   _add_read_params_argument(sub_parser)
 
-  sub_parser = subparsers.add_parser('prune-matching',
-                                     help='prune output data that match parameters')
-  _add_read_params_argument(sub_parser)
-
-  sub_parser = subparsers.add_parser('prune-mismatching',
-                                     help='prune output data that do not match parameters')
+  sub_parser = subparsers.add_parser('prune',
+                                     help='prune output data matching or mismatching parameters')
+  sub_parser.add_argument('type', type=str, choices=['matching', 'mismatching'], help='type')
   _add_read_params_argument(sub_parser)
 
   return parser
