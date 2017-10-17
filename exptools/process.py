@@ -1,43 +1,24 @@
 '''Provide process execution functions.'''
 
-__all__ = ['wait_for_procs', 'all_success_returncode', 'kill_procs', 'run_ssh_cmd']
+__all__ = ['wait_for_procs', 'all_success_returncode', 'kill_procs', 'run_cmd', 'run_ssh_cmd']
 
-import logging
-import subprocess
-import time
+import asyncio
 
-def wait_for_procs(procs, timeout=None):
+def wait_for_procs(procs, timeout=None, loop=None):
   '''Wait for processes to terminate.'''
-  wait_start = time.time()
-  success = True
-  pending = [True] * len(procs)
-  returncode_list = [None] * len(procs)
 
-  while any(pending):
-    for i, proc in enumerate(procs):
-      if not pending[i]:
-        continue
+  if not loop:
+    loop = asyncio.get_event_loop()
 
-      try:
-        # check the status every minute
-        if proc.wait(timeout=60) == 0:
-          pending[i] = False
-          returncode_list[i] = proc.returncode
-        else:
-          logging.getLogger('exptools.wait_for_procs').error('Failed execution')
-          success = False
-          pending = [False] * len(procs)
-          break
+  tasks = [proc.wait() for proc in procs]
 
-      except subprocess.TimeoutExpired:
-        if timeout is not None and time.time() - wait_start > timeout:
-          # too long run time; give up
-          logging.getLogger('exptools.wait_for_procs')\
-              .error('Timeout after %d seconds', time.time() - wait_start)
-          success = False
-          pending = [False] * len(procs)
-          break
+  wait_task = asyncio.ensure_future(asyncio.wait(tasks, timeout=timeout, loop=loop), loop=loop)
+  loop.run_until_complete(wait_task)
 
+  _, pending = wait_task.result()
+
+  success = not pending
+  returncode_list = [proc.returncode for proc in procs]
   return success, returncode_list
 
 def all_success_returncode(returncode_list):
@@ -47,15 +28,27 @@ def all_success_returncode(returncode_list):
       return False
   return True
 
-def kill_procs(procs):
-  '''Forcefully kill processes.'''
+def kill_procs(procs, force=False):
+  '''Kill processes.'''
   for proc in procs:
-    try:
+    if not force:
       proc.kill()
-    except subprocess.SubprocessError:
-      logging.getLogger('exptools.kill_procs').exception('Exception while killing processes')
+    else:
+      proc.terminate()
 
-def run_ssh_cmd(host, cmd, **kwargs):
+def run_cmd(cmd, loop=None, **kwargs):
+  if not loop:
+    loop = asyncio.get_event_loop()
+
+  co = asyncio.create_subprocess_exec(*cmd, stdin=asyncio.subprocess.DEVNULL, loop=loop, **kwargs)
+  task = asyncio.ensure_future(co, loop=loop)
+
+  loop.run_until_complete(task)
+  proc = task.result()
+
+  return proc
+
+def run_ssh_cmd(host, cmd, loop=None, **kwargs):
   '''Run a remote command using ssh.'''
 
   ssh_cmd = ['ssh']
@@ -68,7 +61,7 @@ def run_ssh_cmd(host, cmd, **kwargs):
   ssh_cmd += [host]
   ssh_cmd += ['bash', '-l']
 
-  proc = subprocess.Popen(ssh_cmd, stdin=subprocess.PIPE, **kwargs)
+  proc = run(ssh_cmd, stdin=subprocess.PIPE, loop=loop, **kwargs)
   proc.stdin.write(cmd.encode('utf-8'))
   proc.stdin.close()
 
