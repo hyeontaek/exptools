@@ -81,11 +81,10 @@ class Server:
     return True
 
   async def _send_pings(self, websocket):
-    ping = json.dumps('ping')
     try:
       while True:
         await asyncio.sleep(10, loop=self.loop)
-        await websocket.send(ping)
+        await websocket.send('0')
 
     except concurrent.futures.CancelledError:
       # Ignore cancelled task
