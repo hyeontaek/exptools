@@ -7,6 +7,7 @@ __all__ = [
     ]
 
 import asyncio
+import concurrent
 import logging
 
 from exptools.rpc_helper import rpc_export_function
@@ -31,14 +32,17 @@ class Scheduler:
 
   async def run_forever(self):
     '''Run the scheduler.  Note that scheduling jobs is done by schedule().'''
-    if self.initial_mode == 'start':
-      await self.start()
-    elif self.initial_mode == 'stop':
+    try:
+      if self.initial_mode == 'start':
+        await self.start()
+      elif self.initial_mode == 'stop':
+        pass
+      elif self.initial_mode == 'oneshot':
+        await self.set_oneshot()
+      else:
+        assert False
+    except concurrent.futures.CancelledError:
       pass
-    elif self.initial_mode == 'oneshot':
-      await self.set_oneshot()
-    else:
-      assert False
 
   @rpc_export_function
   async def is_running(self):

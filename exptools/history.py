@@ -3,6 +3,7 @@
 __all__ = ['History']
 
 import asyncio
+import concurrent
 import json
 import os
 import logging
@@ -42,6 +43,8 @@ class History:
         await self._dump()
 
         await asyncio.sleep(10, loop=self.loop)
+    except concurrent.futures.CancelledError:
+      pass
     finally:
       await self._dump()
 

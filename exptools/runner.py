@@ -4,6 +4,7 @@ __all__ = ['Runner']
 
 import asyncio
 import base64
+import concurrent
 import json
 import logging
 import os
@@ -39,6 +40,8 @@ class Runner:
         tasks.append(task)
 
         tasks = list(filter(lambda task: not task.done(), tasks))
+    except concurrent.futures.CancelledError:
+      pass
     finally:
       for task in tasks:
         task.cancel()
@@ -136,6 +139,7 @@ class Runner:
 
         # Read before making the job finished
         status_task.cancel()
+        await status_task
         await self._read_status(job_id, job_dir)
 
       if proc.returncode == 0:
@@ -145,12 +149,16 @@ class Runner:
         os.unlink(param_path + '_tmp')
         await self.queue.set_finished(job_id, False)
 
+    except concurrent.futures.CancelledError:
+      pass
     except Exception: # pylint: disable=broad-except
       self.logger.exception(f'Exception while running job {job_id} ({param_id}): {name}')
-      if status_task:
-        status_task.cancel()
       await self._read_status(job_id, job_dir)
       await self.queue.set_finished(job_id, False)
+    finally:
+      if status_task:
+        status_task.cancel()
+        await status_task
 
   async def _watch_status(self, job_id, job_dir):
     '''Watch the status file changes.'''
@@ -163,6 +171,8 @@ class Runner:
       while True:
         await inotify.get_event()
         await self._read_status(job_id, job_dir)
+    except concurrent.futures.CancelledError:
+      pass
     except Exception: # pylint: disable=broad-except
       self.logger.exception(f'Exception while watching status of job {job_id}')
     finally:
