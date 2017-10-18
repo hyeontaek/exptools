@@ -10,7 +10,7 @@ import os
 import signal
 
 import aiofiles
-import butter
+import butter.asyncio.inotify
 
 from exptools.file import mkdirs, rmdirs, get_job_dir, get_param_path
 from exptools.rpc_helper import rpc_export_function, rpc_export_generator
@@ -60,6 +60,10 @@ class Runner:
       with open(os.path.join(job_dir, key + '.json'), 'wt') as file:
         file.write(json.dumps(job[key]) + '\n')
 
+    with open(os.path.join(job_dir, 'status.json'), 'wt') as file:
+      status = {'progress': 0.}
+      file.write(json.dumps(status) + '\n')
+
   @staticmethod
   def _construct_env(job, job_dir):
     '''Construct environment variables.'''
@@ -82,6 +86,8 @@ class Runner:
     command = job['command']
     cwd = job['cwd']
 
+    status_task = None
+
     try:
       if not await self.queue.set_started(job_id):
         self.logger.info(f'Ignoring missing job {job_id}')
@@ -99,8 +105,6 @@ class Runner:
       if os.path.exists(param_path + '_tmp'):
         os.unlink(param_path + '_tmp')
       os.symlink(job_id, param_path + '_tmp', target_is_directory=True)
-
-      status_task = None
 
       with open(os.path.join(job_dir, 'stdout'), 'wb', buffering=0) as stdout, \
            open(os.path.join(job_dir, 'stderr'), 'wb', buffering=0) as stderr:
@@ -143,10 +147,10 @@ class Runner:
 
     except Exception: # pylint: disable=broad-except
       self.logger.exception(f'Exception while running job {job_id} ({param_id}): {name}')
-      await self.queue.set_finished(job_id, False)
-    finally:
       if status_task:
         status_task.cancel()
+      await self._read_status(job_id, job_dir)
+      await self.queue.set_finished(job_id, False)
 
   async def _watch_status(self, job_id, job_dir):
     '''Watch the status file changes.'''
@@ -154,10 +158,13 @@ class Runner:
 
     inotify = butter.asyncio.inotify.Inotify_async(loop=self.loop)
     try:
-      inotify.watch(progress_path, butter.inotify.IN_CLOSE_WRITE)
+      inotify.watch(status_path, butter.inotify.IN_CLOSE_WRITE)
 
-      async for event in inotify.get_event():
+      while True:
+        await inotify.get_event()
         await self._read_status(job_id, job_dir)
+    except Exception: # pylint: disable=broad-except
+      self.logger.exception(f'Exception while watching status of job {job_id}')
     finally:
       inotify.close()
 
@@ -165,11 +172,8 @@ class Runner:
     '''Read the status file and send it to the queue.'''
     status_path = os.path.join(job_dir, 'status.json')
 
-    if not os.path.exists(status_path):
-      return
-
     try:
-      async with aiofiles.open(status_path, 'r') as file:
+      async with aiofiles.open(status_path) as file:
         status_json = await file.read()
 
       status = json.loads(status_json)
@@ -184,7 +188,7 @@ class Runner:
 
       await self.queue.set_status(job_id, status)
     except Exception: # pylint: disable=broad-except
-      self.logger.exception(f'Exception while reading progress of job {job_id}')
+      self.logger.exception(f'Exception while reading status of job {job_id}')
 
   @rpc_export_function
   async def kill(self, job_ids=None, force=False):
