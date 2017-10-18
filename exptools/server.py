@@ -158,4 +158,4 @@ class Server:
         self.logger.debug('Connection closed')
 
     self.logger.info(f'Listening on ws://{self.host}:{self.port}/')
-    await websockets.serve(_serve, self.host, self.port)
+    await websockets.serve(_serve, self.host, self.port, max_size=None)
