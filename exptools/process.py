@@ -53,6 +53,9 @@ def run_ssh_cmd(*args, **kwargs):
 async def async_wait_for_procs(procs, timeout=None, loop=None):
   '''Wait for processes to terminate.'''
 
+  if not procs:
+    return True, []
+
   tasks = [proc.wait() for proc in procs]
   _, pending = await asyncio.wait(tasks, timeout=timeout, loop=loop)
 

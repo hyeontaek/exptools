@@ -43,9 +43,10 @@ class Runner:
     except concurrent.futures.CancelledError:
       pass
     finally:
-      for task in tasks:
-        task.cancel()
-      await asyncio.wait(tasks, loop=self.loop)
+      if tasks:
+        for task in tasks:
+          task.cancel()
+        await asyncio.wait(tasks, loop=self.loop)
 
   @staticmethod
   def _create_job_files(job, job_dir):
