@@ -3,6 +3,7 @@
 __all__ = ['Queue']
 
 import asyncio
+import collections
 import json
 import logging
 import os
@@ -46,23 +47,35 @@ class Queue:
     finally:
       await self._dump()
 
+  @staticmethod
+  def _make_ordered_dict(jobs):
+    job_items = [(job['job_id'], job) for job in jobs]
+    return collections.OrderedDict(job_items)
+
   def _load(self):
     '''Load the queue file.'''
     if os.path.exists(self.path):
-      self.state = json.load(open(self.path))
+      state = json.load(open(self.path))
+      self.state = {
+          'finished_jobs': self._make_ordered_dict(state['finished_jobs']),
+          'started_jobs': self._make_ordered_dict(state['started_jobs']),
+          'queued_jobs': self._make_ordered_dict(state['queued_jobs']),
+          'concurrency': state['concurrency'],
+          'next_job_id': state['next_job_id'],
+          }
       self.logger.info(f'Loaded queue state at {self.path}')
     else:
       self.state = {
-          'finished_jobs': [],
-          'started_jobs': [],
-          'queued_jobs': [],
+          'finished_jobs': self._make_ordered_dict([]),
+          'started_jobs': self._make_ordered_dict([]),
+          'queued_jobs': self._make_ordered_dict([]),
           'concurrency': 1.,
           'next_job_id': 0,
           }
       self.logger.info(f'Initialized new queue state')
 
     # Make all started jobs failed
-    for job in list(self.state['started_jobs']):
+    for job in list(self.state['started_jobs'].values()):
       self.loop.run_until_complete(self.set_finished(job['job_id'], False))
 
     if not self.state['started_jobs'] and not self.state['queued_jobs']:
@@ -77,7 +90,15 @@ class Queue:
       if not self._dump_scheduled:
         return
       self._dump_scheduled = False
-      data = json.dumps(self.state, sort_keys=True, indent=2)
+
+      state = {
+          'finished_jobs': list(self.state['finished_jobs'].values()),
+          'started_jobs': list(self.state['started_jobs'].values()),
+          'queued_jobs': list(self.state['queued_jobs'].values()),
+          'concurrency': self.state['concurrency'],
+          'next_job_id': self.state['next_job_id'],
+          }
+      data = json.dumps(state, sort_keys=True, indent=2)
       async with aiofiles.open(self.path + '.tmp', 'w') as file:
         await file.write(data)
       os.rename(self.path + '.tmp', self.path)
@@ -105,7 +126,7 @@ class Queue:
   @staticmethod
   def _clone_jobs(jobs):
     '''Clone a job list.'''
-    return [dict(job) for job in jobs]
+    return [dict(job) for job in jobs.values()]
 
   @rpc_export_function
   async def get_state(self):
@@ -132,11 +153,11 @@ class Queue:
     param_ids = set()
     async with self.lock:
       if queued:
-        param_ids.update(map(lambda job: get_param_id(job['param']), self.state['queued_jobs']))
+        param_ids.update(map(lambda job: job['param_id'], self.state['queued_jobs'].values()))
       if started:
-        param_ids.update(map(lambda job: get_param_id(job['param']), self.state['started_jobs']))
+        param_ids.update(map(lambda job: job['param_id'], self.state['started_jobs'].values()))
       if finished:
-        param_ids.update(map(lambda job: get_param_id(job['param']), self.state['finished_jobs']))
+        param_ids.update(map(lambda job: job['param_id'], self.state['finished_jobs'].values()))
     return list(filter(lambda param: get_param_id(param) not in param_ids, params))
 
   @rpc_export_function
@@ -164,13 +185,17 @@ class Queue:
             'finished': None,
             'duration': None,
             'pid': None,
+            'progress': None,
             'succeeded': None,
             })
 
+      new_jobs_dict = self._make_ordered_dict(new_jobs)
+
       if append:
-        self.state['queued_jobs'] = self.state['queued_jobs'] + new_jobs
+        self.state['queued_jobs'].update(new_jobs_dict)
       else:
-        self.state['queued_jobs'] = new_jobs + self.state['queued_jobs']
+        new_jobs_dict.update(self.state['queued_jobs'])
+        self.state['queued_jobs'] = new_jobs_dict
 
       self.logger.info(f'Added {len(params)} jobs')
       self.lock.notify_all()
@@ -181,70 +206,86 @@ class Queue:
     '''Mark a queued job as started.'''
     now = format_utc(utcnow())
     async with self.lock:
-      for i, job in enumerate(self.state['queued_jobs']):
-        if job['job_id'] == job_id:
-          job['started'] = now
-          job['pid'] = None
+      if job_id not in self.state['queued_jobs']:
+        return False
 
-          self.state['started_jobs'].append(job)
-          del self.state['queued_jobs'][i]
+      job = self.state['queued_jobs'][job_id]
+      job['started'] = now
 
-          self.logger.info(f'Started job {job_id}')
-          self.lock.notify_all()
-          self._schedule_dump()
-          return True
-    return False
+      self.state['started_jobs'][job_id] = job
+      del self.state['queued_jobs'][job_id]
+
+      self.logger.info(f'Started job {job_id}')
+      self.lock.notify_all()
+      self._schedule_dump()
+      return True
 
   async def set_pid(self, job_id, pid):
     '''Update pid of a started job.'''
     async with self.lock:
-      for job in self.state['started_jobs']:
-        if job['job_id'] == job_id:
-          job['pid'] = pid
+      if job_id not in self.state['started_jobs']:
+        return False
 
-          self.logger.info(f'Updated job {job_id} pid {pid}')
-          self._schedule_dump()
-          return True
-    return False
+      job = self.state['started_jobs'][job_id]
+      job['pid'] = pid
+      self.logger.info(f'Updated job {job_id} pid {pid}')
+      self._schedule_dump()
+      return True
+
+  async def set_progress(self, job_id, progress):
+    '''Update progress of a started job.'''
+    async with self.lock:
+      if job_id not in self.state['started_jobs']:
+        return False
+
+      job = self.state['started_jobs'][job_id]
+      job['progress'] = progress
+      self.logger.info(f'Updated job {job_id} progress')
+      self._schedule_dump()
+      return True
 
   async def set_finished(self, job_id, succeeded):
     '''Mark an started job as finished.'''
     now = format_utc(utcnow())
     async with self.lock:
-      for i, job in enumerate(self.state['started_jobs']):
-        if job['job_id'] == job_id:
-          job['finished'] = now
-          job['duration'] = \
-              diff_sec(parse_utc(now), parse_utc(job['started']))
-          job['pid'] = None
-          job['succeeded'] = succeeded
+      if job_id not in self.state['started_jobs']:
+        return False
 
-          if succeeded:
-            await self.history.update(job)
+      job = self.state['started_jobs'][job_id]
+      job['finished'] = now
+      job['duration'] = \
+          diff_sec(parse_utc(now), parse_utc(job['started']))
+      job['pid'] = None
+      job['progress'] = None
+      job['succeeded'] = succeeded
 
-          self.state['finished_jobs'].append(job)
-          del self.state['started_jobs'][i]
+      if succeeded:
+        await self.history.update(job)
 
-          if succeeded:
-            self.logger.info(f'Finished job {job_id} [suceeded]')
-          else:
-            self.logger.warning(f'Finished job {job_id} [FAILED]')
-          self.lock.notify_all()
-          self._check_empty()
-          self._schedule_dump()
-          return True
-    return False
+      self.state['finished_jobs'][job_id] = job
+      del self.state['started_jobs'][job_id]
+
+      if succeeded:
+        self.logger.info(f'Finished job {job_id} [suceeded]')
+      else:
+        self.logger.warning(f'Finished job {job_id} [FAILED]')
+      self.lock.notify_all()
+      self._check_empty()
+      self._schedule_dump()
+      return True
 
   @rpc_export_function
   async def reorder(self, job_ids):
     '''Reorder queued jobs.'''
     job_count = len(job_ids)
     order = dict(zip(job_ids, range(job_count)))
+    sort_key = lambda job: order.get(job['job_id'], job_count + 1)
     async with self.lock:
-      self.state['queued_jobs'].sort(key=lambda param: order.get(param['job_id'], job_count + 1))
+      self.state['queued_jobs'] = self._make_ordered_dict(
+        sorted(self.state['queued_jobs'].values(), key=sort_key))
       self.logger.info(f'Reordered {job_count} jobs')
       self.lock.notify_all()
-    return job_count
+      return job_count
 
   @rpc_export_function
   async def remove_finished(self, job_ids=None):
@@ -252,11 +293,12 @@ class Queue:
     async with self.lock:
       prev_count = len(self.state['finished_jobs'])
       if job_ids is None:
-        self.state['finished_jobs'] = []
+        self.state['finished_jobs'].clear()
       else:
         job_ids = set(job_ids)
-        self.state['finished_jobs'] = [
-            job for job in self.state['finished_jobs'] if job['job_id'] not in job_ids]
+        filter_func = lambda job: job['job_id'] not in job_ids
+        self.state['finished_jobs'] = self._make_ordered_dict(
+            filter(filter_func, self.state['finished_jobs'].values()))
       new_count = len(self.state['finished_jobs'])
       self.logger.info(f'Removed {prev_count - new_count} finished jobs')
       self.lock.notify_all()
@@ -270,11 +312,12 @@ class Queue:
     async with self.lock:
       prev_count = len(self.state['queued_jobs'])
       if job_ids is None:
-        self.state['queued_jobs'] = []
+        self.state['queued_jobs'].clear()
       else:
         job_ids = set(job_ids)
-        self.state['queued_jobs'] = [
-            job for job in self.state['queued_jobs'] if job['job_id'] not in job_ids]
+        filter_func = lambda job: job['job_id'] not in job_ids
+        self.state['queued_jobs'] = self._make_ordered_dict(
+            filter(filter_func, self.state['queued_jobs'].values()))
       new_count = len(self.state['queued_jobs'])
       self.logger.info(f'Removed {prev_count - new_count} queued jobs')
       self.lock.notify_all()
