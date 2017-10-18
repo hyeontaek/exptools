@@ -35,6 +35,11 @@ class Estimator:
         continue
       known_param_ids.add(job['param_id'])
 
+      if job['started'] is None:
+        started = now
+      else:
+        started = parse_utc(job['started'])
+
       if job.get('status', None) and 'progress' in job['status']:
         known_duration += diff_sec(now, started) / max(job['status']['progress'], epsilon)
         known_count += 1
