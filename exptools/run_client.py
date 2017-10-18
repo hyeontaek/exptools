@@ -465,12 +465,13 @@ class CommandHandler:
       if 'finished' in job_types:
         succeeded_count = len([job for job in queue_state['finished_jobs'] if job['succeeded']])
         failed_count = len(queue_state['finished_jobs']) - succeeded_count
+        finished_jobs_color = 'red' if failed_count else 'green'
         output += termcolor.colored(
             f"Finished jobs (S:{succeeded_count} / F:{failed_count})",
-            'red' if failed_count else 'green', attrs=['reverse']) + '\n'
+            finished_jobs_color, attrs=['reverse']) + '\n'
 
         if limit and len(queue_state['finished_jobs']) > limit:
-          line = termcolor.colored('  ', 'yellow', attrs=['reverse', 'dark'])
+          line = termcolor.colored('  ', finished_jobs_color, attrs=['reverse'])
           output += line + '...\n'
 
         jobs = queue_state['finished_jobs']
