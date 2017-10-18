@@ -7,6 +7,7 @@ import base64
 import hashlib
 import hmac
 import json
+import math
 
 import websockets
 
@@ -36,13 +37,17 @@ class Client:
 
     self.estimator = Estimator(self.history)
 
+    self.max_size = 1048576
+    self.max_chunk_size = self.max_size // 2
+
     self.next_id = 0
     self._connect()
 
   def _connect(self):
     '''Connect to the server.'''
     connect_task = asyncio.ensure_future(
-        websockets.connect(f'ws://{self.host}:{self.port}', max_size=None), loop=self.loop)
+        websockets.connect(f'ws://{self.host}:{self.port}', max_size=self.max_size),
+        loop=self.loop)
     self.loop.run_until_complete(connect_task)
     self.websocket = connect_task.result()
 
@@ -70,6 +75,33 @@ class Client:
     next_id = self.next_id
     self.next_id += 1
     return next_id
+
+  async def send_data(self, websocket, data):
+    '''Send data.'''
+    chunk_count = max(math.ceil(len(data) / self.max_chunk_size), 1)
+
+    for i in range(chunk_count):
+      chunk = data[i * self.max_chunk_size:(i + 1) * self.max_chunk_size]
+      if i < chunk_count - 1:
+        await websocket.send('1' + chunk)
+      else:
+        await websocket.send('2' + chunk)
+
+  async def recv_data(self, websocket):
+    '''Receive data.'''
+    data = ''
+    while True:
+      raw_data = await websocket.recv()
+      if raw_data[0] == '0':
+        # Ignore ping
+        # Sending a pong may cause a deadlock if the server sends lots of data
+        continue
+      else:
+        data += raw_data[1:]
+        if raw_data[0] == '2':
+          break
+        assert raw_data[0] == '1'
+    return data
 
 # pylint: disable=too-few-public-methods
 class ObjectProxy:
@@ -102,26 +134,21 @@ class FunctionProxy:
   async def __call__(self, *args, **kwargs):
     '''Perform an RPC request to call a method on the server.'''
 
+    websocket = self.client.websocket
     request = {
         'id': self.client.get_next_id(),
         'method': self.method,
         'args': args,
         'kwargs': kwargs,
     }
-    await self.client.websocket.send(json.dumps(request))
+    await self.client.send_data(websocket, json.dumps(request))
 
-    while True:
-      response = json.loads(await self.client.websocket.recv())
-      if response == 'ping':
-        continue
-
-      break
+    response = json.loads(await self.client.recv_data(websocket))
     assert response['id'] == request['id']
 
-    if 'result' in response:
-      return response['result']
-    else:
+    if 'error' in response:
       raise RuntimeError(response['error'], response['data'])
+    return response['result']
 
 # pylint: disable=too-few-public-methods
 class GeneratorProxy:
@@ -134,24 +161,22 @@ class GeneratorProxy:
   async def __call__(self, *args, **kwargs):
     '''Perform an RPC request to call a method on the server.'''
 
+    websocket = self.client.websocket
     request = {
         'id': self.client.get_next_id(),
         'method': self.method,
         'args': args,
         'kwargs': kwargs,
     }
-    await self.client.websocket.send(json.dumps(request))
+    await self.client.send_data(websocket, json.dumps(request))
 
     while True:
-      response = json.loads(await self.client.websocket.recv())
-      if response == 'ping':
-        continue
-
+      response = json.loads(await self.client.recv_data(websocket))
       assert response['id'] == request['id']
 
-      if 'result' in response:
-        yield response['result']
-      elif response['error'] == 'StopAsyncIteration':
-        return
-      else:
-        raise RuntimeError(response['error'], response['data'])
+      if 'error' in response:
+        if response['error'] == 'StopAsyncIteration':
+          break
+        else:
+          raise RuntimeError(response['error'], response['data'])
+      yield response['result']

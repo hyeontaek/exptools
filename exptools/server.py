@@ -9,6 +9,7 @@ import hashlib
 import hmac
 import json
 import logging
+import math
 import secrets
 import traceback
 
@@ -30,6 +31,9 @@ class Server:
     self.runner = runner
     self.filter = filter_
     self.loop = loop
+
+    self.max_size = 1048576
+    self.max_chunk_size = self.max_size // 2
 
     self.logger = logging.getLogger('exptools.Server')
 
@@ -90,6 +94,33 @@ class Server:
       # Ignore closed connection
       pass
 
+  async def _send_data(self, websocket, data):
+    '''Send data.'''
+    chunk_count = max(math.ceil(len(data) / self.max_chunk_size), 1)
+
+    for i in range(chunk_count):
+      chunk = data[i * self.max_chunk_size:(i + 1) * self.max_chunk_size]
+      if i < chunk_count - 1:
+        await websocket.send('1' + chunk)
+      else:
+        await websocket.send('2' + chunk)
+
+  async def _recv_data(self, websocket):
+    '''Receive data.'''
+    data = ''
+    while True:
+      raw_data = await websocket.recv()
+      if raw_data[0] == '0':
+        # Ignore ping
+        # Sending a pong may cause a deadlock if the server sends lots of data
+        continue
+      else:
+        data += raw_data[1:]
+        if raw_data[0] == '2':
+          break
+        assert raw_data[0] == '1'
+    return data
+
   async def _handle_request(self, websocket, request):
     '''Handle a request.'''
     try:
@@ -103,15 +134,17 @@ class Server:
 
       if method.startswith('function:'):
         result = await self.exports[method](*args, **kwargs)
-        await websocket.send(json.dumps({'id': id_, 'result': result}))
+        await self._send_data(websocket, json.dumps({'id': id_, 'result': result}))
 
       elif method.startswith('generator:'):
         async for result in self.exports[method](*args, **kwargs):
-          await websocket.send(json.dumps({'id': id_, 'result': result}))
-        await websocket.send(json.dumps({'id': id_, 'error': 'StopAsyncIteration', 'data': None}))
+          await self._send_data(websocket, json.dumps({'id': id_, 'result': result}))
+        await self._send_data(
+            websocket, json.dumps({'id': id_, 'error': 'StopAsyncIteration', 'data': None}))
 
       else:
-        await websocket.send(json.dumps({'id': id_, 'error': 'InvalidMethod', 'data': None}))
+        await self._send_data(
+            websocket, json.dumps({'id': id_, 'error': 'InvalidMethod', 'data': None}))
 
     except concurrent.futures.CancelledError:
       # Pass through
@@ -122,7 +155,7 @@ class Server:
 
     except Exception as exc: # pylint: disable=broad-except
       self.logger.exception('Exception while handling request')
-      await websocket.send(json.dumps({
+      await self._send_data(websocket, json.dumps({
           'id': id_,
           'error': exc.__class__.__name__,
           'data': traceback.format_exc(),
@@ -131,7 +164,7 @@ class Server:
   async def _handle_requests(self, websocket):
     try:
       while True:
-        request = await websocket.recv()
+        request = await self._recv_data(websocket)
         await self._handle_request(websocket, request)
     except concurrent.futures.CancelledError:
       # Ignore cancelled task
@@ -145,7 +178,15 @@ class Server:
     # pylint: disable=unused-argument
     async def _serve(websocket, path):
       try:
-        if not await self._authenticate(websocket):
+        auth_task = asyncio.ensure_future(self._authenticate(websocket), loop=self.loop)
+        try:
+          await asyncio.wait_for(auth_task, timeout=10, loop=self.loop)
+        except asyncio.TimeoutError:
+          # authentication timeout
+          return
+
+        if not auth_task.done() or not auth_task.result():
+          # authentication failed
           return
 
         tasks = [
@@ -158,4 +199,4 @@ class Server:
         self.logger.debug('Connection closed')
 
     self.logger.info(f'Listening on ws://{self.host}:{self.port}/')
-    await websockets.serve(_serve, self.host, self.port, max_size=None)
+    await websockets.serve(_serve, self.host, self.port, max_size=self.max_size, loop=self.loop)
