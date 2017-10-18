@@ -191,16 +191,41 @@ class CommandHandler:
 
   @arg_export('common_get_queue_state')
   @arg_define('-f', '--follow', action='store_true', default=False, help='follow queue changes')
+  @arg_define('-i', '--interval', type=float, default=60.,
+              help='refresh interval in seconds for no queue change; ' + \
+                   'use 0 to refresh upon changes only')
   @arg_define('-s', '--stop-empty', action='store_true', default=False,
               help='stop upon empty queue')
   @arg_define('-c', '--clear-screen', action='store_true', default=False,
               help='clear screen before showing the queue')
   async def _get_queue_state(self):
     if self.args.follow:
-      async for queue_state in self.client_watch.queue.watch_state():
-        if self.args.clear_screen:
-          os.system('clear')
-        yield queue_state
+      interval = self.args.interval
+
+      if not interval:
+        async for state in self.client_watch.queue.watch_state():
+          if self.args.clear_screen:
+            os.system('clear')
+          yield state
+      else:
+        # Manually access asynchronous generator to use asyncio.wait() for timeout
+        watch_state_gen = self.client_watch.queue.watch_state().__aiter__()
+        gen_next = asyncio.ensure_future(watch_state_gen.__anext__(), loop=self.loop)
+
+        state = await self.client.queue.get_state()
+        try:
+          while True:
+            await asyncio.wait([gen_next], timeout=interval, loop=self.loop)
+
+            if gen_next.done():
+              state = gen_next.result()
+              gen_next = asyncio.ensure_future(watch_state_gen.__anext__(), loop=self.loop)
+
+            if self.args.clear_screen:
+              os.system('clear')
+            yield state
+        except StopAsyncIteration:
+          pass
     else:
       state = await self.client.queue.get_state()
       if self.args.clear_screen:
