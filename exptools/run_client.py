@@ -308,7 +308,34 @@ class CommandHandler:
     params = await self._read_params()
     params = await self._omit_params(params)
     for param in params:
-      self.stdout.write(f'{get_param_id(param)}  {get_name(param)}\n')
+      line = ''
+      meta = None
+      if '_' in param:
+        meta = param['_']
+
+      if meta and 'job_id' in meta and meta['job_id'] is not None:
+        line += f"{meta['job_id']:5} "
+      else:
+        line += ' ' * (5 + 1)
+
+      line += f'{get_param_id(param)} '
+
+      if meta and 'duration' in meta and meta['duration'] is not None:
+        line += f"[{format_sec_short(meta['duration']):>8}] "
+      else:
+        line += '           '
+
+      if meta and 'succeeded' in meta and meta['succeeded'] is not None:
+        if meta['succeeded'] == True:
+          line += f'succeeded  '
+        else:
+          line += f'FAILED     '
+      else:
+        line += f'           '
+
+      line += get_name(param)
+
+      self.stdout.write(line + '\n')
 
   @arg_export('command_dum')
   @arg_import('common_read_params')
@@ -376,7 +403,7 @@ class CommandHandler:
     selected_params = []
     pat = re.compile(filter_expr)
     for param in params:
-      mat = pat.fullmatch(get_name(param))
+      mat = pat.search(get_name(param))
       if mat is not None:
         selected_params.append(param)
 
@@ -483,13 +510,13 @@ class CommandHandler:
             line = termcolor.colored('  ', 'green', attrs=['reverse'])
           else:
             line = termcolor.colored('  ', 'red', attrs=['reverse'])
-          line += f"{job['job_id']} {job['param_id']}"
-          line += f' [{format_sec_short(job_elapsed_time(job))}]'
+          line += f"{job['job_id']:5} {job['param_id']}"
+          line += f' [{format_sec_short(job_elapsed_time(job)):>8}]'
           if job['succeeded']:
-            line += ' succeeded:'
+            line += ' succeeded  '
           else:
-            line += ' FAILED:'
-          line += f" {job['name']}"
+            line += ' FAILED     '
+          line += f"{job['name']}"
           output += line + '\n'
 
         output += '\n'
@@ -515,12 +542,13 @@ class CommandHandler:
         for job in jobs:
           line = termcolor.colored('  ', 'yellow', attrs=['reverse'])
           partial_state['started_jobs'].append(job)
-          line += f"{job['job_id']} {job['param_id']}"
+          line += f"{job['job_id']:5} {job['param_id']}"
           rem = await self.client.estimator.estimate_remaining_time(partial_state, False)
-          line += f' [{format_sec_short(job_elapsed_time(job))}' + \
-                  f'+{format_sec_short(max(rem - last_rem, 0))}]:'
+          line += f' [{format_sec_short(job_elapsed_time(job)):>8}' + \
+              f'+{format_sec_short(max(rem - last_rem, 0)):>8}]'
+          line += '   '
           last_rem = rem
-          line += f" {job['name']}"
+          line += f"{job['name']}"
           output += line + '\n'
 
         output += '\n'
@@ -542,11 +570,12 @@ class CommandHandler:
         for job in jobs:
           line = termcolor.colored('  ', 'cyan', attrs=['reverse'])
           partial_state['queued_jobs'].append(job)
-          line += f"{job['job_id']} {job['param_id']}"
+          line += f"{job['job_id']:5} {job['param_id']}"
           rem = await self.client.estimator.estimate_remaining_time(partial_state, False)
-          line += f' [+{format_sec_short(max(rem - last_rem, 0))}]:'
+          line += f' [        +{format_sec_short(max(rem - last_rem, 0)):>8}]'
+          line += '   '
           last_rem = rem
-          line += f" {job['name']}"
+          line += f"{job['name']}"
           output += line + '\n'
 
         if limit and len(queue_state['queued_jobs']) > limit:
