@@ -41,6 +41,7 @@ setup(
       'termcolor',
       'aiofiles',
       'base58',
+      'butter',
       'tzlocal',
       'websockets',
       'yaql',

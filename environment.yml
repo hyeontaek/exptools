@@ -7,6 +7,7 @@ dependencies:
 - pip:
   - aiofiles
   - base58
+  - butter
   - tzlocal
   - websockets
   - yaql

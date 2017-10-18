@@ -21,6 +21,7 @@ class History:
       'started': None,
       'finished': None,
       'duration': None,
+      'status': None,
       'succeeded': None,
       }
 

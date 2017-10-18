@@ -185,7 +185,7 @@ class Queue:
             'finished': None,
             'duration': None,
             'pid': None,
-            'progress': None,
+            'status': None,
             'succeeded': None,
             })
 
@@ -232,15 +232,16 @@ class Queue:
       self._schedule_dump()
       return True
 
-  async def set_progress(self, job_id, progress):
-    '''Update progress of a started job.'''
+  async def set_status(self, job_id, status):
+    '''Update status of a started job.'''
     async with self.lock:
       if job_id not in self.state['started_jobs']:
         return False
 
       job = self.state['started_jobs'][job_id]
-      job['progress'] = progress
-      self.logger.info(f'Updated job {job_id} progress')
+      job['status'] = status
+      self.logger.info(f'Updated job {job_id} status')
+      self.lock.notify_all()
       self._schedule_dump()
       return True
 
@@ -256,7 +257,6 @@ class Queue:
       job['duration'] = \
           diff_sec(parse_utc(now), parse_utc(job['started']))
       job['pid'] = None
-      job['progress'] = None
       job['succeeded'] = succeeded
 
       if succeeded:
