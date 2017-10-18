@@ -16,6 +16,8 @@ class Estimator:
 
     now = utcnow()
 
+    epsilon = 0.001  # Potential understimation until the progress reaches 0.1%
+
     # Future parallelism cannot be higher than the remaining job count
     concurrency = max(1., min(state['concurrency'],
                               len(state['started_jobs']) + len(state['queued_jobs'])))
@@ -23,10 +25,25 @@ class Estimator:
     history_data = await self.history.get_all()
 
     # Estimate average per-job duration
+    known_param_ids = set()
     known_duration = 0.
     known_count = 0
 
-    for history_entry in history_data.values():
+    # Consider recent jobs first (in case some jobs have duplicate param_id)
+    for job in reversed(state['started_jobs']):
+      if job['param_id'] in known_param_ids:
+        continue
+      known_param_ids.add(job['param_id'])
+
+      if job.get('status', None) and 'progress' in job['status']:
+        known_duration += diff_sec(now, started) / max(job['status']['progress'], epsilon)
+        known_count += 1
+
+    for param_id, history_entry in history_data.items():
+      if param_id in known_param_ids:
+        continue
+      known_param_ids.add(param_id)
+
       if history_entry['duration'] is not None and history_entry['succeeded']:
         known_duration += history_entry['duration']
         known_count += 1
@@ -43,7 +60,10 @@ class Estimator:
       else:
         started = parse_utc(job['started'])
 
-      if history_entry['duration'] is not None and history_entry['succeeded']:
+      if job.get('status', None) and 'progress' in job['status']:
+        exp_duration = diff_sec(now, started) / max(job['status']['progress'], epsilon)
+        remaining_duration += max(exp_duration - diff_sec(now, started), 0.)
+      elif history_entry['duration'] is not None and history_entry['succeeded']:
         remaining_duration += max(history_entry['duration'] - diff_sec(now, started), 0.)
       else:
         remaining_duration += max(avg_duration - diff_sec(now, started), 0.)
