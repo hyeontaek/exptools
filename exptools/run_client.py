@@ -204,8 +204,6 @@ class CommandHandler:
 
       if not interval:
         async for state in self.client_watch.queue.watch_state():
-          if self.args.clear_screen:
-            os.system('clear')
           yield state
       else:
         # Manually access asynchronous generator to use asyncio.wait() for timeout
@@ -220,16 +218,11 @@ class CommandHandler:
             if gen_next.done():
               state = gen_next.result()
               gen_next = asyncio.ensure_future(watch_state_gen.__anext__(), loop=self.loop)
-
-            if self.args.clear_screen:
-              os.system('clear')
             yield state
         except StopAsyncIteration:
           pass
     else:
       state = await self.client.queue.get_state()
-      if self.args.clear_screen:
-        os.system('clear')
       yield state
 
   @arg_export('common_get_job_ids')
@@ -463,6 +456,8 @@ class CommandHandler:
     async for queue_state in self._get_queue_state():
       oneshot = await self.client.scheduler.is_oneshot()
 
+      if self.args.clear_screen:
+        os.system('clear')
       self.stdout.write(
           await format_estimated_time(self.client.estimator, queue_state, oneshot) + '\n')
 
@@ -585,6 +580,9 @@ class CommandHandler:
         output += '\n'
 
       #output += f"Concurrency: {queue_state['concurrency']}"
+
+      if self.args.clear_screen:
+        os.system('clear')
       self.stdout.write(output + '\n')
 
       oneshot = await self.client.scheduler.is_oneshot()
