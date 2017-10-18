@@ -319,7 +319,7 @@ class CommandHandler:
         line += '           '
 
       if meta and 'succeeded' in meta and meta['succeeded'] is not None:
-        if meta['succeeded'] == True:
+        if meta['succeeded']:
           line += f'succeeded  '
         else:
           line += f'FAILED     '

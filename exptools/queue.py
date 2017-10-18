@@ -282,7 +282,7 @@ class Queue:
     sort_key = lambda job: order.get(job['job_id'], job_count + 1)
     async with self.lock:
       self.state['queued_jobs'] = self._make_ordered_dict(
-        sorted(self.state['queued_jobs'].values(), key=sort_key))
+          sorted(self.state['queued_jobs'].values(), key=sort_key))
       self.logger.info(f'Reordered {job_count} jobs')
       self.lock.notify_all()
       return job_count
