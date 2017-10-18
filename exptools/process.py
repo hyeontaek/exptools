@@ -3,7 +3,7 @@
 __all__ = [
     'sync',
     'async_run_cmd', 'run_cmd',
-    'async_run_ssh_cmd', 'run_ssh_cmd'
+    'async_run_ssh_cmd', 'run_ssh_cmd',
     'async_wait_for_procs', 'wait_for_procs',
     'kill_procs',
     'all_success_returncode',
@@ -11,11 +11,11 @@ __all__ = [
 
 import asyncio
 
-def sync(co, loop=None):
+def sync(cor, loop=None):
   '''Wait for a task and return the result.'''
   if loop is None:
     loop = asyncio.get_event_loop()
-  task = asyncio.ensure_future(co, loop=loop)
+  task = asyncio.ensure_future(cor, loop=loop)
   loop.run_until_complete(task)
   return task.result()
 
