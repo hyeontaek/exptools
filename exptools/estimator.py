@@ -38,10 +38,10 @@ class Estimator:
     for job in state['started_jobs']:
       history_entry = await self.history.get(job['param_id'])
 
-      if history_entry['started'] is None:
+      if job['started'] is None:
         started = now
       else:
-        started = parse_utc(history_entry['started'])
+        started = parse_utc(job['started'])
 
       if history_entry['duration'] is not None and history_entry['succeeded']:
         remaining_duration += max(history_entry['duration'] - diff_sec(now, started), 0.)
