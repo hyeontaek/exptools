@@ -84,6 +84,9 @@ class Server:
     try:
       while True:
         await asyncio.sleep(10, loop=self.loop)
+        # Use custom unidirectional pings because the server often does not use recv()
+        # while it sends a stream/large amount of data to clients slowly,
+        # which may cause a deadlock
         await websocket.send('0')
 
     except concurrent.futures.CancelledError:
@@ -111,7 +114,6 @@ class Server:
       raw_data = await websocket.recv()
       if raw_data[0] == '0':
         # Ignore ping
-        # Sending a pong may cause a deadlock if the server sends lots of data
         continue
       else:
         data += raw_data[1:]
