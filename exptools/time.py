@@ -118,7 +118,7 @@ def format_job_count(queue_state):
   output += ' '
   output += termcolor.colored('A:' + str(started), 'cyan', attrs=['reverse'])
   output += ' '
-  output += termcolor.colored('Q:' + str(queued), 'grey', attrs=['reverse'])
+  output += termcolor.colored('Q:' + str(queued), 'blue', attrs=['reverse'])
   return output
 
 async def format_estimated_time(estimator, queue_state, oneshot):

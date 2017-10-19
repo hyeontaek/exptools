@@ -556,14 +556,14 @@ class CommandHandler:
       if 'queued' in job_types:
         output += termcolor.colored(
             f"Queued jobs ({len(queue_state['queued_jobs'])})",
-            'grey', attrs=['reverse']) + '\n'
+            'blue', attrs=['reverse']) + '\n'
 
         jobs = queue_state['queued_jobs']
         if limit:
           jobs = jobs[:limit]
 
         for job in jobs:
-          line = termcolor.colored('  ', 'grey', attrs=['reverse'])
+          line = termcolor.colored('  ', 'blue', attrs=['reverse'])
           partial_state['queued_jobs'].append(job)
           line += f"{job['job_id']:5} {job['param_id']}"
           rem = await self.client.estimator.estimate_remaining_time(partial_state, False)
@@ -574,7 +574,7 @@ class CommandHandler:
           output += line + '\n'
 
         if limit and len(queue_state['queued_jobs']) > limit:
-          line = termcolor.colored('  ', 'grey', attrs=['reverse'])
+          line = termcolor.colored('  ', 'blue', attrs=['reverse'])
           output += line + '...\n'
 
         output += '\n'
