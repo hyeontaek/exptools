@@ -191,9 +191,9 @@ class CommandHandler:
 
   @arg_export('common_get_queue_state')
   @arg_define('-f', '--follow', action='store_true', default=False, help='follow queue changes')
-  @arg_define('-i', '--interval', type=float, default=60.,
+  @arg_define('-i', '--interval', type=float, default=0.,
               help='refresh interval in seconds for no queue change; ' + \
-                   'use 0 to refresh upon changes only')
+                   'use 0 to refresh upon changes only (default: %(default)s)')
   @arg_define('-s', '--stop-empty', action='store_true', default=False,
               help='stop upon empty queue')
   @arg_define('-c', '--clear-screen', action='store_true', default=False,
@@ -468,7 +468,8 @@ class CommandHandler:
   @arg_export('command_status')
   @arg_import('common_get_queue_state')
   @arg_define('-l', '--limit', type=int, default=0,
-              help='limit the number of jobs for each job type; use 0 to show all')
+              help='limit the number of jobs for each job type; ' + \
+                   'use 0 to show all (default: %(default)s)')
   @arg_define('job_types', type=str, nargs='*',
               choices=['all', 'finished', 'started', 'queued'], default='all',
               help='specify job types to show (default: %(default)s)')
