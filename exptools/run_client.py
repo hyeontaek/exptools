@@ -494,7 +494,7 @@ class CommandHandler:
 
         if limit and len(queue_state['finished_jobs']) > limit:
           line = termcolor.colored('  ', finished_jobs_color, attrs=['reverse'])
-          output += line + '...\n'
+          output += line + ' ...\n'
 
         jobs = queue_state['finished_jobs']
         if limit:
@@ -505,7 +505,7 @@ class CommandHandler:
             line = termcolor.colored('  ', 'green', attrs=['reverse'])
           else:
             line = termcolor.colored('  ', 'red', attrs=['reverse'])
-          line += f"{job['job_id']:5} {job['param_id']}"
+          line += f" {job['job_id']:5} {job['param_id']}"
           line += f' [{format_sec_short(job_elapsed_time(job)):>8}]'
           if job['succeeded']:
             line += ' succeeded  '
@@ -528,7 +528,7 @@ class CommandHandler:
 
         if limit and len(queue_state['started_jobs']) > limit:
           line = termcolor.colored('  ', 'cyan', attrs=['reverse'])
-          output += line + '...\n'
+          output += line + ' ...\n'
 
         jobs = queue_state['started_jobs']
         if limit:
@@ -537,7 +537,7 @@ class CommandHandler:
         for job in jobs:
           line = termcolor.colored('  ', 'cyan', attrs=['reverse'])
           partial_state['started_jobs'].append(job)
-          line += f"{job['job_id']:5} {job['param_id']}"
+          line += f" {job['job_id']:5} {job['param_id']}"
           rem = await self.client.estimator.estimate_remaining_time(partial_state, False)
           line += f' [{format_sec_short(job_elapsed_time(job)):>8}' + \
               f' +{format_sec_short(max(rem - last_rem, 0)):>8}]'
@@ -565,7 +565,7 @@ class CommandHandler:
         for job in jobs:
           line = termcolor.colored('  ', 'blue', attrs=['reverse'])
           partial_state['queued_jobs'].append(job)
-          line += f"{job['job_id']:5} {job['param_id']}"
+          line += f" {job['job_id']:5} {job['param_id']}"
           rem = await self.client.estimator.estimate_remaining_time(partial_state, False)
           line += f' [         +{format_sec_short(max(rem - last_rem, 0)):>8}]'
           line += '  '
@@ -575,7 +575,7 @@ class CommandHandler:
 
         if limit and len(queue_state['queued_jobs']) > limit:
           line = termcolor.colored('  ', 'blue', attrs=['reverse'])
-          output += line + '...\n'
+          output += line + ' ...\n'
 
         output += '\n'
 
