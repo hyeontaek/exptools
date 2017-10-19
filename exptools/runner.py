@@ -11,7 +11,7 @@ import os
 import signal
 
 import aiofiles
-import butter.asyncio.inotify
+import aionotify
 
 from exptools.file import mkdirs, rmdirs, get_job_dir, get_param_path
 from exptools.rpc_helper import rpc_export_function, rpc_export_generator
@@ -90,8 +90,6 @@ class Runner:
     command = job['command']
     cwd = job['cwd']
 
-    status_task = None
-
     try:
       if not await self.queue.set_started(job_id):
         self.logger.info(f'Ignoring missing job {job_id}')
@@ -138,9 +136,10 @@ class Runner:
           except Exception: # pylint: disable=broad-except
             self.logger.exception('Exception while waiting for process')
 
+          status_task.cancel()
+          await status_task
+
         # Read before making the job finished
-        status_task.cancel()
-        await status_task
         await self._read_status(job_id, job_dir)
 
       if proc.returncode == 0:
@@ -154,33 +153,32 @@ class Runner:
       pass
     except Exception: # pylint: disable=broad-except
       self.logger.exception(f'Exception while running job {job_id} ({param_id}): {name}')
+
+      # Read before making the job finished
       await self._read_status(job_id, job_dir)
+
       await self.queue.set_finished(job_id, False)
-    finally:
-      if status_task:
-        status_task.cancel()
-        await status_task
 
   async def _watch_status(self, job_id, job_dir):
     '''Watch the status file changes.'''
     status_path = os.path.join(job_dir, 'status.json')
 
-    inotify = butter.asyncio.inotify.Inotify_async(loop=self.loop)
+    watcher = aionotify.Watcher()
+    watcher.watch(status_path, aionotify.Flags.CLOSE_WRITE)
+    await watcher.setup(self.loop)
     try:
-      wd = inotify.watch(status_path, butter.inotify.IN_CLOSE_WRITE)
-      try:
-        while True:
-          try:
-            await self._read_status(job_id, job_dir)
-            await inotify.get_event()
-          except concurrent.futures.CancelledError:
-            break
-          except Exception: # pylint: disable=broad-except
-            self.logger.exception(f'Exception while watching status of job {job_id}')
-      finally:
-        inotify.ignore(wd)
+      while True:
+        try:
+          await self._read_status(job_id, job_dir)
+          await watcher.get_event()
+          self.logger.info(f'Change detected at {status_path}')
+        except concurrent.futures.CancelledError:
+          break
+        except Exception: # pylint: disable=broad-except
+          self.logger.exception(f'Exception while watching status of job {job_id}')
     finally:
-      inotify.close()
+      watcher.unwatch(status_path)
+      watcher.close()
 
   async def _read_status(self, job_id, job_dir):
     '''Read the status file and send it to the queue.'''
