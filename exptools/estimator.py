@@ -40,8 +40,8 @@ class Estimator:
       else:
         started = parse_utc(job['started'])
 
-      if job.get('status', None) and 'progress' in job['status']:
-        known_duration += diff_sec(now, started) / max(job['status']['progress'], epsilon)
+      if job.get('status', None) and job['status'].get('progress') >= epsilon:
+        known_duration += diff_sec(now, started) / job['status']['progress']
         known_count += 1
 
     for param_id, history_entry in history_data.items():
@@ -65,8 +65,8 @@ class Estimator:
       else:
         started = parse_utc(job['started'])
 
-      if job.get('status', None) and 'progress' in job['status']:
-        exp_duration = diff_sec(now, started) / max(job['status']['progress'], epsilon)
+      if job.get('status', None) and job['status'].get('progress') >= epsilon:
+        exp_duration = diff_sec(now, started) / job['status']['progress']
         remaining_duration += max(exp_duration - diff_sec(now, started), 0.)
       elif history_entry['duration'] is not None and history_entry['succeeded']:
         remaining_duration += max(history_entry['duration'] - diff_sec(now, started), 0.)
