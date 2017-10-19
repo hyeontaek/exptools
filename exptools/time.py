@@ -108,21 +108,17 @@ def format_job_count(queue_state):
   started = len(state['started_jobs'])
   queued = len(state['queued_jobs'])
 
-  output = 'S:'
-  output += termcolor.colored(str(succeeded), 'green')
-  output += termcolor.colored('/', 'blue')
-  output += 'F:'
+  output = ''
+  output += termcolor.colored('S:' + str(succeeded), 'green', attrs=['reverse'])
+  output += ' '
   if failed == 0:
-    output += termcolor.colored(str(failed), 'green')
-    output += termcolor.colored('/', 'blue')
+    output += termcolor.colored('F:' + str(failed), 'green', attrs=['reverse'])
   else:
-    output += termcolor.colored(str(failed), 'red')
-    output += termcolor.colored('/', 'blue')
-  output += 'A:'
-  output += termcolor.colored(str(started), 'yellow')
-  output += termcolor.colored('/', 'blue')
-  output += 'Q:'
-  output += termcolor.colored(str(queued), 'cyan')
+    output += termcolor.colored('F:' + str(failed), 'red', attrs=['reverse'])
+  output += ' '
+  output += termcolor.colored('A:' + str(started), 'cyan', attrs=['reverse'])
+  output += ' '
+  output += termcolor.colored('Q:' + str(queued), 'grey', attrs=['reverse'])
   return output
 
 async def format_estimated_time(estimator, queue_state, oneshot):
@@ -140,10 +136,10 @@ async def format_estimated_time(estimator, queue_state, oneshot):
 
   concurrency = state['concurrency']
 
-  output = termcolor.colored('[', 'blue')
+  output = ''
   output += format_job_count(state)
   output += termcolor.colored(
-      f'] Remaining {remaining_str}' + \
+      f'  Remaining {remaining_str}' + \
       f'  Finish by {finish_by_local_str}' + \
       f'  Concurrency {concurrency}', 'blue')
   return output

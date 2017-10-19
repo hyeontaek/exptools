@@ -524,10 +524,10 @@ class CommandHandler:
       if 'started' in job_types:
         output += termcolor.colored(
             f"Started jobs ({len(queue_state['started_jobs'])})",
-            'yellow', attrs=['reverse']) + '\n'
+            'cyan', attrs=['reverse']) + '\n'
 
         if limit and len(queue_state['started_jobs']) > limit:
-          line = termcolor.colored('  ', 'yellow', attrs=['reverse'])
+          line = termcolor.colored('  ', 'cyan', attrs=['reverse'])
           output += line + '...\n'
 
         jobs = queue_state['started_jobs']
@@ -535,7 +535,7 @@ class CommandHandler:
           jobs = jobs[-limit:]
 
         for job in jobs:
-          line = termcolor.colored('  ', 'yellow', attrs=['reverse'])
+          line = termcolor.colored('  ', 'cyan', attrs=['reverse'])
           partial_state['started_jobs'].append(job)
           line += f"{job['job_id']:5} {job['param_id']}"
           rem = await self.client.estimator.estimate_remaining_time(partial_state, False)
@@ -556,14 +556,14 @@ class CommandHandler:
       if 'queued' in job_types:
         output += termcolor.colored(
             f"Queued jobs ({len(queue_state['queued_jobs'])})",
-            'cyan', attrs=['reverse']) + '\n'
+            'grey', attrs=['reverse']) + '\n'
 
         jobs = queue_state['queued_jobs']
         if limit:
           jobs = jobs[:limit]
 
         for job in jobs:
-          line = termcolor.colored('  ', 'cyan', attrs=['reverse'])
+          line = termcolor.colored('  ', 'grey', attrs=['reverse'])
           partial_state['queued_jobs'].append(job)
           line += f"{job['job_id']:5} {job['param_id']}"
           rem = await self.client.estimator.estimate_remaining_time(partial_state, False)
@@ -574,7 +574,7 @@ class CommandHandler:
           output += line + '\n'
 
         if limit and len(queue_state['queued_jobs']) > limit:
-          line = termcolor.colored('  ', 'cyan', attrs=['reverse'])
+          line = termcolor.colored('  ', 'grey', attrs=['reverse'])
           output += line + '...\n'
 
         output += '\n'
