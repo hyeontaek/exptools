@@ -45,15 +45,11 @@ class Client:
 
   def _connect(self):
     '''Connect to the server.'''
-    connect_task = asyncio.ensure_future(
-        websockets.connect(f'ws://{self.host}:{self.port}', max_size=self.max_size),
-        loop=self.loop)
-    self.loop.run_until_complete(connect_task)
-    self.websocket = connect_task.result()
+    self.websocket = self.loop.run_until_complete(
+        websockets.connect(f'ws://{self.host}:{self.port}', max_size=self.max_size))
 
-    auth = asyncio.ensure_future(self._authenticate(self.websocket), loop=self.loop)
-    self.loop.run_until_complete(auth)
-    assert auth.result(), 'Authentication failed'
+    authed = self.loop.run_until_complete(self._authenticate(self.websocket))
+    assert authed, 'Authentication failed'
 
   async def _authenticate(self, websocket):
     '''Perform authentication.'''

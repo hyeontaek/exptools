@@ -15,9 +15,7 @@ def sync(cor, loop=None):
   '''Wait for a task and return the result.'''
   if loop is None:
     loop = asyncio.get_event_loop()
-  task = asyncio.ensure_future(cor, loop=loop)
-  loop.run_until_complete(task)
-  return task.result()
+  return loop.run_until_complete(cor)
 
 async def async_run_cmd(cmd, loop=None, **kwargs):
   '''Run a command.'''
@@ -58,6 +56,8 @@ async def async_wait_for_procs(procs, timeout=None, loop=None):
 
   tasks = [proc.wait() for proc in procs]
   _, pending = await asyncio.wait(tasks, timeout=timeout, loop=loop)
+  for task in pending:
+    task.cancel()
 
   success = not pending
   returncode_list = [proc.returncode for proc in procs]

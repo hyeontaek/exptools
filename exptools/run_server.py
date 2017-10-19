@@ -98,14 +98,15 @@ def run_server():
   except KeyboardInterrupt:
     pass
   finally:
-    logger.info('Waiting for execution tasks to exit')
-    for task in execution_tasks:
-      task.cancel()
-    loop.run_until_complete(asyncio.wait(execution_tasks, loop=loop))
-
-    logger.info('Waiting for state tasks to exit')
-    for task in state_tasks:
-      task.cancel()
-    loop.run_until_complete(asyncio.wait(state_tasks, loop=loop))
+    try:
+      logger.info('Waiting for execution tasks to exit')
+      for task in execution_tasks:
+        task.cancel()
+      loop.run_until_complete(asyncio.gather(*execution_tasks, loop=loop))
+    finally:
+      logger.info('Waiting for state tasks to exit')
+      for task in state_tasks:
+        task.cancel()
+      loop.run_until_complete(asyncio.gather(*state_tasks, loop=loop))
 
     logger.info('Tasks exited')

@@ -209,18 +209,23 @@ class CommandHandler:
         # Manually access asynchronous generator to use asyncio.wait() for timeout
         watch_state_gen = self.client_watch.queue.watch_state().__aiter__()
         gen_next = asyncio.ensure_future(watch_state_gen.__anext__(), loop=self.loop)
-
-        state = await self.client.queue.get_state()
         try:
-          while True:
-            await asyncio.wait([gen_next], timeout=interval, loop=self.loop)
+          state = await self.client.queue.get_state()
+          try:
+            while True:
+              await asyncio.wait([gen_next], timeout=interval, loop=self.loop)
 
-            if gen_next.done():
-              state = gen_next.result()
-              gen_next = asyncio.ensure_future(watch_state_gen.__anext__(), loop=self.loop)
-            yield state
-        except StopAsyncIteration:
-          pass
+              if gen_next.done():
+                state = gen_next.result()
+                # Make a new task to get the next item
+                gen_next = asyncio.ensure_future(watch_state_gen.__anext__(), loop=self.loop)
+              yield state
+          except StopAsyncIteration:
+            pass
+        finally:
+          gen_next.cancel()
+          await gen_next
+          # Ignore gen_next.result()
     else:
       state = await self.client.queue.get_state()
       yield state

@@ -84,16 +84,15 @@ class Server:
     try:
       while True:
         await asyncio.sleep(10, loop=self.loop)
-        # Use custom unidirectional pings; the server often does not use recv() to consume client Pong
+        # Use custom unidirectional pings
+        # The server often does not use recv() to consume client Pong
         # while it sends a stream/large amount of data to clients slowly,
         # which may cause a deadlock
         await websocket.send('0')
 
     except concurrent.futures.CancelledError:
-      # Ignore cancelled task
       pass
     except websockets.exceptions.ConnectionClosed:
-      # Ignore closed connection
       pass
 
   async def _send_data(self, websocket, data):
@@ -163,9 +162,12 @@ class Server:
           }))
 
   async def _handle_requests(self, websocket):
-    while True:
-      request = await self._recv_data(websocket)
-      await self._handle_request(websocket, request)
+    try:
+      while True:
+        request = await self._recv_data(websocket)
+        await self._handle_request(websocket, request)
+    except concurrent.futures.CancelledError:
+      pass
 
   async def run_forever(self):
     '''Serve websocket requests.'''
@@ -182,6 +184,7 @@ class Server:
           finally:
             if not auth_task.done():
               auth_task.cancel()
+            await asyncio.gather(auth_task, loop=self.loop)
 
           if not auth_task.done() or not auth_task.result():
             # authentication failed
@@ -192,10 +195,12 @@ class Server:
               asyncio.ensure_future(self._handle_requests(websocket), loop=self.loop),
               ]
           try:
-            await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+            # Stop waiting if any of two handlers fails
+            await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED, loop=self.loop)
           finally:
             for task in tasks:
               task.cancel()
+            await asyncio.gather(*tasks, loop=self.loop)
 
         except websockets.exceptions.ConnectionClosed:
           self.logger.debug('Connection closed')

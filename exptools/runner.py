@@ -39,14 +39,20 @@ class Runner:
         task = asyncio.ensure_future(self._run(job), loop=self.loop)
         tasks.append(task)
 
-        tasks = list(filter(lambda task: not task.done(), tasks))
+        new_tasks = []
+        for task in tasks:
+          if task.done():
+            task.result()
+          else:
+            new_tasks.append(task)
+        tasks = new_tasks
     except concurrent.futures.CancelledError:
       pass
     finally:
       if tasks:
         for task in tasks:
           task.cancel()
-        await asyncio.wait(tasks, loop=self.loop)
+        await asyncio.gather(*tasks, loop=self.loop)
 
   @staticmethod
   def _create_job_files(job, job_dir):
@@ -137,7 +143,7 @@ class Runner:
             self.logger.exception('Exception while waiting for process')
 
           status_task.cancel()
-          await status_task
+          await asyncio.gather(status_task, loop=self.loop)
 
         # Read before making the job finished
         await self._read_status(job_id, job_dir)
