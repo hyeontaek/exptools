@@ -6,6 +6,7 @@ import asyncio
 import argparse
 import base64
 import collections
+import concurrent
 import io
 import json
 import os
@@ -224,8 +225,10 @@ class CommandHandler:
             pass
         finally:
           gen_next.cancel()
-          await gen_next
-          # Ignore gen_next.result()
+          try:
+            await asyncio.gather(gen_next, loop=self.loop)
+          except concurrent.futures.CancelledError:
+            pass
     else:
       state = await self.client.queue.get_state()
       yield state

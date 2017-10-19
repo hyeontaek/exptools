@@ -169,43 +169,40 @@ class Server:
     except concurrent.futures.CancelledError:
       pass
 
+  def _get_serve(self):
+    # pylint: disable=unused-argument
+    async def _serve(websocket, path):
+      try:
+        try:
+          if not await asyncio.wait_for(
+              self._authenticate(websocket), timeout=10, loop=self.loop):
+            # authentication failed
+            return
+        except asyncio.TimeoutError:
+          # authentication timeout
+          return
+
+        tasks = [
+            asyncio.ensure_future(self._send_pings(websocket), loop=self.loop),
+            asyncio.ensure_future(self._handle_requests(websocket), loop=self.loop),
+            ]
+        try:
+          # Stop waiting if any of two handlers fails
+          await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED, loop=self.loop)
+        finally:
+          for task in tasks:
+            task.cancel()
+          await asyncio.gather(*tasks, loop=self.loop)
+
+      except websockets.exceptions.ConnectionClosed:
+        self.logger.debug('Connection closed')
+    return _serve
+
   async def run_forever(self):
     '''Serve websocket requests.'''
     try:
-      # pylint: disable=unused-argument
-      async def _serve(websocket, path):
-        try:
-          auth_task = asyncio.ensure_future(self._authenticate(websocket), loop=self.loop)
-          try:
-            await asyncio.wait_for(auth_task, timeout=10, loop=self.loop)
-          except asyncio.TimeoutError:
-            # authentication timeout
-            return
-          finally:
-            if not auth_task.done():
-              auth_task.cancel()
-            await asyncio.gather(auth_task, loop=self.loop)
-
-          if not auth_task.done() or not auth_task.result():
-            # authentication failed
-            return
-
-          tasks = [
-              asyncio.ensure_future(self._send_pings(websocket), loop=self.loop),
-              asyncio.ensure_future(self._handle_requests(websocket), loop=self.loop),
-              ]
-          try:
-            # Stop waiting if any of two handlers fails
-            await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED, loop=self.loop)
-          finally:
-            for task in tasks:
-              task.cancel()
-            await asyncio.gather(*tasks, loop=self.loop)
-
-        except websockets.exceptions.ConnectionClosed:
-          self.logger.debug('Connection closed')
-
-      await websockets.serve(_serve, self.host, self.port, max_size=self.max_size, loop=self.loop)
+      await websockets.serve(
+          self._get_serve(), self.host, self.port, max_size=self.max_size, loop=self.loop)
       self.logger.info(f'Listening on ws://{self.host}:{self.port}/')
 
       # Sleep forever
