@@ -456,10 +456,11 @@ class CommandHandler:
     async for queue_state in self._get_queue_state():
       oneshot = await self.client.scheduler.is_oneshot()
 
+      output = await format_estimated_time(self.client.estimator, queue_state, oneshot) + '\n'
+
       if self.args.clear_screen:
         os.system('clear')
-      self.stdout.write(
-          await format_estimated_time(self.client.estimator, queue_state, oneshot) + '\n')
+      self.stdout.write(output)
 
       if self.args.stop_empty and \
          not queue_state['started_jobs'] and (oneshot or not queue_state['queued_jobs']):
@@ -582,11 +583,13 @@ class CommandHandler:
 
       #output += f"Concurrency: {queue_state['concurrency']}"
 
+      oneshot = await self.client.scheduler.is_oneshot()
+
+      output += await format_estimated_time(self.client.estimator, queue_state, oneshot) + '\n'
+
       if self.args.clear_screen:
         os.system('clear')
       self.stdout.write(output + '\n')
-
-      oneshot = await self.client.scheduler.is_oneshot()
 
       if self.args.stop_empty and \
          not queue_state['started_jobs'] and (oneshot or not queue_state['queued_jobs']):
