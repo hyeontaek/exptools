@@ -530,7 +530,7 @@ class CommandHandler:
       last_rem = 0.
       if 'started' in job_types:
         output += termcolor.colored(
-            f"Started jobs ({len(queue_state['started_jobs'])})",
+            f"Started jobs (A:{len(queue_state['started_jobs'])})",
             'cyan', attrs=['reverse']) + '\n'
 
         if limit and len(queue_state['started_jobs']) > limit:
@@ -562,7 +562,7 @@ class CommandHandler:
 
       if 'queued' in job_types:
         output += termcolor.colored(
-            f"Queued jobs ({len(queue_state['queued_jobs'])})",
+            f"Queued jobs (Q:{len(queue_state['queued_jobs'])})",
             'blue', attrs=['reverse']) + '\n'
 
         jobs = queue_state['queued_jobs']
