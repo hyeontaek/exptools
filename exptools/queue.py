@@ -301,7 +301,6 @@ class Queue:
       self.state['queued_jobs'] = self._make_ordered_dict(
           sorted(self.state['queued_jobs'].values(), key=sort_key))
 
-      new_job_ids = self.state['queued_jobs'].keys()
       self.logger.info(f'Reordered {affected_count} jobs')
       self.lock.notify_all()
       self._schedule_dump()
