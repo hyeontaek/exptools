@@ -632,28 +632,16 @@ class CommandHandler:
     self.stdout.write(f'Removed queued jobs: {count}\n')
 
   @arg_export('command_move')
-  @arg_define('operation', type=str, choices=['up', 'down'], help='operation')
+  @arg_define('offset', type=int,
+              help='offset in the queue position; ' + \
+                   'negative numbers to prioritize, positive numbers for deprioritize')
   @arg_import('common_get_job_ids')
   async def _handle_up(self):
-    '''priorize (up) or depriorize (down) queued jobs'''
-    changed_job_ids = await self._get_job_ids('queued_jobs')
+    '''priorize or deprioritize queued jobs'''
+    job_ids = await self._get_job_ids('queued_jobs')
 
-    queue_state = await self.client.queue.get_state()
-    job_ids = [job['job_id'] for job in queue_state['queued_jobs']]
-
-    if self.args.operation == 'up':
-      for i in range(1, len(job_ids)):
-        if job_ids[i] in changed_job_ids:
-          job_ids[i - 1], job_ids[i] = job_ids[i], job_ids[i - 1]
-    elif self.args.operation == 'down':
-      for i in range(len(job_ids) - 2, -1, -1):
-        if job_ids[i] in changed_job_ids:
-          job_ids[i], job_ids[i + 1] = job_ids[i + 1], job_ids[i]
-    else:
-      assert False
-
-    count = await self.client.queue.reorder(job_ids)
-    self.stdout.write(f'Reordered queued jobs: {count}\n')
+    count = await self.client.queue.move(job_ids, self.args.offset)
+    self.stdout.write(f'Moved queued jobs: {count}\n')
 
   @arg_export('command_kill')
   @arg_import('common_get_job_ids')

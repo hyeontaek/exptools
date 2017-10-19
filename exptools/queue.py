@@ -278,17 +278,34 @@ class Queue:
       return True
 
   @rpc_export_function
-  async def reorder(self, job_ids):
+  async def move(self, job_ids, offset):
     '''Reorder queued jobs.'''
-    job_count = len(job_ids)
-    order = dict(zip(job_ids, range(job_count)))
-    sort_key = lambda job: order.get(job['job_id'], job_count + 1)
+    if offset > 0:
+      offset += 0.5
+    elif offset < 0:
+      offset -= 0.5
+
+    affected_count = 0
     async with self.lock:
+      current_job_ids = self.state['queued_jobs'].keys()
+      job_count = len(self.state['queued_jobs'])
+
+      order = dict(zip(current_job_ids, range(job_count)))
+
+      for job_id in job_ids:
+        if job_id in order:
+          order[job_id] += offset
+          affected_count += 1
+
+      sort_key = lambda job: order[job['job_id']]
       self.state['queued_jobs'] = self._make_ordered_dict(
           sorted(self.state['queued_jobs'].values(), key=sort_key))
-      self.logger.info(f'Reordered {job_count} jobs')
+
+      new_job_ids = self.state['queued_jobs'].keys()
+      self.logger.info(f'Reordered {affected_count} jobs')
       self.lock.notify_all()
-      return job_count
+      self._schedule_dump()
+      return affected_count
 
   @rpc_export_function
   async def remove_finished(self, job_ids=None):
