@@ -170,14 +170,15 @@ class Runner:
       wd = inotify.watch(status_path, butter.inotify.IN_CLOSE_WRITE)
       try:
         while True:
-          await self._read_status(job_id, job_dir)
-          await inotify.get_event()
+          try:
+            await self._read_status(job_id, job_dir)
+            await inotify.get_event()
+          except concurrent.futures.CancelledError:
+            break
+          except Exception: # pylint: disable=broad-except
+            self.logger.exception(f'Exception while watching status of job {job_id}')
       finally:
         inotify.ignore(wd)
-    except concurrent.futures.CancelledError:
-      pass
-    except Exception: # pylint: disable=broad-except
-      self.logger.exception(f'Exception while watching status of job {job_id}')
     finally:
       inotify.close()
 
