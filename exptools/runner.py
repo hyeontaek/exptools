@@ -171,7 +171,7 @@ class Runner:
         try:
           await self._read_status(job_id, job_dir)
           await watcher.get_event()
-          self.logger.info(f'Change detected at {status_path}')
+          self.logger.debug(f'Detected status change for job {job_id}')
         except concurrent.futures.CancelledError:
           break
         except Exception: # pylint: disable=broad-except

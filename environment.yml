@@ -6,8 +6,8 @@ dependencies:
 - termcolor
 - pip:
   - aiofiles
+  - aionotify
   - base58
-  - butter
   - tzlocal
   - websockets
   - yaql
