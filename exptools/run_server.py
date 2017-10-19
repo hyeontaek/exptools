@@ -86,13 +86,15 @@ def run_server():
       asyncio.ensure_future(scheduler.run_forever(), loop=loop),
       ]
 
+  server_task = asyncio.ensure_future(server.run_forever(), loop=loop)
+
   execution_tasks = [
       asyncio.ensure_future(runner.run_forever(), loop=loop),
-      asyncio.ensure_future(server.run_forever(), loop=loop),
+      server_task,
       ]
 
   try:
-    loop.run_forever()
+    loop.run_until_complete(server_task)
   except KeyboardInterrupt:
     pass
   finally:

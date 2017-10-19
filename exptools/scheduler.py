@@ -41,6 +41,10 @@ class Scheduler:
         await self.set_oneshot()
       else:
         assert False
+
+      # Sleep forever
+      while True:
+        await asyncio.sleep(60, loop=self.loop)
     except concurrent.futures.CancelledError:
       pass
 

@@ -84,7 +84,7 @@ class Server:
     try:
       while True:
         await asyncio.sleep(10, loop=self.loop)
-        # Use custom unidirectional pings because the server often does not use recv()
+        # Use custom unidirectional pings; the server often does not use recv() to consume client Pong
         # while it sends a stream/large amount of data to clients slowly,
         # which may cause a deadlock
         await websocket.send('0')
@@ -200,7 +200,13 @@ class Server:
         except websockets.exceptions.ConnectionClosed:
           self.logger.debug('Connection closed')
 
-      self.logger.info(f'Listening on ws://{self.host}:{self.port}/')
       await websockets.serve(_serve, self.host, self.port, max_size=self.max_size, loop=self.loop)
+      self.logger.info(f'Listening on ws://{self.host}:{self.port}/')
+
+      # Sleep forever
+      while True:
+        await asyncio.sleep(60, loop=self.loop)
     except concurrent.futures.CancelledError:
       pass
+    except Exception: # pylint: disable=broad-except
+      self.logger.exception('Exception while initializing server')
