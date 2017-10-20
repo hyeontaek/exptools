@@ -114,15 +114,19 @@ def format_sec_short(sec, max_component_count=2):
     nonlocal sec
     nonlocal output
     nonlocal component_count
-    if sec >= unit_secs or not first_component or unit == 's':
-      component_count += 1
-      if component_count < max_component_count and unit != 's':
+    if (component_count == 0 and sec >= unit_secs) or \
+       (component_count == 0 and unit == 's') or \
+       component_count > 0:
+      if component_count < max_component_count - 1 and unit != 's':
         value = int(sec / unit_secs)
         sec -= value * unit_secs
-      else:
+        output += '%2d%s ' % (value, unit)
+        component_count += 1
+      elif component_count == max_component_count - 1:
         value = round(sec / unit_secs)
         sec = 0
-      output += '%2d%s ' % (value, unit)
+        output += '%2d%s ' % (value, unit)
+        component_count += 1
 
   _add_component('w', 86400 * 7)
   _add_component('d', 86400)
