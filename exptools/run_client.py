@@ -322,9 +322,9 @@ class CommandHandler:
       line += f'{get_param_id(param)} '
 
       if meta and 'duration' in meta and meta['duration'] is not None:
-        line += f"[{format_sec_short(meta['duration']):>8}] "
+        line += f"[{format_sec_short(meta['duration']):>7}] "
       else:
-        line += '           '
+        line += ' ' * (7 + 3)
 
       if meta and 'succeeded' in meta and meta['succeeded'] is not None:
         if meta['succeeded']:
@@ -516,7 +516,7 @@ class CommandHandler:
           else:
             line = termcolor.colored('  ', 'red', attrs=['reverse'])
           line += f" {job['job_id']:5} {job['param_id']}"
-          line += f' [{format_sec_short(job_elapsed_time(job)):>8}]'
+          line += f' [{format_sec_short(job_elapsed_time(job)):>7}]'
           if job['succeeded']:
             line += ' succeeded  '
           else:
@@ -549,9 +549,9 @@ class CommandHandler:
           partial_state['started_jobs'].append(job)
           line += f" {job['job_id']:5} {job['param_id']}"
           rem = await self.client.estimator.estimate_remaining_time(partial_state, False)
-          line += f' [{format_sec_short(job_elapsed_time(job)):>8}' + \
-              f' +{format_sec_short(max(rem - last_rem, 0)):>8}]'
-          line += '  '
+          line += f' [{format_sec_short(job_elapsed_time(job)):>7}' + \
+              f' +{format_sec_short(max(rem - last_rem, 0)):>7}]'
+          line += '   '
           last_rem = rem
           line += f"{job['name']}"
           output += line + '\n'
@@ -577,8 +577,8 @@ class CommandHandler:
           partial_state['queued_jobs'].append(job)
           line += f" {job['job_id']:5} {job['param_id']}"
           rem = await self.client.estimator.estimate_remaining_time(partial_state, False)
-          line += f' [         +{format_sec_short(max(rem - last_rem, 0)):>8}]'
-          line += '  '
+          line += f'          [{format_sec_short(max(rem - last_rem, 0)):>7}]'
+          line += '   '
           last_rem = rem
           line += f"{job['name']}"
           output += line + '\n'

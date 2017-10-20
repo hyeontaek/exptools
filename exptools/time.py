@@ -7,7 +7,7 @@ __all__ = [
     'parse_utc', 'parse_local',
     'diff_sec',
     'job_elapsed_time',
-    'format_sec', 'format_sec_short',
+    'format_sec', 'format_sec_fixed', 'format_sec_short',
     'format_job_count',
     'format_estimated_time',
     ]
@@ -77,6 +77,10 @@ def format_sec(sec):
   '''Format seconds in a human-readable format.'''
   sec = round(sec)
   output = ''
+  if sec >= 86400 * 7:
+    value = int(sec / (86400 * 7))
+    sec -= value * 86400 * 7
+    output += '%d week%s ' % (value, 's' if value != 1 else '')
   if sec >= 86400:
     value = int(sec / 86400)
     sec -= value * 86400
@@ -89,14 +93,43 @@ def format_sec(sec):
     value = int(sec / 60)
     sec -= value * 60
     output += '%d minute%s ' % (value, 's' if value != 1 else '')
-  value = round(sec)
+  value = sec
   if value > 0 or output == '':
     output += '%d second%s ' % (value, 's' if value != 1 else '')
   return output.rstrip()
 
-def format_sec_short(sec):
-  '''Format seconds in a short format.'''
+def format_sec_fixed(sec):
   return '%d:%02d:%02d' % (int(sec / 3600), int(sec % 3600 / 60), int(round(sec % 60)))
+
+def format_sec_short(sec, max_component_count=2):
+  '''Format seconds in a short format.'''
+  sec = round(sec)
+
+  component_count = 0
+  first_component = True
+  output = ''
+
+  def _add_component(unit, unit_secs):
+    nonlocal sec
+    nonlocal output
+    nonlocal component_count
+    if sec >= unit_secs or not first_component or unit == 's':
+      component_count += 1
+      if component_count < max_component_count and unit != 's':
+        value = int(sec / unit_secs)
+        sec -= value * unit_secs
+      else:
+        value = round(sec / unit_secs)
+        sec = 0
+      output += '%2d%s ' % (value, unit)
+
+  _add_component('w', 86400 * 7)
+  _add_component('d', 86400)
+  _add_component('h', 3600)
+  _add_component('m', 60)
+  _add_component('s', 1)
+
+  return output.strip()
 
 def format_job_count(queue_state):
   '''Format job count.'''
