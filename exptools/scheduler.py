@@ -37,10 +37,11 @@ class Scheduler:
 
   def _load_conf(self):
     if not os.path.exists(self.path):
+      self.conf = json.load(open(self.path))
+      self.logger.info(f'Loaded scheduler configuration at {self.path}')
+    else:
+      self.conf = None
       self.logger.warning(f'No configuration found at {self.path}')
-
-    self.conf = json.load(open(self.path))
-    self.logger.info(f'Loaded scheduler configuration at {self.path}')
 
   async def run_forever(self):
     '''Run the scheduler.  Note that scheduling jobs is done by schedule().'''
@@ -171,8 +172,8 @@ class GreedyScheduler(Scheduler):
     self.resources = self.conf.get('resources', {})
 
     for key, value in self.resources.items():
-      assert isinstance(key, str)
-      assert isinstance(value, int)
+      assert isinstance(key, str), 'Key must be a string.'
+      assert isinstance(value, int), 'Only integer amount is supported'
       assert value >= 0
 
     self.logger.info(f'Resources: {self.resources}')
