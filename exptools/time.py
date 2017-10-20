@@ -99,6 +99,7 @@ def format_sec(sec):
   return output.rstrip()
 
 def format_sec_fixed(sec):
+  '''Format seconds in a fixed format.'''
   return '%d:%02d:%02d' % (int(sec / 3600), int(sec % 3600 / 60), int(round(sec % 60)))
 
 def format_sec_short(sec, max_component_count=2):
