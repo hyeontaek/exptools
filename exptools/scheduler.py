@@ -36,7 +36,7 @@ class Scheduler:
     self._load_conf()
 
   def _load_conf(self):
-    if not os.path.exists(self.path):
+    if os.path.exists(self.path):
       self.conf = json.load(open(self.path))
       self.logger.info(f'Loaded scheduler configuration at {self.path}')
     else:
@@ -169,7 +169,10 @@ class GreedyScheduler(Scheduler):
   def __init__(self, *args, **kwargs):
     super().__init__(*args, **kwargs)
 
-    self.resources = self.conf.get('resources', {})
+    if self.conf:
+      self.resources = self.conf['resources']
+    else:
+      self.resources = {}
 
     for key, value in self.resources.items():
       assert isinstance(key, str), 'Key must be a string.'
