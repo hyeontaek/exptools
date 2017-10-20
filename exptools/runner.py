@@ -58,18 +58,22 @@ class Runner:
   def _create_job_files(job, job_dir):
     '''Create job filles.'''
 
+    # Dump job
     with open(os.path.join(job_dir, 'job.json'), 'wt') as file:
       file.write(json.dumps(job) + '\n')
 
+    # Dump simple properties
     for key in ['job_id', 'param_id', 'name', 'cwd']:
       with open(os.path.join(job_dir, key), 'wt') as file:
         assert isinstance(job[key], str)
         file.write(job[key] + '\n')
 
-    for key in ['command', 'param']:
+    # Dump structured properties
+    for key in ['command', 'param', 'resources']:
       with open(os.path.join(job_dir, key + '.json'), 'wt') as file:
         file.write(json.dumps(job[key]) + '\n')
 
+    # Create a stub for status
     with open(os.path.join(job_dir, 'status.json'), 'wt') as file:
       status = {'progress': 0.}
       file.write(json.dumps(status) + '\n')
@@ -78,11 +82,19 @@ class Runner:
   def _construct_env(job, job_dir):
     '''Construct environment variables.'''
     env = dict(os.environ)
+
+    env['EXPTOOLS_JOB_JSON_PATH'] = os.path.join(job_dir, 'job.json')
+
     env['EXPTOOLS_JOB_DIR'] = job_dir
     env['EXPTOOLS_JOB_ID'] = job['job_id']
     env['EXPTOOLS_PARAM_ID'] = job['param_id']
-    env['EXPTOOLS_JOB_JSON_PATH'] = os.path.join(job_dir, 'job.json')
+    env['EXPTOOLS_NAME'] = job['name']
+    env['EXPTOOLS_CWD'] = job['cwd']
+
+    env['EXPTOOLS_COMMAND_JSON_PATH'] = os.path.join(job_dir, 'command.json')
     env['EXPTOOLS_PARAM_JSON_PATH'] = os.path.join(job_dir, 'param.json')
+    env['EXPTOOLS_RESOURCES_JSON_PATH'] = os.path.join(job_dir, 'resources.json')
+
     env['EXPTOOLS_STATUS_JSON_PATH'] = os.path.join(job_dir, 'status.json')
     return env
 
@@ -164,6 +176,8 @@ class Runner:
       await self._read_status(job_id, job_dir)
 
       await self.queue.set_finished(job_id, False)
+    finally:
+      await self.scheduler.retire(job)
 
   async def _watch_status(self, job_id, job_dir):
     '''Watch the status file changes.'''

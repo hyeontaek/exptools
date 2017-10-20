@@ -37,11 +37,12 @@ setup(
     packages=find_packages(),
 
     install_requires=[
-      'pytz',
-      'termcolor',
       'aiofiles',
       'aionotify',
       'base58',
+      'pyomo',
+      'pytz',
+      'termcolor',
       'tzlocal',
       'websockets',
       'yaql',

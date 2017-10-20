@@ -187,6 +187,7 @@ class Queue:
             'started': None,
             'finished': None,
             'duration': None,
+            'resources': None,
             'pid': None,
             'status': None,
             'succeeded': None,
@@ -222,6 +223,21 @@ class Queue:
       self.lock.notify_all()
       self._schedule_dump()
       return True
+
+  async def set_resources(self, job_id, resources):
+    '''Update resources of a queued job.'''
+    # Do not acuquire the lock because this is called by scheduler,
+    # which holds the lock it its schedule() loop
+    assert self.lock.locked()
+
+    if job_id not in self.state['queued_jobs']:
+      return False
+
+    job = self.state['queued_jobs'][job_id]
+    job['resources'] = resources
+    self.logger.info(f'Updated job {job_id} resources')
+    self._schedule_dump()
+    return True
 
   async def set_pid(self, job_id, pid):
     '''Update pid of a started job.'''
