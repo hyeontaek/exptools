@@ -17,6 +17,7 @@ import sys
 import termcolor
 
 from exptools.client import Client
+from exptools.filter import Filter
 from exptools.time import (
     job_elapsed_time,
     format_sec_short,
@@ -395,6 +396,12 @@ class CommandHandler:
   @arg_define('filter', type=str, help='regular expression')
   @arg_import('common_read_params')
   @arg_import('common_omit_params')
+  @arg_define('-i', '--ignore-case', action='store_true', default=False,
+              help='ignore case')
+  @arg_define('-v', '--invert-match', action='store_true', default=False,
+              help='invert the match result')
+  @arg_define('-x', '--line-regexp', action='store_true', default=False,
+              help='match the whole line')
   async def _handle_grep(self):
     '''filter parameters using a regular expression on parameter names'''
     filter_expr = self.args.filter
@@ -402,11 +409,28 @@ class CommandHandler:
     params = await self._omit_params(params)
 
     selected_params = []
-    pat = re.compile(filter_expr)
-    for param in params:
-      mat = pat.search(get_name(param))
-      if mat is not None:
-        selected_params.append(param)
+
+    flags = 0
+    if self.args.ignore_case:
+      flags |= re.I
+
+    pat = re.compile(filter_expr, flags)
+
+    if not self.args.line_regexp:
+      pat_punc = pat.search
+    else:
+      pat_punc = pat.fullmatch
+
+    if not self.args.invert_match:
+      for param in params:
+        mat = pat_punc(get_name(param))
+        if mat is not None:
+          selected_params.append(param)
+    else:
+      for param in params:
+        mat = pat_punc(get_name(param))
+        if mat is None:
+          selected_params.append(param)
 
     params = selected_params
     self.stdout.write(json.dumps(params, sort_keys=True, indent=2) + '\n')
@@ -415,13 +439,18 @@ class CommandHandler:
   @arg_define('filter', type=str, help='YAQL expression')
   @arg_import('common_read_params')
   @arg_import('common_omit_params')
+  @arg_define('-l', '--local', action='store_true', default=False,
+              help='run YAQL locally (good for many parameters)')
   async def _handle_yaql(self):
     '''filter parameters using YAQL'''
     filter_expr = self.args.filter
     params = await self._read_params()
     params = await self._omit_params(params)
 
-    params = await self.client.filter.filter(filter_expr, params)
+    if not self.args.local:
+      params = await self.client.filter.filter(filter_expr, params)
+    else:
+      await Filter(loop=self.loop).filter(filter_expr, params)
     self.stdout.write(json.dumps(params, sort_keys=True, indent=2) + '\n')
 
   @arg_export('command_start')
