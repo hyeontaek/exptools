@@ -450,7 +450,7 @@ class CommandHandler:
     if not self.args.local:
       params = await self.client.filter.filter(filter_expr, params)
     else:
-      await Filter(loop=self.loop).filter(filter_expr, params)
+      params = await Filter(loop=self.loop).filter(filter_expr, params)
     self.stdout.write(json.dumps(params, sort_keys=True, indent=2) + '\n')
 
   @arg_export('command_start')
