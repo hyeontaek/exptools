@@ -280,6 +280,13 @@ class CommandHandler:
       raise RuntimeError(f'Invalid job or parameter {self.args.job_or_param_id}')
     return job_id
 
+  @arg_export('common_add')
+  @arg_define('-t', '--top', action='store_true', default=False,
+              help='insert at the queue top instead of bottom')
+  async def _add(self, params):
+    job_ids = await self.client.queue.add(params, not self.args.top)
+    return job_ids
+
   @arg_export('common_estimate')
   @arg_define('-e', '--estimate', action='store_true', default=False,
               help='estimate execution time instead of adding')
@@ -635,6 +642,7 @@ class CommandHandler:
 
   @arg_export('command_run')
   @arg_import('common_omit_params')
+  @arg_import('common_add')
   @arg_import('common_estimate')
   @arg_define('adhoc_command', type=str, nargs='+', help='adhoc command')
   async def _handle_run(self):
@@ -646,12 +654,13 @@ class CommandHandler:
       await self._estimate(params)
       return
 
-    job_ids = await self.client.queue.add(params)
+    job_ids = await self._add(params)
     self.stdout.write(f'Added queued jobs: {job_ids[0]}\n')
 
   @arg_export('command_add')
   @arg_import('common_read_params')
   @arg_import('common_omit_params')
+  @arg_import('common_add')
   @arg_import('common_estimate')
   async def _handle_add(self):
     '''add parameters to the queue'''
@@ -662,7 +671,7 @@ class CommandHandler:
       await self._estimate(params)
       return
 
-    job_ids = await self.client.queue.add(params)
+    job_ids = await self._add(params)
     self.stdout.write(f'Added queued jobs: {" ".join(job_ids)}\n')
 
   @arg_export('command_rm')
@@ -697,6 +706,7 @@ class CommandHandler:
   @arg_export('command_retry')
   @arg_import('common_get_job_ids')
   @arg_import('common_omit_params')
+  @arg_import('common_add')
   @arg_import('common_estimate')
   async def _handle_retry(self):
     '''retry finished jobs'''
@@ -717,7 +727,7 @@ class CommandHandler:
       await self._estimate(params)
       return
 
-    job_ids = await self.client.queue.add(params)
+    job_ids = await self._add(params)
     self.stdout.write(f'Added queued jobs: {" ".join(job_ids)}\n')
 
   @arg_export('command_dismiss')
