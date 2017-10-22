@@ -745,6 +745,15 @@ class CommandHandler:
 
       oneshot = await self.client.scheduler.is_oneshot()
 
+      output += 'Scheduler: '
+      if oneshot:
+        output += termcolor.colored('oneshot', 'blue')
+      elif await self.client.scheduler.is_running():
+        output += termcolor.colored('running', 'cyan')
+      else:
+        output += 'stopped'
+      output += '\n\n'
+
       output += await format_estimated_time(estimator, queue_state, oneshot) + '\n'
 
       if self.args.clear_screen:
