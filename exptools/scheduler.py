@@ -74,7 +74,7 @@ class Scheduler:
   @rpc_export_function
   async def start(self):
     '''Start the scheduler.'''
-    if self.running:
+    if self.running and not self.oneshot:
       self.logger.error('Already started')
       return False
 
@@ -92,6 +92,7 @@ class Scheduler:
     self.running = True
     self.oneshot = True
 
+    self.logger.info('Setting oneshot mode')
     await self.queue.notify()
     return True
 
@@ -104,7 +105,9 @@ class Scheduler:
 
     self.running = False
     self.oneshot = False
+
     self.logger.info('Stopped')
+    await self.queue.notify()
     return True
 
   async def schedule(self):
