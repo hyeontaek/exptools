@@ -17,6 +17,7 @@ import sys
 import termcolor
 
 from exptools.client import Client
+from exptools.estimator import Estimator
 from exptools.filter import Filter
 from exptools.time import (
     job_elapsed_time,
@@ -285,14 +286,17 @@ class CommandHandler:
   async def _estimate(self, params):
     queue_state = await self.client.queue.get_state()
     oneshot = await self.client.scheduler.is_oneshot()
+
+    estimator = Estimator(self.client.history)
+
     self.stdout.write('Current:   ' + \
-        await format_estimated_time(self.client.estimator, queue_state, oneshot) + '\n')
+        await format_estimated_time(estimator, queue_state, oneshot) + '\n')
 
     queue_state['queued_jobs'].extend(
         [{'param_id': get_param_id(param), 'param': param} for param in params])
     oneshot = await self.client.scheduler.is_oneshot()
     self.stdout.write('Estimated: ' + \
-        await format_estimated_time(self.client.estimator, queue_state, oneshot) + '\n')
+        await format_estimated_time(estimator, queue_state, oneshot) + '\n')
 
   @arg_export('common_get_stdout_stderr')
   @arg_define('-o', '--stdout', action='store_true', default=True,
@@ -490,10 +494,12 @@ class CommandHandler:
   @arg_import('common_get_queue_state')
   async def _handle_s(self):
     '''summarize the queue state'''
+    estimator = Estimator(self.client.history)
+
     async for queue_state in self._get_queue_state():
       oneshot = await self.client.scheduler.is_oneshot()
 
-      output = await format_estimated_time(self.client.estimator, queue_state, oneshot) + '\n'
+      output = await format_estimated_time(estimator, queue_state, oneshot) + '\n'
 
       if self.args.clear_screen:
         os.system('clear')
@@ -519,6 +525,8 @@ class CommandHandler:
       job_types = set(['finished', 'started', 'queued'])
     else:
       job_types = set(self.args.job_types)
+
+    estimator = Estimator(self.client.history)
 
     async for queue_state in self._get_queue_state():
       output = ''
@@ -555,7 +563,7 @@ class CommandHandler:
 
         output += '\n'
 
-      _, rem_map = await self.client.estimator.estimate_remaining_time(queue_state, False)
+      _, rem_map = await estimator.estimate_remaining_time(queue_state, False)
       last_rem = 0.
 
       if 'started' in job_types:
@@ -615,7 +623,7 @@ class CommandHandler:
 
       oneshot = await self.client.scheduler.is_oneshot()
 
-      output += await format_estimated_time(self.client.estimator, queue_state, oneshot) + '\n'
+      output += await format_estimated_time(estimator, queue_state, oneshot) + '\n'
 
       if self.args.clear_screen:
         os.system('clear')

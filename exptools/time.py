@@ -107,7 +107,6 @@ def format_sec_short(sec, max_component_count=2):
   sec = round(sec)
 
   component_count = 0
-  first_component = True
   output = ''
 
   def _add_component(unit, unit_secs):
@@ -117,7 +116,7 @@ def format_sec_short(sec, max_component_count=2):
     if (component_count == 0 and sec >= unit_secs) or \
        (component_count == 0 and unit == 's') or \
        component_count > 0:
-       if component_count < max_component_count:
+      if component_count < max_component_count:
         if component_count < max_component_count - 1 and unit != 's':
           value = int(sec / unit_secs)
         else:

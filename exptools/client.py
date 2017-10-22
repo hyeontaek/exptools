@@ -11,7 +11,6 @@ import math
 
 import websockets
 
-from exptools.estimator import Estimator
 from exptools.filter import Filter
 from exptools.history import History
 from exptools.queue import Queue
@@ -34,8 +33,6 @@ class Client:
     self.queue = ObjectProxy(self, 'queue', Queue)
     self.runner = ObjectProxy(self, 'runner', Runner)
     self.scheduler = ObjectProxy(self, 'scheduler', Scheduler)
-
-    self.estimator = Estimator(self.history)
 
     self.max_size = 1048576
     self.max_chunk_size = self.max_size // 2
