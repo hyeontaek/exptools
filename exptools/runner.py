@@ -132,6 +132,15 @@ class Runner:
         os.unlink(param_path + '_tmp')
       os.symlink(job_id, param_path + '_tmp', target_is_directory=True)
 
+      try:
+        if os.path.exists(os.path.join(self.base_dir, 'last_tmp')):
+          os.unlink(os.path.join(self.base_dir, 'last_tmp'))
+        os.symlink(job_id, os.path.join(self.base_dir, 'last_tmp'), target_is_directory=True)
+
+        os.rename(os.path.join(self.base_dir, 'last_tmp'), os.path.join(self.base_dir, 'last'))
+      except IOError:
+        pass
+
       with open(os.path.join(job_dir, 'stdout'), 'wb', buffering=0) as stdout, \
            open(os.path.join(job_dir, 'stderr'), 'wb', buffering=0) as stderr:
         proc = await asyncio.create_subprocess_exec(
