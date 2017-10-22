@@ -23,6 +23,8 @@ from exptools.time import (
     job_elapsed_time,
     format_sec_short,
     format_estimated_time,
+    format_local,
+    parse_utc
     )
 from exptools.param import get_param_id, get_name
 
@@ -365,6 +367,14 @@ class CommandHandler:
   async def _get_stdout_stderr(self):
     return self.args.stdout
 
+  def _get_job_id_max_len(self, params=None, jobs=None):
+    if params is not None:
+      return max([len(param['_'].get('job_id', '')) for param in params if '_' in param])
+    elif jobs is not None:
+      return max([len(job['job_id']) for job in jobs])
+    else:
+      assert False
+
   @arg_export('command_d')
   @arg_import('common_read_params')
   @arg_import('common_sort_params')
@@ -374,6 +384,7 @@ class CommandHandler:
     params = await self._read_params()
     params = await self._sort_params(params)
     params = await self._omit_params(params)
+    job_id_max_len = self._get_job_id_max_len(params=params)
     for param in params:
       line = ''
       meta = None
@@ -381,11 +392,48 @@ class CommandHandler:
         meta = param['_']
 
       if meta and 'job_id' in meta and meta['job_id'] is not None:
-        line += f"{meta['job_id']:5} "
+        line += f"{meta['job_id']:{job_id_max_len}} "
       else:
-        line += ' ' * (5 + 1)
+        line += ' ' * (job_id_max_len + 1)
+
+      line += f'{get_param_id(param)}  '
+
+      line += get_name(param)
+
+      self.stdout.write(line + '\n')
+
+  @arg_export('command_du')
+  @arg_import('common_read_params')
+  @arg_import('common_sort_params')
+  @arg_import('common_omit_params')
+  @arg_define('-l', '--local', action='store_true', default=False,
+              help='show local time instead of UTC')
+  async def _handle_du(self):
+    '''summarize parameters with time information (recommended using -H/--history)'''
+    params = await self._read_params()
+    params = await self._sort_params(params)
+    params = await self._omit_params(params)
+    job_id_max_len = self._get_job_id_max_len(params=params)
+    for param in params:
+      line = ''
+      meta = None
+      if '_' in param:
+        meta = param['_']
+
+      if meta and 'job_id' in meta and meta['job_id'] is not None:
+        line += f"{meta['job_id']:{job_id_max_len}} "
+      else:
+        line += ' ' * (job_id_max_len + 1)
 
       line += f'{get_param_id(param)} '
+
+      if meta and 'finished' in meta and meta['finished'] is not None:
+        finished = meta['finished']
+        if self.args.local:
+          finished = format_local(parse_utc(finished))
+        line += f"[{finished.partition('.')[0]:>19}] "
+      else:
+        line += ' ' * (19 + 3)
 
       if meta and 'duration' in meta and meta['duration'] is not None:
         line += f"[{format_sec_short(meta['duration']):>7}] "
@@ -602,6 +650,9 @@ class CommandHandler:
     async for queue_state in self._get_queue_state():
       output = ''
 
+      job_id_max_len = self._get_job_id_max_len(
+          jobs=queue_state['finished_jobs'] + queue_state['started_jobs'] + queue_state['queued_jobs'])
+
       if 'finished' in job_types:
         succeeded_count = len([job for job in queue_state['finished_jobs'] if job['succeeded']])
         failed_count = len(queue_state['finished_jobs']) - succeeded_count
@@ -623,7 +674,7 @@ class CommandHandler:
             line = termcolor.colored('  ', 'green', attrs=['reverse'])
           else:
             line = termcolor.colored('  ', 'red', attrs=['reverse'])
-          line += f" {job['job_id']:5} {job['param_id']}"
+          line += f" {job['job_id']:{job_id_max_len}} {job['param_id']}"
           line += f' [{format_sec_short(job_elapsed_time(job)):>7}]'
           if job['succeeded']:
             line += ' succeeded  '
@@ -654,7 +705,7 @@ class CommandHandler:
           rem = rem_map[job['job_id']]
 
           line = termcolor.colored('  ', 'cyan', attrs=['reverse'])
-          line += f" {job['job_id']:5} {job['param_id']}"
+          line += f" {job['job_id']:{job_id_max_len}} {job['param_id']}"
           line += f' [{format_sec_short(job_elapsed_time(job)):>7}]' + \
               f'+[{format_sec_short(max(rem - last_rem, 0)):>7}]'
           line += '  '
@@ -677,7 +728,7 @@ class CommandHandler:
           rem = rem_map[job['job_id']]
 
           line = termcolor.colored('  ', 'blue', attrs=['reverse'])
-          line += f" {job['job_id']:5} {job['param_id']}"
+          line += f" {job['job_id']:{job_id_max_len}} {job['param_id']}"
           line += f'           [{format_sec_short(max(rem - last_rem, 0)):>7}]'
           line += '  '
           last_rem = rem
