@@ -55,6 +55,11 @@ class Estimator:
 
     avg_duration = known_duration / max(known_count, 1)
 
+    remaining_time_map = {}
+
+    for job in state['finished_jobs']:
+      remaining_time_map[job['job_id']] = 0.
+
     # Calculate started jobs' remaining time
     remaining_duration = 0.
     for job in state['started_jobs']:
@@ -73,6 +78,9 @@ class Estimator:
       else:
         remaining_duration += max(avg_duration - diff_sec(now, started), 0.)
 
+      # Take into account concurrency
+      remaining_time_map[job['job_id']] = remaining_duration / concurrency
+
     # Calculate queued jobs' remaining time
     if not oneshot:
       for job in state['queued_jobs']:
@@ -83,7 +91,13 @@ class Estimator:
         else:
           remaining_duration += avg_duration
 
+        # Take into account concurrency
+        remaining_time_map[job['job_id']] = remaining_duration / concurrency
+    else:
+      for job in state['queued_jobs']:
+        remaining_time_map[job['job_id']] = remaining_duration / concurrency
+
     # Take into account concurrency
     remaining_time = remaining_duration / concurrency
 
-    return remaining_time
+    return remaining_time, remaining_time_map

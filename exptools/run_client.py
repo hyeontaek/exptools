@@ -555,11 +555,9 @@ class CommandHandler:
 
         output += '\n'
 
-      partial_state = {'finished_jobs': queue_state['finished_jobs'],
-                       'started_jobs': [], 'queued_jobs': [],
-                       'concurrency': queue_state['concurrency']}
-
+      _, rem_map = await self.client.estimator.estimate_remaining_time(queue_state, False)
       last_rem = 0.
+
       if 'started' in job_types:
         output += termcolor.colored(
             f"Started jobs (A:{len(queue_state['started_jobs'])})",
@@ -574,10 +572,10 @@ class CommandHandler:
           jobs = jobs[-limit:]
 
         for job in jobs:
+          rem = rem_map[job['job_id']]
+
           line = termcolor.colored('  ', 'cyan', attrs=['reverse'])
-          partial_state['started_jobs'].append(job)
           line += f" {job['job_id']:5} {job['param_id']}"
-          rem = await self.client.estimator.estimate_remaining_time(partial_state, False)
           line += f' [{format_sec_short(job_elapsed_time(job)):>7}]' + \
               f'+[{format_sec_short(max(rem - last_rem, 0)):>7}]'
           line += '  '
@@ -586,11 +584,6 @@ class CommandHandler:
           output += line + '\n'
 
         output += '\n'
-      else:
-        for job in queue_state['started_jobs']:
-          partial_state['started_jobs'].append(job)
-        rem = await self.client.estimator.estimate_remaining_time(partial_state, False)
-        last_rem = rem
 
       if 'queued' in job_types:
         output += termcolor.colored(
@@ -602,10 +595,10 @@ class CommandHandler:
           jobs = jobs[:limit]
 
         for job in jobs:
+          rem = rem_map[job['job_id']]
+
           line = termcolor.colored('  ', 'blue', attrs=['reverse'])
-          partial_state['queued_jobs'].append(job)
           line += f" {job['job_id']:5} {job['param_id']}"
-          rem = await self.client.estimator.estimate_remaining_time(partial_state, False)
           line += f'           [{format_sec_short(max(rem - last_rem, 0)):>7}]'
           line += '  '
           last_rem = rem

@@ -162,7 +162,7 @@ async def format_estimated_time(estimator, queue_state, oneshot):
 
   state = queue_state
 
-  remaining_time = await estimator.estimate_remaining_time(state, oneshot)
+  remaining_time, _ = await estimator.estimate_remaining_time(state, oneshot)
   remaining_str = format_sec_short(remaining_time)
 
   current_time = utcnow()
