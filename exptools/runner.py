@@ -55,7 +55,7 @@ class Runner:
         await asyncio.gather(*tasks, loop=self.loop)
 
   @staticmethod
-  def _create_job_files(job, job_dir):
+  def _create_job_files(job, job_dir, expanded_command):
     '''Create job filles.'''
 
     # Dump job
@@ -78,6 +78,10 @@ class Runner:
       status = {'progress': 0.}
       file.write(json.dumps(status) + '\n')
 
+    # Dump expanded properties
+    with open(os.path.join(job_dir, 'expanded_command.json'), 'wt') as file:
+      file.write(json.dumps(expanded_command) + '\n')
+
   @staticmethod
   def _construct_env(job, job_dir):
     '''Construct environment variables.'''
@@ -94,6 +98,7 @@ class Runner:
     env['EXPTOOLS_COMMAND_JSON_PATH'] = os.path.join(job_dir, 'command.json')
     env['EXPTOOLS_PARAM_JSON_PATH'] = os.path.join(job_dir, 'param.json')
     env['EXPTOOLS_RESOURCES_JSON_PATH'] = os.path.join(job_dir, 'resources.json')
+    env['EXPTOOLS_EXPANDED_COMMAND_JSON_PATH'] = os.path.join(job_dir, 'expanded_command.json')
 
     env['EXPTOOLS_STATUS_JSON_PATH'] = os.path.join(job_dir, 'status.json')
     return env
@@ -103,9 +108,10 @@ class Runner:
 
     job_id = job['job_id']
     param_id = job['param_id']
+    param = job['param']
 
     name = job['name']
-    command = job['command']
+    expanded_command = [arg.format(**param) for arg in job['command']]
     cwd = job['cwd']
 
     try:
@@ -118,7 +124,7 @@ class Runner:
       job_dir = get_job_dir(self.base_dir, job)
       os.mkdir(job_dir)
 
-      self._create_job_files(job, job_dir)
+      self._create_job_files(job, job_dir, expanded_command)
       env = self._construct_env(job, job_dir)
 
       param_path = get_param_path(self.base_dir, param_id)
@@ -129,7 +135,7 @@ class Runner:
       with open(os.path.join(job_dir, 'stdout'), 'wb', buffering=0) as stdout, \
            open(os.path.join(job_dir, 'stderr'), 'wb', buffering=0) as stderr:
         proc = await asyncio.create_subprocess_exec(
-            *command,
+            *expanded_command,
             cwd=cwd,
             stdin=asyncio.subprocess.DEVNULL,
             stdout=stdout,
