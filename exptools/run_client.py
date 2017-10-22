@@ -166,22 +166,41 @@ class CommandHandler:
 
     return params
 
-  @arg_export('common_omit_params')
-  @arg_define('-o', '--omit', action='append',
-              choices=['succeeded', 'finished', 'started', 'queued', 'duplicate'],
-              help='omit specified parameter types')
-  async def _omit_params(self, params):
-    '''Omit parameters.'''
+  @arg_export('common_sort_params')
+  @arg_define('-s', '--sort', type=str, default=None,
+              help='sort parameters by the given key (e.g., _.finished)')
+  @arg_define('-r', '--reverse', action='store_true', default=False, help='reverse sorting')
+  async def _sort_params(self, params):
+    '''Sort parameters.'''
 
-    if self.args.omit and 'finished' in self.args.omit:
+    if not self.args.sort:
+      return params
+
+    key_path = self.args.sort.split('.')
+    def _sort_key(param):
+      current_obj = param
+      for key in key_path:
+        if current_obj and key in current_obj:
+          current_obj = current_obj[key]
+        else:
+          current_obj = None
+      if current_obj is None:
+        return ''
+      else:
+        return str(current_obj)
+
+    return list(sorted(params, key=_sort_key, reverse=self.args.reverse))
+
+  async def _do_omit_params(self, params, omit):
+    if 'finished' in omit or 'F' in omit:
       params = await self.client.history.omit(params, only_succeeded=False)
-    if self.args.omit and 'succeeded' in self.args.omit:
+    if 'succeeded' in omit or 'S' in omit:
       params = await self.client.history.omit(params, only_succeeded=True)
-    if self.args.omit and 'started' in self.args.omit:
+    if 'started' in omit or 'A' in omit:
       params = await self.client.queue.omit(params, queued=False, started=True, finished=False)
-    if self.args.omit and 'queued' in self.args.omit:
+    if 'queued' in omit or 'Q' in omit:
       params = await self.client.queue.omit(params, queued=True, started=False, finished=False)
-    if self.args.omit and 'duplicate' in self.args.omit:
+    if 'duplicate' in omit or 'D' in omit:
       seen_param_ids = set()
       unique_params = []
       for param in params:
@@ -190,6 +209,38 @@ class CommandHandler:
           seen_param_ids.add(param_id)
           unique_params.append(param)
       params = unique_params
+    return params
+
+  @arg_export('common_omit_params')
+  @arg_define('-o', '--omit', action='append',
+              choices=['succeeded', 'S', 'finished', 'F', 'started', 'A', 'queued', 'Q', 'duplicate', 'D'],
+              help='omit specified parameter types; ' + \
+              'use multiple options to specify multiple types; ' + \
+              'S=success, F=finished, A=started, Q=queued, D=duplicate')
+  @arg_define('-O', '--only', action='append',
+              choices=['succeeded', 'S', 'finished', 'F', 'started', 'A', 'queued', 'Q', 'duplicate', 'D'],
+              help='only include specified parameter types; ' + \
+              'use multiple options to specify multiple types; ' + \
+              'S=success, F=finished, A=started, Q=queued, D=duplicate')
+  async def _omit_params(self, params):
+    '''Omit parameters.'''
+
+    if self.args.omit:
+      params = await self._do_omit_params(params, self.args.omit)
+
+    if self.args.only:
+      new_params = await self._do_omit_params(params, self.args.only)
+
+      new_params_count = len(new_params)
+      missing_params = []
+      i = 0
+      for param in params:
+        if i < new_params_count and new_params[i] == param:
+          i += 1
+        else:
+          missing_params.append(param)
+      params = missing_params
+
     return params
 
   @arg_export('common_get_queue_state')
@@ -316,10 +367,12 @@ class CommandHandler:
 
   @arg_export('command_d')
   @arg_import('common_read_params')
+  @arg_import('common_sort_params')
   @arg_import('common_omit_params')
   async def _handle_d(self):
     '''summarize parameters'''
     params = await self._read_params()
+    params = await self._sort_params(params)
     params = await self._omit_params(params)
     for param in params:
       line = ''
@@ -353,10 +406,12 @@ class CommandHandler:
 
   @arg_export('command_dum')
   @arg_import('common_read_params')
+  @arg_import('common_sort_params')
   @arg_import('common_omit_params')
   async def _handle_dum(self):
     '''dump parameters in Python'''
     params = await self._read_params()
+    params = await self._sort_params(params)
     params = await self._omit_params(params)
     for param in params:
       self.stdout.write(f'{get_param_id(param)}\n')
@@ -366,10 +421,12 @@ class CommandHandler:
 
   @arg_export('command_dump')
   @arg_import('common_read_params')
+  @arg_import('common_sort_params')
   @arg_import('common_omit_params')
   async def _handle_dump(self):
     '''dump parameters in JSON'''
     params = await self._read_params()
+    params = await self._sort_params(params)
     params = await self._omit_params(params)
     self.stdout.write(json.dumps(params, sort_keys=True, indent=2) + '\n')
 
@@ -377,11 +434,13 @@ class CommandHandler:
   @arg_define('filter', type=str,
               help='comma-separated parameter IDs; partial matches are supported')
   @arg_import('common_read_params')
+  @arg_import('common_sort_params')
   @arg_import('common_omit_params')
   async def _handle_select(self):
     '''select parameters by parameter IDs'''
     filter_param_ids = self.args.filter.split(',')
     params = await self._read_params()
+    params = await self._sort_params(params)
     params = await self._omit_params(params)
     params_map = {get_param_id(param): param for param in params}
 
@@ -407,6 +466,7 @@ class CommandHandler:
   @arg_export('command_grep')
   @arg_define('filter', type=str, help='regular expression')
   @arg_import('common_read_params')
+  @arg_import('common_sort_params')
   @arg_import('common_omit_params')
   @arg_define('-i', '--ignore-case', action='store_true', default=False,
               help='ignore case')
@@ -418,6 +478,7 @@ class CommandHandler:
     '''filter parameters using a regular expression on parameter names'''
     filter_expr = self.args.filter
     params = await self._read_params()
+    params = await self._sort_params(params)
     params = await self._omit_params(params)
 
     selected_params = []
@@ -450,6 +511,7 @@ class CommandHandler:
   @arg_export('command_yaql')
   @arg_define('filter', type=str, help='YAQL expression')
   @arg_import('common_read_params')
+  @arg_import('common_sort_params')
   @arg_import('common_omit_params')
   @arg_define('-l', '--local', action='store_true', default=False,
               help='run YAQL locally (good for many parameters)')
@@ -457,6 +519,7 @@ class CommandHandler:
     '''filter parameters using YAQL'''
     filter_expr = self.args.filter
     params = await self._read_params()
+    params = await self._sort_params(params)
     params = await self._omit_params(params)
 
     if not self.args.local:
@@ -660,12 +723,14 @@ class CommandHandler:
 
   @arg_export('command_add')
   @arg_import('common_read_params')
+  @arg_import('common_sort_params')
   @arg_import('common_omit_params')
   @arg_import('common_add')
   @arg_import('common_estimate')
   async def _handle_add(self):
     '''add parameters to the queue'''
     params = await self._read_params()
+    params = await self._sort_params(params)
     params = await self._omit_params(params)
 
     if self.args.estimate:
@@ -706,6 +771,7 @@ class CommandHandler:
 
   @arg_export('command_retry')
   @arg_import('common_get_job_ids')
+  @arg_import('common_sort_params')
   @arg_import('common_omit_params')
   @arg_import('common_add')
   @arg_import('common_estimate')
@@ -722,6 +788,7 @@ class CommandHandler:
       else:
         raise RuntimeError(f'No parameter for job {job_id}')
 
+    params = await self._sort_params(params)
     params = await self._omit_params(params)
 
     if self.args.estimate:
