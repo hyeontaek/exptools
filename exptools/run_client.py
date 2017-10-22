@@ -300,7 +300,8 @@ class CommandHandler:
         await format_estimated_time(estimator, queue_state, oneshot) + '\n')
 
     queue_state['queued_jobs'].extend(
-        [{'param_id': get_param_id(param), 'param': param} for param in params])
+        [{'job_id': 'dummy-j-{i}', 'param_id': get_param_id(param), 'param': param} \
+            for i, param in enumerate(params)])
     oneshot = await self.client.scheduler.is_oneshot()
     self.stdout.write('Estimated: ' + \
         await format_estimated_time(estimator, queue_state, oneshot) + '\n')
