@@ -78,9 +78,10 @@ class Scheduler:
       self.logger.error('Already started')
       return False
 
-    self.logger.info('Started')
-    self.running = True
-    self.oneshot = False
+    async with self.lock:
+      self.logger.info('Started')
+      self.running = True
+      self.oneshot = False
 
     await self.queue.notify()
     return True
@@ -88,11 +89,11 @@ class Scheduler:
   @rpc_export_function
   async def set_oneshot(self):
     '''Start the scheduler and stop it after scheduling one job.'''
-    self.logger.info('Using oneshot mode')
-    self.running = True
-    self.oneshot = True
+    async with self.lock:
+      self.logger.info('Using oneshot mode')
+      self.running = True
+      self.oneshot = True
 
-    self.logger.info('Setting oneshot mode')
     await self.queue.notify()
     return True
 
@@ -103,10 +104,11 @@ class Scheduler:
       self.logger.error('Already stopped')
       return False
 
-    self.running = False
-    self.oneshot = False
+    async with self.lock:
+      self.running = False
+      self.oneshot = False
+      self.logger.info('Stopped')
 
-    self.logger.info('Stopped')
     await self.queue.notify()
     return True
 
@@ -147,8 +149,10 @@ class SerialScheduler(Scheduler):
       if queue_state['started_jobs']:
         continue
 
-      if self.oneshot:
-        self.running = False
+      async with self.lock:
+        if self.oneshot:
+          self.running = False
+          self.oneshot = False
 
       # Choose the first queued job
       yield queue_state['queued_jobs'][0]
@@ -197,9 +201,6 @@ class GreedyScheduler(Scheduler):
       # Nothing to schedule
       if not queue_state['queued_jobs']:
         continue
-
-      if self.oneshot:
-        self.running = False
 
       try:
         # Get resource types
@@ -289,6 +290,11 @@ class GreedyScheduler(Scheduler):
         job['resources'] = allocation
         await self.queue.set_resources(job_id, allocation)
 
+        async with self.lock:
+          if self.oneshot:
+            self.running = False
+            self.oneshot = False
+
         self.logger.info(f'Scheduled {job_id} {param_id}: {allocation}')
         yield job
 
@@ -314,7 +320,7 @@ class GreedyScheduler(Scheduler):
     assert isinstance(key, str)
     assert isinstance(value, int)
     assert value >= 0
-    with self.lock:
+    async with self.lock:
       self.resources[key] = self.resources.get(key, 0) + value
     return True
 
@@ -324,7 +330,7 @@ class GreedyScheduler(Scheduler):
     assert isinstance(key, str)
     assert isinstance(value, int)
     assert value >= 0
-    with self.lock:
+    async with self.lock:
       assert self.resources.get(key, 0) >= value
       self.resources[key] = self.resources.get(key, 0) - value
     return True
