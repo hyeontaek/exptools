@@ -32,7 +32,7 @@ def make_parser():
   parser.add_argument('--scheduler-mode', type=str, default='start',
                       choices=['start', 'stop', 'oneshot'],
                       help='initial scheduler mode')
-  parser.add_argument('--scheduler-file', type=str, default='scheduler_configuration.json',
+  parser.add_argument('--scheduler-file', type=str, default='sched_conf.json',
                       help='the scheduler configuration file path')
 
   parser.add_argument('--history-file', type=str, default='history.json',
