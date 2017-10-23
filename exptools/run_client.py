@@ -836,7 +836,7 @@ class CommandHandler:
   @arg_import('common_add')
   @arg_import('common_estimate')
   async def _handle_retry(self):
-    '''retry finished jobs'''
+    '''re-enqueue finished jobs'''
     params = []
     queue_state = await self.client.queue.get_state()
 
