@@ -3,11 +3,11 @@
 __all__ = [
     'utcnow', 'localnow',
     'as_local', 'as_utc',
-    'format_utc', 'format_local',
+    'format_utc', 'format_utc_short', 'format_local', 'format_local_short',
     'parse_utc', 'parse_local',
     'diff_sec',
-    'job_elapsed_time',
     'format_sec', 'format_sec_fixed', 'format_sec_short',
+    'job_elapsed_time',
     'format_job_count',
     'format_estimated_time',
     ]
@@ -63,15 +63,6 @@ def diff_sec(time1, time2):
   '''Calculate the difference between two times in seconds.'''
   #return (as_utc(time1) - as_utc(time2)).total_seconds()
   return (time1 - time2).total_seconds()
-
-def job_elapsed_time(job):
-  '''Format elapsed time of a job.'''
-  now = utcnow()
-  if job['finished']:
-    sec = job['duration']
-  else:
-    sec = diff_sec(now, parse_utc(job['started']))
-  return sec
 
 def format_sec(sec):
   '''Format seconds in a human-readable format.'''
@@ -132,6 +123,15 @@ def format_sec_short(sec, max_component_count=2):
   _add_component('s', 1)
 
   return output.strip()
+
+def job_elapsed_time(job):
+  '''Format elapsed time of a job.'''
+  now = utcnow()
+  if job['finished']:
+    sec = job['duration']
+  else:
+    sec = diff_sec(now, parse_utc(job['started']))
+  return sec
 
 def format_job_count(queue_state):
   '''Format job count.'''

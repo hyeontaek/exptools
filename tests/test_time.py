@@ -1,4 +1,38 @@
+from unittest.mock import patch
+
 from exptools.time import *
+
+def test_as_utc():
+  t = parse_utc('2000-01-02 03:04:05.678901')
+  assert t == as_utc(t)
+
+def test_as_local():
+  t = parse_local('2000-01-02 03:04:05.678901')
+  assert t == as_local(t)
+
+def test_as_utc_as_local_as_utc():
+  t = parse_utc('2000-01-02 03:04:05.678901')
+  assert t == as_utc(as_local(t))
+
+  t = parse_local('2000-01-02 03:04:05.678901')
+  assert t == as_local(as_utc(t))
+
+def test_parse_utc_format_utc():
+  assert format_utc(parse_utc('2000-01-02 03:04:05.678901')) == '2000-01-02 03:04:05.678901'
+
+def test_parse_local_format_local():
+  assert format_local(parse_local('2000-01-02 03:04:05.678901')) == '2000-01-02 03:04:05.678901'
+
+def test_parse_utc_format_utc_short():
+  assert format_utc_short(parse_utc('2000-01-02 03:04:05.678901')) == '2000-01-02 03:04:05'
+
+def test_parse_local_format_local_short():
+  assert format_local_short(parse_local('2000-01-02 03:04:05.678901')) == '2000-01-02 03:04:05'
+
+def test_diff_sec():
+  t1 = parse_utc('2000-01-02 03:04:05.678901')
+  t2 = parse_utc('2000-01-02 02:03:04.678900')
+  assert diff_sec(t1, t2) == 3600 + 60 + 1 + 0.000001
 
 def test_format_sec():
   assert format_sec(0) == '0 seconds'
@@ -19,3 +53,50 @@ def test_format_sec():
   assert format_sec(86400 * 2 + 3600) == '2 days 1 hour'
   assert format_sec(86400 * 2 + 3600 + 60) == '2 days 1 hour 1 minute'
   assert format_sec(86400 * 2 + 3600 + 60 + 1) == '2 days 1 hour 1 minute 1 second'
+
+  assert format_sec(86400 * 7) == '1 week'
+  assert format_sec(86400 * 7 + 1) == '1 week 1 second'
+  assert format_sec(86400 * 7 + 60) == '1 week 1 minute'
+  assert format_sec(86400 * 7 + 3600) == '1 week 1 hour'
+  assert format_sec(86400 * 7 + 86400) == '1 week 1 day'
+
+def test_format_sec_fixed():
+  assert format_sec_fixed(2) == '0:00:02'
+  assert format_sec_fixed(60 * 2 + 1) == '0:02:01'
+  assert format_sec_fixed(3600 * 2 + 60 + 1) == '2:01:01'
+
+def test_format_short():
+  assert format_sec_short(0) == '0s'
+  assert format_sec_short(1) == '1s'
+  assert format_sec_short(2) == '2s'
+
+  assert format_sec_short(60) == '1m  0s'
+  assert format_sec_short(60 * 2) == '2m  0s'
+  assert format_sec_short(60 * 2 + 1) == '2m  1s'
+
+  assert format_sec_short(3600) == '1h  0m'
+  assert format_sec_short(3600 * 2) == '2h  0m'
+  assert format_sec_short(3600 * 2 + 60) == '2h  1m'
+  assert format_sec_short(3600 * 2 + 60 + 1) == '2h  1m'
+
+  assert format_sec_short(86400) == '1d  0h'
+  assert format_sec_short(86400 * 2) == '2d  0h'
+  assert format_sec_short(86400 * 2 + 3600) == '2d  1h'
+  assert format_sec_short(86400 * 2 + 3600 + 60) == '2d  1h'
+  assert format_sec_short(86400 * 2 + 3600 + 60 + 1) == '2d  1h'
+
+  assert format_sec_short(86400 * 7) == '1w  0d'
+  assert format_sec_short(86400 * 7 + 1) == '1w  0d'
+  assert format_sec_short(86400 * 7 + 60) == '1w  0d'
+  assert format_sec_short(86400 * 7 + 3600) == '1w  0d'
+  assert format_sec_short(86400 * 7 + 86400) == '1w  1d'
+
+def test_job_elapsed_time_finished_job():
+  job = {'finished': '2000-01-02 03:04:05.678901', 'duration': 10.}
+  assert job_elapsed_time(job) == 10.
+
+@patch('exptools.time.utcnow')
+def test_job_elapsed_time_started_job(mock_utcnow):
+  mock_utcnow.return_value = parse_utc('2000-01-02 03:04:15.678901')
+  job = {'finished': None, 'started': '2000-01-02 03:04:05.678901'}
+  assert job_elapsed_time(job) == 10.
