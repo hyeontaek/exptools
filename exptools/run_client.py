@@ -648,6 +648,8 @@ class CommandHandler:
     estimator = Estimator(self.client.history)
 
     async for queue_state in self._get_queue_state():
+      oneshot = await self.client.scheduler.is_oneshot()
+
       output = ''
 
       job_id_max_len = self._get_job_id_max_len(
@@ -718,7 +720,16 @@ class CommandHandler:
       if 'queued' in job_types:
         output += termcolor.colored(
             f"Queued jobs (Q:{len(queue_state['queued_jobs'])})",
-            'blue', attrs=['reverse']) + '\n'
+            'blue', attrs=['reverse']) + '  '
+
+        output += 'Scheduler: '
+        if oneshot:
+          output += termcolor.colored('oneshot', 'blue')
+        elif await self.client.scheduler.is_running():
+          output += termcolor.colored('running', 'cyan')
+        else:
+          output += 'stopped'
+        output += '\n'
 
         jobs = queue_state['queued_jobs']
         if limit:
@@ -742,17 +753,6 @@ class CommandHandler:
         output += '\n'
 
       #output += f"Concurrency: {queue_state['concurrency']}"
-
-      oneshot = await self.client.scheduler.is_oneshot()
-
-      output += 'Scheduler: '
-      if oneshot:
-        output += termcolor.colored('oneshot', 'blue')
-      elif await self.client.scheduler.is_running():
-        output += termcolor.colored('running', 'cyan')
-      else:
-        output += 'stopped'
-      output += '\n\n'
 
       output += await format_estimated_time(estimator, queue_state, oneshot) + '\n'
 
