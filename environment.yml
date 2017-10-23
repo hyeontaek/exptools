@@ -16,5 +16,6 @@ dependencies:
 - wheel
 - pylint
 - pytest
+- pytest-asyncio
 - pytest-cov
 - virtualenv

@@ -1,6 +1,26 @@
-from unittest.mock import patch
+import asynctest.mock
+import pytest
+
+import datetime
 
 from exptools.time import *
+
+class _mocked_datetime(datetime.datetime):
+  @classmethod
+  def utcnow(cls):
+    return cls(2000, 1, 2, 3, 4, 5, 678901)
+
+  @classmethod
+  def localnow(cls):
+    return cls(2000, 1, 2, 3, 4, 5, 678901)
+
+@asynctest.mock.patch('datetime.datetime', new=_mocked_datetime)
+def test_utcnow():
+  assert format_utc(utcnow()) == '2000-01-02 03:04:05.678901'
+
+@asynctest.mock.patch('datetime.datetime', new=_mocked_datetime)
+def test_localnow():
+  assert format_utc(localnow()) == '2000-01-02 03:04:05.678901'
 
 def test_as_utc():
   t = parse_utc('2000-01-02 03:04:05.678901')
@@ -95,8 +115,52 @@ def test_job_elapsed_time_finished_job():
   job = {'finished': '2000-01-02 03:04:05.678901', 'duration': 10.}
   assert job_elapsed_time(job) == 10.
 
-@patch('exptools.time.utcnow')
+@asynctest.mock.patch('exptools.time.utcnow')
 def test_job_elapsed_time_started_job(mock_utcnow):
   mock_utcnow.return_value = parse_utc('2000-01-02 03:04:15.678901')
   job = {'finished': None, 'started': '2000-01-02 03:04:05.678901'}
   assert job_elapsed_time(job) == 10.
+
+@asynctest.mock.patch('termcolor.colored')
+def test_format_job_count(mock_colored):
+  mock_colored.side_effect = lambda s, *args, **kwargs: s
+
+  queue_state = {
+      'finished_jobs': [{'succeeded': True}],
+      'started_jobs': [3, 4, 5],
+      'queued_jobs': [6, 7, 8, 9],
+      }
+  assert format_job_count(queue_state) == 'S:1 F:0 A:3 Q:4'
+
+  queue_state = {
+      'finished_jobs': [{'succeeded': True}, {'succeeded': False}, {'succeeded': False}],
+      'started_jobs': [3, 4, 5],
+      'queued_jobs': [6, 7, 8, 9],
+      }
+  assert format_job_count(queue_state) == 'S:1 F:2 A:3 Q:4'
+
+
+@pytest.mark.asyncio
+@asynctest.mock.patch('datetime.datetime', new=_mocked_datetime)
+@asynctest.mock.patch('exptools.estimator.Estimator')
+@asynctest.mock.patch('termcolor.colored')
+async def test_format_estimated_time(mock_colored, mock_estimator):
+  mock_colored.side_effect = lambda s, *args, **kwargs: s
+  async def _estimate_remaining_time(state, oneshot):
+    return 10., {}
+  mock_estimator.estimate_remaining_time.side_effect = _estimate_remaining_time
+
+  estimator = mock_estimator
+
+  queue_state = {
+      'finished_jobs': [{'succeeded': True}, {'succeeded': False}, {'succeeded': False}],
+      'started_jobs': [3, 4, 5],
+      'queued_jobs': [6, 7, 8, 9],
+      'concurrency': 1.1,
+      }
+
+  oneshot = False
+
+  assert await format_estimated_time(estimator, queue_state, oneshot) == \
+      'S:1 F:2 A:3 Q:4  Remaining 10s  Finish by %s  Concurrency 1.1' % \
+      format_local_short(utcnow() + datetime.timedelta(seconds=10))

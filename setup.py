@@ -55,6 +55,7 @@ setup(
       'test': [
         'pylint',
         'pytest',
+        'pytest-asyncio',
         'pytest-cov',
         'asynctest',
         'tox',
