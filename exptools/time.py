@@ -133,10 +133,14 @@ def job_elapsed_time(job):
     sec = diff_sec(now, parse_utc(job['started']))
   return sec
 
-def format_job_count(queue_state):
+def format_job_count(queue_state, use_color):
   '''Format job count.'''
 
   state = queue_state
+  if use_color:
+    colored = termcolor.colored
+  else:
+    colored = lambda s, *args, **kwargs: s
 
   succeeded = len(list(filter(lambda job: job['succeeded'], state['finished_jobs'])))
   failed = len(list(filter(lambda job: not job['succeeded'], state['finished_jobs'])))
@@ -144,22 +148,26 @@ def format_job_count(queue_state):
   queued = len(state['queued_jobs'])
 
   output = ''
-  output += termcolor.colored('S:' + str(succeeded), 'green', attrs=['reverse'])
+  output += colored('S:' + str(succeeded), 'green', attrs=['reverse'])
   output += ' '
   if failed == 0:
-    output += termcolor.colored('F:' + str(failed), 'green', attrs=['reverse'])
+    output += colored('F:' + str(failed), 'green', attrs=['reverse'])
   else:
-    output += termcolor.colored('F:' + str(failed), 'red', attrs=['reverse'])
+    output += colored('F:' + str(failed), 'red', attrs=['reverse'])
   output += ' '
-  output += termcolor.colored('A:' + str(started), 'cyan', attrs=['reverse'])
+  output += colored('A:' + str(started), 'cyan', attrs=['reverse'])
   output += ' '
-  output += termcolor.colored('Q:' + str(queued), 'blue', attrs=['reverse'])
+  output += colored('Q:' + str(queued), 'blue', attrs=['reverse'])
   return output
 
-async def format_estimated_time(estimator, queue_state, oneshot):
+async def format_estimated_time(estimator, queue_state, oneshot, use_color):
   '''Format the estimated time with colors.'''
 
   state = queue_state
+  if use_color:
+    colored = termcolor.colored
+  else:
+    colored = lambda s, *args, **kwargs: s
 
   remaining_time, _ = await estimator.estimate_remaining_time(state, oneshot)
   remaining_str = format_sec_short(remaining_time)
@@ -172,8 +180,8 @@ async def format_estimated_time(estimator, queue_state, oneshot):
   concurrency = state['concurrency']
 
   output = ''
-  output += format_job_count(state)
-  output += termcolor.colored(
+  output += format_job_count(state, use_color)
+  output += colored(
       f'  Remaining {remaining_str}' + \
       f'  Finish by {finish_by_local_str}' + \
       f'  Concurrency {concurrency}', 'blue')

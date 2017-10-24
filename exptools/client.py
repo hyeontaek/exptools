@@ -38,6 +38,7 @@ class Client:
     self.max_chunk_size = self.max_size // 2
 
     self.next_id = 0
+    self.websocket = None
 
   async def connect(self):
     '''Connect to the server.'''

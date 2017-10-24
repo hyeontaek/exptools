@@ -21,7 +21,9 @@ class Server:
   '''Implement a RPC server that exposes internal objects.'''
 
   # pylint: disable=too-many-arguments
-  def __init__(self, host, port, secret, history, queue, scheduler, runner, filter_, ready_event, loop):
+  def __init__(self, host, port, secret,
+               history, queue, scheduler, runner, filter_,
+               ready_event, loop):
     self.host = host
     self.port = port
     self.secret = secret
@@ -228,4 +230,4 @@ class Server:
 
   async def wait_for_ready(self):
     '''Wait until the server becomes ready (or fails to initialize.'''
-    await self._ready.wait()
+    await self.ready_event.wait()

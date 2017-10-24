@@ -76,7 +76,10 @@ async def run_server(argv, ready_event, loop):
       args.scheduler_mode, args.scheduler_file, history, queue, loop)
   runner = Runner(args.output_dir, queue, scheduler, loop)
   filter_ = Filter(loop)
-  server = Server(args.host, args.port, secret, history, queue, scheduler, runner, filter_, ready_event, loop)
+  server = Server(
+      args.host, args.port, secret,
+      history, queue, scheduler, runner, filter_,
+      ready_event, loop)
 
   state_tasks = [
       asyncio.ensure_future(history.run_forever(), loop=loop),

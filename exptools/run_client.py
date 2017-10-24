@@ -79,6 +79,10 @@ class CommandHandler:
     self.client_pool = client_pool
     self.loop = loop
 
+    self.client = None
+    self.client_watch = None
+    self._handler = None
+
   async def init(self):
     '''Initialize the command handler.'''
     command = self.args.command
@@ -189,8 +193,7 @@ class CommandHandler:
           current_obj = None
       if current_obj is None:
         return ''
-      else:
-        return str(current_obj)
+      return str(current_obj)
 
     return list(sorted(params, key=_sort_key, reverse=self.args.reverse))
 
@@ -216,12 +219,18 @@ class CommandHandler:
 
   @arg_export('common_omit_params')
   @arg_define('-o', '--omit', action='append',
-              choices=['succeeded', 'S', 'finished', 'F', 'started', 'A', 'queued', 'Q', 'duplicate', 'D'],
+              choices=[
+                  'succeeded', 'S', 'finished', 'F',
+                  'started', 'A', 'queued', 'Q',
+                  'duplicate', 'D'],
               help='omit specified parameter types; ' + \
               'use multiple options to specify multiple types; ' + \
               'S=success, F=finished, A=started, Q=queued, D=duplicate')
   @arg_define('-O', '--only', action='append',
-              choices=['succeeded', 'S', 'finished', 'F', 'started', 'A', 'queued', 'Q', 'duplicate', 'D'],
+              choices=[
+                  'succeeded', 'S', 'finished', 'F',
+                  'started', 'A', 'queued', 'Q',
+                  'duplicate', 'D'],
               help='only include specified parameter types; ' + \
               'use multiple options to specify multiple types; ' + \
               'S=success, F=finished, A=started, Q=queued, D=duplicate')
@@ -347,18 +356,19 @@ class CommandHandler:
   async def _estimate(self, params):
     queue_state = await self.client.queue.get_state()
     oneshot = await self.client.scheduler.is_oneshot()
+    use_color = self.common_args.color == 'yes'
 
     estimator = Estimator(self.client.history)
 
     self.stdout.write('Current:   ' + \
-        await format_estimated_time(estimator, queue_state, oneshot) + '\n')
+        await format_estimated_time(estimator, queue_state, oneshot, use_color) + '\n')
 
     queue_state['queued_jobs'].extend(
         [{'job_id': 'dummy-j-{i}', 'param_id': get_param_id(param), 'param': param} \
             for i, param in enumerate(params)])
     oneshot = await self.client.scheduler.is_oneshot()
     self.stdout.write('Estimated: ' + \
-        await format_estimated_time(estimator, queue_state, oneshot) + '\n')
+        await format_estimated_time(estimator, queue_state, oneshot, use_color) + '\n')
 
   @arg_export('common_get_stdout_stderr')
   @arg_define('-o', '--stdout', action='store_true', default=True,
@@ -368,7 +378,8 @@ class CommandHandler:
   async def _get_stdout_stderr(self):
     return self.args.stdout
 
-  def _get_job_id_max_len(self, params=None, jobs=None):
+  @staticmethod
+  def _get_job_id_max_len(params=None, jobs=None):
     if params is not None:
       return max([len(param['_'].get('job_id', '')) for param in params if '_' in param])
     elif jobs is not None:
@@ -615,11 +626,12 @@ class CommandHandler:
   async def _handle_s(self):
     '''summarize the queue state'''
     estimator = Estimator(self.client.history)
+    use_color = self.common_args.color == 'yes'
 
     async for queue_state in self._get_queue_state():
       oneshot = await self.client.scheduler.is_oneshot()
 
-      output = await format_estimated_time(estimator, queue_state, oneshot) + '\n'
+      output = await format_estimated_time(estimator, queue_state, oneshot, use_color) + '\n'
 
       if self.args.clear_screen:
         os.system('clear')
@@ -647,6 +659,12 @@ class CommandHandler:
       job_types = set(self.args.job_types)
 
     estimator = Estimator(self.client.history)
+    use_color = self.common_args.color == 'yes'
+
+    if use_color:
+      colored = termcolor.colored
+    else:
+      colored = lambda s, *args, **kwargs: s
 
     async for queue_state in self._get_queue_state():
       oneshot = await self.client.scheduler.is_oneshot()
@@ -654,18 +672,20 @@ class CommandHandler:
       output = ''
 
       job_id_max_len = self._get_job_id_max_len(
-          jobs=queue_state['finished_jobs'] + queue_state['started_jobs'] + queue_state['queued_jobs'])
+          jobs=queue_state['finished_jobs'] + \
+              queue_state['started_jobs'] + \
+              queue_state['queued_jobs'])
 
       if 'finished' in job_types:
         succeeded_count = len([job for job in queue_state['finished_jobs'] if job['succeeded']])
         failed_count = len(queue_state['finished_jobs']) - succeeded_count
         finished_jobs_color = 'red' if failed_count else 'green'
-        output += termcolor.colored(
+        output += colored(
             f"Finished jobs (S:{succeeded_count} / F:{failed_count})",
             finished_jobs_color, attrs=['reverse']) + '\n'
 
         if limit and len(queue_state['finished_jobs']) > limit:
-          line = termcolor.colored('  ', finished_jobs_color, attrs=['reverse'])
+          line = colored('  ', finished_jobs_color, attrs=['reverse'])
           output += line + ' ...\n'
 
         jobs = queue_state['finished_jobs']
@@ -674,9 +694,9 @@ class CommandHandler:
 
         for job in jobs:
           if job['succeeded']:
-            line = termcolor.colored('  ', 'green', attrs=['reverse'])
+            line = colored('  ', 'green', attrs=['reverse'])
           else:
-            line = termcolor.colored('  ', 'red', attrs=['reverse'])
+            line = colored('  ', 'red', attrs=['reverse'])
           line += f" {job['job_id']:{job_id_max_len}} {job['param_id']}"
           line += f' [{format_sec_short(job_elapsed_time(job)):>7}]'
           if job['succeeded']:
@@ -692,12 +712,12 @@ class CommandHandler:
       last_rem = 0.
 
       if 'started' in job_types:
-        output += termcolor.colored(
+        output += colored(
             f"Started jobs (A:{len(queue_state['started_jobs'])})",
             'cyan', attrs=['reverse']) + '\n'
 
         if limit and len(queue_state['started_jobs']) > limit:
-          line = termcolor.colored('  ', 'cyan', attrs=['reverse'])
+          line = colored('  ', 'cyan', attrs=['reverse'])
           output += line + ' ...\n'
 
         jobs = queue_state['started_jobs']
@@ -707,7 +727,7 @@ class CommandHandler:
         for job in jobs:
           rem = rem_map[job['job_id']]
 
-          line = termcolor.colored('  ', 'cyan', attrs=['reverse'])
+          line = colored('  ', 'cyan', attrs=['reverse'])
           line += f" {job['job_id']:{job_id_max_len}} {job['param_id']}"
           line += f' [{format_sec_short(job_elapsed_time(job)):>7}]' + \
               f'+[{format_sec_short(max(rem - last_rem, 0)):>7}]'
@@ -719,15 +739,15 @@ class CommandHandler:
         output += '\n'
 
       if 'queued' in job_types:
-        output += termcolor.colored(
+        output += colored(
             f"Queued jobs (Q:{len(queue_state['queued_jobs'])})",
             'blue', attrs=['reverse']) + '  '
 
         output += 'Scheduler: '
         if oneshot:
-          output += termcolor.colored('oneshot', 'blue')
+          output += colored('oneshot', 'blue')
         elif await self.client.scheduler.is_running():
-          output += termcolor.colored('running', 'cyan')
+          output += colored('running', 'cyan')
         else:
           output += 'stopped'
         output += '\n'
@@ -739,7 +759,7 @@ class CommandHandler:
         for job in jobs:
           rem = rem_map[job['job_id']]
 
-          line = termcolor.colored('  ', 'blue', attrs=['reverse'])
+          line = colored('  ', 'blue', attrs=['reverse'])
           line += f" {job['job_id']:{job_id_max_len}} {job['param_id']}"
           line += f'           [{format_sec_short(max(rem - last_rem, 0)):>7}]'
           line += '  '
@@ -748,14 +768,14 @@ class CommandHandler:
           output += line + '\n'
 
         if limit and len(queue_state['queued_jobs']) > limit:
-          line = termcolor.colored('  ', 'blue', attrs=['reverse'])
+          line = colored('  ', 'blue', attrs=['reverse'])
           output += line + ' ...\n'
 
         output += '\n'
 
       #output += f"Concurrency: {queue_state['concurrency']}"
 
-      output += await format_estimated_time(estimator, queue_state, oneshot) + '\n'
+      output += await format_estimated_time(estimator, queue_state, oneshot, use_color) + '\n'
 
       if self.args.clear_screen:
         os.system('clear')
@@ -958,6 +978,9 @@ def make_parser():
                       help='the port number of the server (default: %(default)s)')
   parser.add_argument('--secret-file', type=str,
                       default='secret.json', help='the secret file path (default: %(default)s)')
+  parser.add_argument('--color', type=str, default='yes',
+                      choices=['yes', 'no'],
+                      help='use colors (default: %(default)s)')
 
   parser.add_argument('-v', '--verbose', action='store_true', default=False, help='be verbose')
 
