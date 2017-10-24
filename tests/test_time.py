@@ -130,14 +130,14 @@ def test_format_job_count(mock_colored):
       'started_jobs': [3, 4, 5],
       'queued_jobs': [6, 7, 8, 9],
       }
-  assert format_job_count(queue_state) == 'S:1 F:0 A:3 Q:4'
+  assert format_job_count(queue_state, True) == 'S:1 F:0 A:3 Q:4'
 
   queue_state = {
       'finished_jobs': [{'succeeded': True}, {'succeeded': False}, {'succeeded': False}],
       'started_jobs': [3, 4, 5],
       'queued_jobs': [6, 7, 8, 9],
       }
-  assert format_job_count(queue_state) == 'S:1 F:2 A:3 Q:4'
+  assert format_job_count(queue_state, False) == 'S:1 F:2 A:3 Q:4'
 
 
 @pytest.mark.asyncio
@@ -161,6 +161,10 @@ async def test_format_estimated_time(mock_colored, mock_estimator):
 
   oneshot = False
 
-  assert await format_estimated_time(estimator, queue_state, oneshot) == \
+  assert await format_estimated_time(estimator, queue_state, oneshot, True) == \
+      'S:1 F:2 A:3 Q:4  Remaining 10s  Finish by %s  Concurrency 1.1' % \
+      format_local_short(utcnow() + datetime.timedelta(seconds=10))
+
+  assert await format_estimated_time(estimator, queue_state, oneshot, False) == \
       'S:1 F:2 A:3 Q:4  Remaining 10s  Finish by %s  Concurrency 1.1' % \
       format_local_short(utcnow() + datetime.timedelta(seconds=10))
