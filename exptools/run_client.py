@@ -381,11 +381,18 @@ class CommandHandler:
   @staticmethod
   def _get_job_id_max_len(params=None, jobs=None):
     if params is not None:
-      return max([len(param['_'].get('job_id', '')) for param in params if '_' in param])
-    elif jobs is not None:
-      return max([len(job['job_id']) for job in jobs])
+      job_id_lens = [len(param['_'].get('job_id', '')) for param in params if '_' in param]
+      if job_id_lens:
+        return max(job_id_lens)
+      else:
+        return 3
+    elif jobs is None:
+      if jobs:
+        return max([len(job['job_id']) for job in jobs])
+      else:
+        return 3
     else:
-      assert False
+      return 3
 
   @arg_export('command_d')
   @arg_import('common_read_params')
