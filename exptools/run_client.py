@@ -745,11 +745,11 @@ class CommandHandler:
 
         output += 'Scheduler: '
         if oneshot:
-          output += colored('oneshot', 'blue')
+          output += colored('Oneshot', 'blue')
         elif await self.client.scheduler.is_running():
-          output += colored('running', 'cyan')
+          output += colored('Running', 'cyan')
         else:
-          output += 'stopped'
+          output += colored('Stopped', 'red')
         output += '\n'
 
         jobs = queue_state['queued_jobs']
