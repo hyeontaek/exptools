@@ -13,6 +13,7 @@ import os
 import pprint
 import re
 import sys
+import tempfile
 
 import termcolor
 
@@ -981,6 +982,7 @@ def make_parser():
   parser.add_argument('--color', type=str, default='yes',
                       choices=['yes', 'no'],
                       help='use colors (default: %(default)s)')
+  parser.add_argument('--less', action='store_true', default=False, help='invoke less for output')
 
   parser.add_argument('-v', '--verbose', action='store_true', default=False, help='be verbose')
 
@@ -1037,10 +1039,15 @@ async def run_client(argv, loop):
 
   # Run commands
   try:
+    if not common_args.less:
+      sink = sys.stdout
+    else:
+      sink = io.StringIO()
+
     client_pool = {}
     stdin = sys.stdin
     if pipe_break[0]:
-      stdout = sys.stdout
+      stdout = sink
     else:
       stdout = io.StringIO()
     for i, (args, unknown_args) in enumerate(args_list):
@@ -1058,8 +1065,17 @@ async def run_client(argv, loop):
         stdin = stdout
 
       if i + 1 < len(args_list) and pipe_break[i + 1]:
-        stdout = sys.stdout
+        stdout = sink
       else:
         stdout = io.StringIO()
+
+    if common_args.less:
+      sink.seek(0)
+      with tempfile.NamedTemporaryFile(mode='w', delete=True) as file:
+        file.write(sink.read())
+        file.flush()
+        cmd = ['less', '--chop-long-lines', '--RAW-CONTROL-CHARS', file.name]
+        proc = await asyncio.subprocess.create_subprocess_exec(*cmd)
+        await proc.communicate()
   except KeyboardInterrupt:
     pass
