@@ -1,39 +1,41 @@
 import asynctest.mock
 import pytest
 
-import subprocess
+import asyncio
 import tempfile
-import time
 
-@pytest.fixture(scope='module')
-def server():
-  with tempfile.TemporaryDirectory() as cwd:
-    print(f'Working directory for exptools-server: {cwd}')
-    proc = subprocess.Popen(['exptools-server'],
-        bufsize=0,
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        cwd=cwd)
+from exptools.run_server import run_server
+from exptools.run_client import run_client
 
-    time.sleep(1)
+@pytest.fixture
+async def loop(event_loop):
+  '''Provide an alias for event_loop fixture.'''
+  yield event_loop
+  event_loop.stop()
 
-    yield proc, cwd
+@pytest.fixture
+async def server(unused_tcp_port, loop):
+  '''Run a exptools server.'''
+  port = unused_tcp_port
+  argv = [f'--port={port}']
+  ready_event = asyncio.Event()
 
-    proc.kill()
-    proc.wait()
+  task = asyncio.ensure_future(run_server(argv, ready_event=ready_event, loop=loop), loop=loop)
+  await ready_event.wait()
 
-def run(server, *args, stdin=None):
-  cmd = ['etc', f'--secret={server[1]}/secret.json'] + list(args)
-  proc = subprocess.Popen(cmd,
-      stdin=subprocess.PIPE,
-      stdout=subprocess.PIPE,
-      stderr=subprocess.PIPE)
+  yield {'port_arg': f'--port={port}'}
 
-  stdout, stderr = proc.communicate(input=stdin)
-  return proc.returncode, stdout, stderr
+  task.cancel()
+  await task
 
-def test_s(server):
-  returncode, stdout, stderr = run(server, 's')
+async def run(server, *args, stdin=None, loop=None):
+  '''Run a exptools client'''
+  args = [server['port_arg']] + list(args)
+  return await run_client(args, loop=loop)
+
+@pytest.mark.asyncio
+async def test_s(capsys, loop, server):
+  await run(server, 's', loop=loop)
+  stdout, stderr = capsys.readouterr()
   # pytest -s
   print(stdout)
