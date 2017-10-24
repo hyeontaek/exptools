@@ -79,15 +79,15 @@ class CommandHandler:
     self.client_pool = client_pool
     self.loop = loop
 
-    self._init()
-
-  def _init(self):
+  async def init(self):
+    '''Initialize the command handler.'''
     command = self.args.command
 
     if command not in ['d', 'dum', 'dump', 'select', 'grep'] or self.args.history:
       if 'client' not in self.client_pool:
         secret = json.load(open(self.common_args.secret_file))
         client = Client(self.common_args.host, self.common_args.port, secret, self.loop)
+        await client.connect()
         self.client_pool['client'] = client
       self.client = self.client_pool['client']
 
@@ -95,6 +95,7 @@ class CommandHandler:
       if 'client_watch' not in self.client_pool:
         secret = json.load(open(self.common_args.secret_file))
         client = Client(self.common_args.host, self.common_args.port, secret, self.loop)
+        await client.connect()
         self.client_pool['client_watch'] = client
       self.client_watch = self.client_pool['client_watch']
 
@@ -971,11 +972,9 @@ def make_parser():
 
   return parser
 
-def run_client():
+async def run_client(argv, loop):
   '''Parse arguments and process a client command.'''
   parser = make_parser()
-
-  argv = sys.argv[1:]
 
   group_start = -1
   for i, arg in enumerate(argv):
@@ -1014,8 +1013,6 @@ def run_client():
   pipe_break.append(True)
 
   # Run commands
-  loop = asyncio.get_event_loop()
-
   try:
     client_pool = {}
     stdin = sys.stdin
@@ -1026,7 +1023,8 @@ def run_client():
     for i, (args, unknown_args) in enumerate(args_list):
       # Run a handler
       handler = CommandHandler(stdin, stdout, common_args, args, unknown_args, client_pool, loop)
-      loop.run_until_complete(handler.handle())
+      await handler.init()
+      await handler.handle()
 
       if pipe_break[i]:
         stdin = sys.stdin

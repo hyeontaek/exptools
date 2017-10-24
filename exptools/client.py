@@ -38,14 +38,13 @@ class Client:
     self.max_chunk_size = self.max_size // 2
 
     self.next_id = 0
-    self._connect()
 
-  def _connect(self):
+  async def connect(self):
     '''Connect to the server.'''
-    self.websocket = self.loop.run_until_complete(
-        websockets.connect(f'ws://{self.host}:{self.port}', max_size=self.max_size))
+    self.websocket = \
+        await websockets.connect(f'ws://{self.host}:{self.port}', max_size=self.max_size)
 
-    authed = self.loop.run_until_complete(self._authenticate(self.websocket))
+    authed = await self._authenticate(self.websocket)
     assert authed, 'Authentication failed'
 
   async def _authenticate(self, websocket):

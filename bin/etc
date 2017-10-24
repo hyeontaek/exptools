@@ -1,7 +1,11 @@
 #!/usr/bin/env python
 
+import asyncio
 import sys
 
 from exptools.run_client import run_client
 
-sys.exit(run_client())
+loop = asyncio.get_event_loop()
+argv = sys.argv[1:]
+
+sys.exit(loop.run_until_complete(run_client(argv, loop=loop)))

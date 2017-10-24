@@ -46,7 +46,7 @@ def make_parser():
 
   return parser
 
-def run_server():
+async def run_server(argv, loop):
   '''Run the server.'''
   logging_fmt = '%(asctime)s %(name)-19s %(levelname)-8s %(message)s'
   logging.basicConfig(format=logging_fmt, level=logging.INFO)
@@ -56,7 +56,7 @@ def run_server():
 
   logger = logging.getLogger('exptools.run_server')
 
-  args = make_parser().parse_args()
+  args = make_parser().parse_args(argv)
 
   if args.verbose:
     logging.getLogger('exptools').setLevel(logging.DEBUG)
@@ -69,8 +69,6 @@ def run_server():
   else:
     logger.info(f'Using secret file at {args.secret_file}')
   secret = json.load(open(args.secret_file))
-
-  loop = asyncio.get_event_loop()
 
   history = History(args.history_file, loop)
   queue = Queue(args.queue_file, history, loop)
@@ -94,7 +92,7 @@ def run_server():
       ]
 
   try:
-    loop.run_until_complete(server_task)
+    await server_task
   except KeyboardInterrupt:
     pass
   finally:
@@ -102,11 +100,11 @@ def run_server():
       logger.info('Waiting for execution tasks to exit')
       for task in execution_tasks:
         task.cancel()
-      loop.run_until_complete(asyncio.gather(*execution_tasks, loop=loop))
+      await asyncio.gather(*execution_tasks, loop=loop)
     finally:
       logger.info('Waiting for state tasks to exit')
       for task in state_tasks:
         task.cancel()
-      loop.run_until_complete(asyncio.gather(*state_tasks, loop=loop))
+      await asyncio.gather(*state_tasks, loop=loop)
 
     logger.info('Tasks exited')

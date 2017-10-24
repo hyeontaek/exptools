@@ -30,9 +30,18 @@ class Queue:
     self.lock = asyncio.Condition(loop=self.loop)
     self._dump_scheduled = False
     self._load()
+    self._ensure_no_started_jobs = True
 
   async def run_forever(self):
     '''Manage the queue.'''
+
+    if self._ensure_no_started_jobs:
+      self._ensure_no_started_jobs = False
+
+      # Make all started jobs at initialization time failed
+      for job in list(self.state['started_jobs'].values()):
+        await self.set_finished(job['job_id'], False)
+
     try:
       while True:
         async with self.lock:
@@ -76,10 +85,6 @@ class Queue:
           'next_job_id': 0,
           }
       self.logger.info(f'Initialized new queue state')
-
-    # Make all started jobs failed
-    for job in list(self.state['started_jobs'].values()):
-      self.loop.run_until_complete(self.set_finished(job['job_id'], False))
 
     if not self.state['started_jobs'] and not self.state['queued_jobs']:
       self.logger.warning('Queue empty')
