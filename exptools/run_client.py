@@ -1061,5 +1061,5 @@ async def run_client(argv, loop):
         stdout = sys.stdout
       else:
         stdout = io.StringIO()
-  except KeyboardInterrupt:
+  except concurrent.futures.CancelledError:
     pass

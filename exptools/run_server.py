@@ -96,7 +96,7 @@ async def run_server(argv, ready_event, loop):
 
   try:
     await server_task
-  except KeyboardInterrupt:
+  except concurrent.futures.CancelledError:
     pass
   finally:
     try:
