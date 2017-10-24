@@ -6,6 +6,7 @@ import sys
 from exptools.run_server import run_server
 
 loop = asyncio.get_event_loop()
+ready_event = None
 argv = sys.argv[1:]
 
-sys.exit(loop.run_until_complete(run_server(argv, loop=loop)))
+sys.exit(loop.run_until_complete(run_server(argv, ready_event, loop=loop)))

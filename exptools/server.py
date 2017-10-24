@@ -21,7 +21,7 @@ class Server:
   '''Implement a RPC server that exposes internal objects.'''
 
   # pylint: disable=too-many-arguments
-  def __init__(self, host, port, secret, history, queue, scheduler, runner, filter_, loop):
+  def __init__(self, host, port, secret, history, queue, scheduler, runner, filter_, ready_event, loop):
     self.host = host
     self.port = port
     self.secret = secret
@@ -30,6 +30,7 @@ class Server:
     self.scheduler = scheduler
     self.runner = runner
     self.filter = filter_
+    self.ready_event = ready_event
     self.loop = loop
 
     self.max_size = 1048576
@@ -201,14 +202,30 @@ class Server:
   async def run_forever(self):
     '''Serve websocket requests.'''
     try:
-      await websockets.serve(
+      server = await websockets.serve(
           self._get_serve(), self.host, self.port, max_size=self.max_size, loop=self.loop)
-      self.logger.info(f'Listening on ws://{self.host}:{self.port}/')
+      try:
+        self.logger.info(f'Listening on ws://{self.host}:{self.port}/')
 
-      # Sleep forever
-      while True:
-        await asyncio.sleep(60, loop=self.loop)
+        if self.ready_event:
+          self.ready_event.set()
+
+        # Sleep forever
+        while True:
+          await asyncio.sleep(60, loop=self.loop)
+      finally:
+        # Close the server
+        server.close()
+        await server.wait_closed()
     except concurrent.futures.CancelledError:
       pass
     except Exception: # pylint: disable=broad-except
       self.logger.exception('Exception while initializing server')
+    finally:
+      if self.ready_event:
+        if not self.ready_event.is_set():
+          self.ready_event.set()
+
+  async def wait_for_ready(self):
+    '''Wait until the server becomes ready (or fails to initialize.'''
+    await self._ready.wait()

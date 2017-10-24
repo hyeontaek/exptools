@@ -46,7 +46,7 @@ def make_parser():
 
   return parser
 
-async def run_server(argv, loop):
+async def run_server(argv, ready_event, loop):
   '''Run the server.'''
   logging_fmt = '%(asctime)s %(name)-19s %(levelname)-8s %(message)s'
   logging.basicConfig(format=logging_fmt, level=logging.INFO)
@@ -76,7 +76,7 @@ async def run_server(argv, loop):
       args.scheduler_mode, args.scheduler_file, history, queue, loop)
   runner = Runner(args.output_dir, queue, scheduler, loop)
   filter_ = Filter(loop)
-  server = Server(args.host, args.port, secret, history, queue, scheduler, runner, filter_, loop)
+  server = Server(args.host, args.port, secret, history, queue, scheduler, runner, filter_, ready_event, loop)
 
   state_tasks = [
       asyncio.ensure_future(history.run_forever(), loop=loop),
