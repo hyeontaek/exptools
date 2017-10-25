@@ -5,6 +5,7 @@ __all__ = [
     'get_name',
     'get_command',
     'get_cwd',
+    'get_time_limit',
     'ParamBuilder',
     ]
 
@@ -45,7 +46,7 @@ def get_command(param):
   '''Return the command of a parameter.'''
   command = None
   if '_' in param and 'command' in param['_']:
-    return param['_']['command']
+    command = param['_']['command']
   elif 'command' in param:
     command = param['command']
   if command is None:
@@ -56,10 +57,19 @@ def get_cwd(param):
   '''Return the working directory of a parameter.'''
   cwd = None
   if '_' in param and 'cwd' in param['_']:
-    return param['_']['cwd']
+    cwd = param['_']['cwd']
   elif 'cwd' in param:
     cwd = param['cwd']
   return cwd
+
+def get_time_limit(param):
+  '''Return the time limit of a parameter.'''
+  time_limit = None
+  if '_' in param and 'time_limit' in param['_']:
+    time_limit = param['_']['time_limit']
+  elif 'time_limit' in param:
+    time_limit = param['time_limit']
+  return time_limit
 
 class ParamBuilder(collections.ChainMap):
   '''A parameter builder.'''

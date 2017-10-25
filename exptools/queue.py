@@ -11,7 +11,7 @@ import os
 import aiofiles
 import base58
 
-from exptools.param import get_param_id, get_name, get_command, get_cwd
+from exptools.param import get_param_id, get_name, get_command, get_cwd, get_time_limit
 from exptools.rpc_helper import rpc_export_function, rpc_export_generator
 from exptools.time import diff_sec, utcnow, format_utc, parse_utc
 
@@ -184,6 +184,7 @@ class Queue:
             'name': get_name(param),
             'command': get_command(param),
             'cwd': get_cwd(param) or os.getcwd(),
+            'time_limit': get_time_limit(param),
             'param': param,
             'queued': now,
             'started': None,

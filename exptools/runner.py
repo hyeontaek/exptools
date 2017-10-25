@@ -66,7 +66,7 @@ class Runner:
       file.write(json.dumps(job) + '\n')
 
     # Dump simple properties
-    for key in ['job_id', 'param_id', 'name', 'cwd']:
+    for key in ['job_id', 'param_id', 'name', 'cwd', 'time_limit']:
       with open(os.path.join(job_dir, key), 'wt') as file:
         assert isinstance(job[key], str)
         file.write(job[key] + '\n')
@@ -97,6 +97,7 @@ class Runner:
     env['EXPTOOLS_PARAM_ID'] = job['param_id']
     env['EXPTOOLS_NAME'] = job['name']
     env['EXPTOOLS_CWD'] = job['cwd']
+    env['EXPTOOLS_TIME_LIMIT'] = job['time_limit']
 
     env['EXPTOOLS_COMMAND_JSON_PATH'] = os.path.join(job_dir, 'command.json')
     env['EXPTOOLS_PARAM_JSON_PATH'] = os.path.join(job_dir, 'param.json')
@@ -116,6 +117,7 @@ class Runner:
     name = job['name']
     expanded_command = [arg.format(**param) for arg in job['command']]
     cwd = job['cwd']
+    time_limit = job['time_limit']
 
     try:
       if not await self.queue.set_started(job_id):
@@ -162,7 +164,10 @@ class Runner:
             self._watch_status(job_id, job_dir), loop=self.loop)
 
         try:
-          await proc.communicate()
+          if not time_limit:
+            await proc.communicate()
+          else:
+            await asyncio.wait_for(proc.communicate(), time_limit, loop=self.loop)
         except Exception: # pylint: disable=broad-except
           # Do not use proc.kill() or terminate() to allow the job to exit gracefully
           try:
