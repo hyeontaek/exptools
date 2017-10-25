@@ -66,10 +66,15 @@ class Runner:
       file.write(json.dumps(job) + '\n')
 
     # Dump simple properties
-    for key in ['job_id', 'param_id', 'name', 'cwd', 'time_limit']:
+    for key in ['job_id', 'param_id', 'name', 'cwd']:
       with open(os.path.join(job_dir, key), 'wt') as file:
         assert isinstance(job[key], str)
         file.write(job[key] + '\n')
+
+    for key in ['time_limit']:
+      with open(os.path.join(job_dir, key), 'wt') as file:
+        assert isinstance(job[key], int) or isinstance(job[key], float)
+        file.write(str(job[key]) + '\n')
 
     # Dump structured properties
     for key in ['command', 'param', 'resources']:
@@ -97,7 +102,7 @@ class Runner:
     env['EXPTOOLS_PARAM_ID'] = job['param_id']
     env['EXPTOOLS_NAME'] = job['name']
     env['EXPTOOLS_CWD'] = job['cwd']
-    env['EXPTOOLS_TIME_LIMIT'] = job['time_limit']
+    env['EXPTOOLS_TIME_LIMIT'] = str(job['time_limit'])
 
     env['EXPTOOLS_COMMAND_JSON_PATH'] = os.path.join(job_dir, 'command.json')
     env['EXPTOOLS_PARAM_JSON_PATH'] = os.path.join(job_dir, 'param.json')
@@ -164,7 +169,7 @@ class Runner:
             self._watch_status(job_id, job_dir), loop=self.loop)
 
         try:
-          if not time_limit:
+          if time_limit <= 0:
             await proc.communicate()
           else:
             await asyncio.wait_for(proc.communicate(), time_limit, loop=self.loop)

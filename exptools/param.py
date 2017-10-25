@@ -64,7 +64,7 @@ def get_cwd(param):
 
 def get_time_limit(param):
   '''Return the time limit of a parameter.'''
-  time_limit = None
+  time_limit = 0
   if '_' in param and 'time_limit' in param['_']:
     time_limit = param['_']['time_limit']
   elif 'time_limit' in param:
