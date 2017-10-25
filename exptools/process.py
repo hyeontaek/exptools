@@ -10,6 +10,8 @@ __all__ = [
     ]
 
 import asyncio
+import concurrent
+import traceback
 
 def sync(cor, loop=None):
   '''Wait for a task and return the result.'''
@@ -54,10 +56,26 @@ async def async_wait_for_procs(procs, timeout=None, loop=None):
   if not procs:
     return True, []
 
-  tasks = [proc.wait() for proc in procs]
-  _, pending = await asyncio.wait(tasks, timeout=timeout, loop=loop)
+  async def _wait(proc):
+    await proc.wait()
+    if proc.returncode != 0:
+      raise RuntimeError(f'Got failure returncode={proc.returncode}')
+
+  tasks = [_wait(proc) for proc in procs]
+  done, pending = await asyncio.wait(
+      tasks, timeout=timeout, return_when=asyncio.FIRST_EXCEPTION, loop=loop)
+
   for task in pending:
     task.cancel()
+
+  for task in list(done) + list(pending):
+    try:
+      await task
+    except concurrent.futures.CancelledError:
+      # Ignore CancelledError because we caused it
+      pass
+    except Exception: # pylint: disable=broad-except
+      traceback.print_exc()
 
   success = not pending
   returncode_list = [proc.returncode for proc in procs]
