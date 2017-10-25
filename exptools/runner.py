@@ -48,14 +48,14 @@ class Runner:
             new_tasks.append(task)
         tasks = new_tasks
     finally:
-      if tasks:
-        for task in tasks:
+      for task in tasks:
+        if not task.done():
           task.cancel()
-          try:
-            await task
-          except concurrent.futures.CancelledError:
-            # Ignore CancelledError because we caused it
-            pass
+        try:
+          await task
+        except concurrent.futures.CancelledError:
+          # Ignore CancelledError because we caused it
+          pass
 
   @staticmethod
   def _create_job_files(job, job_dir, expanded_command):
@@ -164,8 +164,11 @@ class Runner:
         try:
           await proc.communicate()
         except Exception: # pylint: disable=broad-except
-          # Do not use proc.terminate() to allow the job to exit gracefully
-          await self.kill([job_id])
+          # Do not use proc.kill() or terminate() to allow the job to exit gracefully
+          try:
+            proc.send_signal(signal.SIGINT)
+          except Exception: # pylint: disable=broad-except
+            self.logger.exception('Exception while killing process')
         finally:
           try:
             await proc.wait()
@@ -241,13 +244,13 @@ class Runner:
 
       await self.queue.set_status(job_id, status)
     except concurrent.futures.CancelledError:
-      # Pass through (likely normal exit through task cancellation)
-      raise
+      # Ignore (likely normal exit through task cancellation)
+      pass
     except Exception: # pylint: disable=broad-except
       self.logger.exception(f'Exception while reading status of job {job_id}')
 
   @rpc_export_function
-  async def kill(self, job_ids=None, force=False):
+  async def kill(self, job_ids=None, signal_type=None):
     '''Kill started jobs.'''
     queue_state = await self.queue.get_state()
 
@@ -259,12 +262,17 @@ class Runner:
     for job in queue_state['started_jobs']:
       if job['job_id'] in job_ids and job['pid'] is not None:
         job_id = job['job_id']
-        if not force:
-          self.logger.info(f'Killing job {job_id}')
+        if signal_type == 'int':
+          self.logger.info(f'Interrupting job {job_id}')
           os.kill(job['pid'], signal.SIGINT)
-        else:
+        elif not signal_type or signal_type == 'term':
           self.logger.info(f'Terminating job {job_id}')
           os.kill(job['pid'], signal.SIGTERM)
+        elif signal_type == 'kill':
+          self.logger.info(f'Killing job {job_id}')
+          os.kill(job['pid'], signal.SIGKILL)
+        else:
+          raise RuntimeError(f'Unknown signal: {signal_type}')
         count += 1
     return count
 

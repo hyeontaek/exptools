@@ -848,11 +848,18 @@ class CommandHandler:
 
   @arg_export('command_kill')
   @arg_import('common_get_job_ids')
-  @arg_define('-f', '--force', action='store_true', default=False, help='kill forcefully')
+  @arg_define('-2', '--int', action='store_true', default=False, help='kill using SIGINT')
+  @arg_define('-9', '--kill', action='store_true', default=False, help='kill using SIGKILL')
   async def _handle_kill(self):
     '''kill started jobs'''
     job_ids = await self._get_job_ids('started_jobs')
-    count = await self.client.runner.kill(job_ids, force=self.args.force)
+    if self.args.kill:
+      count = await self.client.runner.kill(job_ids, signal_type='kill')
+    elif self.args.int:
+      count = await self.client.runner.kill(job_ids, signal_type='int')
+    else:
+      count = await self.client.runner.kill(job_ids)
+
     self.stdout.write(f'Killed jobs: {count}\n')
 
   @arg_export('command_retry')
