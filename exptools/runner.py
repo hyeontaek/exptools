@@ -42,17 +42,20 @@ class Runner:
         new_tasks = []
         for task in tasks:
           if task.done():
-            task.result()
+            # task should not normally raise an exception
+            await task
           else:
             new_tasks.append(task)
         tasks = new_tasks
-    except concurrent.futures.CancelledError:
-      pass
     finally:
       if tasks:
         for task in tasks:
           task.cancel()
-        await asyncio.gather(*tasks, loop=self.loop)
+          try:
+            await task
+          except concurrent.futures.CancelledError:
+            # Ignore CancelledError because we caused it
+            pass
 
   @staticmethod
   def _create_job_files(job, job_dir, expanded_command):
@@ -170,7 +173,11 @@ class Runner:
             self.logger.exception('Exception while waiting for process')
 
           status_task.cancel()
-          await asyncio.gather(status_task, loop=self.loop)
+          try:
+            await status_task
+          except concurrent.futures.CancelledError:
+            # Ignore CancelledError because we caused it
+            pass
 
         # Read before making the job finished
         await self._read_status(job_id, job_dir)
@@ -182,8 +189,6 @@ class Runner:
         os.unlink(param_path + '_tmp')
         await self.queue.set_finished(job_id, False)
 
-    except concurrent.futures.CancelledError:
-      pass
     except Exception: # pylint: disable=broad-except
       self.logger.exception(f'Exception while running job {job_id} ({param_id}): {name}')
 
@@ -208,6 +213,7 @@ class Runner:
           await watcher.get_event()
           self.logger.debug(f'Detected status change for job {job_id}')
         except concurrent.futures.CancelledError:
+          # Break loop (likely normal exit through task cancellation)
           break
         except Exception: # pylint: disable=broad-except
           self.logger.exception(f'Exception while watching status of job {job_id}')
@@ -235,7 +241,7 @@ class Runner:
 
       await self.queue.set_status(job_id, status)
     except concurrent.futures.CancelledError:
-      # Pass through
+      # Pass through (likely normal exit through task cancellation)
       raise
     except Exception: # pylint: disable=broad-except
       self.logger.exception(f'Exception while reading status of job {job_id}')

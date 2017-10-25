@@ -4,7 +4,6 @@ __all__ = ['Queue']
 
 import asyncio
 import collections
-import concurrent
 import json
 import logging
 import os
@@ -54,8 +53,6 @@ class Queue:
         await self._dump()
 
         await asyncio.sleep(10, loop=self.loop)
-    except concurrent.futures.CancelledError:
-      pass
     finally:
       await self._dump()
 

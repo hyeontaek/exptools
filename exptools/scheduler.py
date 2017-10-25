@@ -7,7 +7,6 @@ __all__ = [
     ]
 
 import asyncio
-import concurrent
 import json
 import logging
 import os
@@ -45,21 +44,18 @@ class Scheduler:
 
   async def run_forever(self):
     '''Run the scheduler.  Note that scheduling jobs is done by schedule().'''
-    try:
-      if self.initial_mode == 'start':
-        await self.start()
-      elif self.initial_mode == 'stop':
-        pass
-      elif self.initial_mode == 'oneshot':
-        await self.set_oneshot()
-      else:
-        assert False
-
-      # Sleep forever
-      while True:
-        await asyncio.sleep(60, loop=self.loop)
-    except concurrent.futures.CancelledError:
+    if self.initial_mode == 'start':
+      await self.start()
+    elif self.initial_mode == 'stop':
       pass
+    elif self.initial_mode == 'oneshot':
+      await self.set_oneshot()
+    else:
+      assert False
+
+    # Sleep forever
+    while True:
+      await asyncio.sleep(60, loop=self.loop)
 
   @rpc_export_function
   async def is_running(self):

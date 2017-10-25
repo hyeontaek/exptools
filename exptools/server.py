@@ -84,19 +84,13 @@ class Server:
     return True
 
   async def _send_pings(self, websocket):
-    try:
-      while True:
-        await asyncio.sleep(10, loop=self.loop)
-        # Use custom unidirectional pings
-        # The server often does not use recv() to consume client Pong
-        # while it sends a stream/large amount of data to clients slowly,
-        # which may cause a deadlock
-        await websocket.send('0')
-
-    except concurrent.futures.CancelledError:
-      pass
-    except websockets.exceptions.ConnectionClosed:
-      pass
+    while True:
+      await asyncio.sleep(10, loop=self.loop)
+      # Use custom unidirectional pings
+      # The server often does not use recv() to consume client Pong
+      # while it sends a stream/large amount of data to clients slowly,
+      # which may cause a deadlock
+      await websocket.send('0')
 
   async def _send_data(self, websocket, data):
     '''Send data.'''
@@ -155,7 +149,6 @@ class Server:
     except websockets.exceptions.ConnectionClosed:
       # Pass through
       raise
-
     except Exception as exc: # pylint: disable=broad-except
       self.logger.exception('Exception while handling request')
       await self._send_data(websocket, json.dumps({
@@ -165,12 +158,9 @@ class Server:
           }))
 
   async def _handle_requests(self, websocket):
-    try:
-      while True:
-        request = await self._recv_data(websocket)
-        await self._handle_request(websocket, request)
-    except concurrent.futures.CancelledError:
-      pass
+    while True:
+      request = await self._recv_data(websocket)
+      await self._handle_request(websocket, request)
 
   def _get_serve(self):
     # pylint: disable=unused-argument
@@ -195,7 +185,13 @@ class Server:
         finally:
           for task in tasks:
             task.cancel()
-          await asyncio.gather(*tasks, loop=self.loop)
+            try:
+              await task
+            except concurrent.futures.CancelledError:
+              # Ignore CancelledError because we caused it
+              pass
+            except websockets.exceptions.ConnectionClosed:
+              pass
 
       except websockets.exceptions.ConnectionClosed:
         self.logger.debug('Connection closed')
@@ -206,27 +202,25 @@ class Server:
     try:
       server = await websockets.serve(
           self._get_serve(), self.host, self.port, max_size=self.max_size, loop=self.loop)
-      try:
-        self.logger.info(f'Listening on ws://{self.host}:{self.port}/')
-
-        if self.ready_event:
-          self.ready_event.set()
-
-        # Sleep forever
-        while True:
-          await asyncio.sleep(60, loop=self.loop)
-      finally:
-        # Close the server
-        server.close()
-        await server.wait_closed()
-    except concurrent.futures.CancelledError:
-      pass
     except Exception: # pylint: disable=broad-except
       self.logger.exception('Exception while initializing server')
-    finally:
       if self.ready_event:
-        if not self.ready_event.is_set():
-          self.ready_event.set()
+        self.ready_event.set()
+      return
+
+    try:
+      self.logger.info(f'Listening on ws://{self.host}:{self.port}/')
+
+      if self.ready_event:
+        self.ready_event.set()
+
+      # Sleep forever
+      while True:
+        await asyncio.sleep(60, loop=self.loop)
+    finally:
+      # Close the server
+      server.close()
+      await server.wait_closed()
 
   async def wait_for_ready(self):
     '''Wait until the server becomes ready (or fails to initialize.'''

@@ -4,6 +4,7 @@ __all__ = ['run_server']
 
 import argparse
 import asyncio
+import concurrent
 import json
 import logging
 import os
@@ -96,18 +97,24 @@ async def run_server(argv, ready_event, loop):
 
   try:
     await server_task
-  except concurrent.futures.CancelledError:
-    pass
   finally:
     try:
       logger.info('Waiting for execution tasks to exit')
       for task in execution_tasks:
         task.cancel()
-      await asyncio.gather(*execution_tasks, loop=loop)
+        try:
+          await task
+        except concurrent.futures.CancelledError:
+          # Ignore CancelledError because we caused it
+          pass
     finally:
       logger.info('Waiting for state tasks to exit')
       for task in state_tasks:
         task.cancel()
-      await asyncio.gather(*state_tasks, loop=loop)
+        try:
+          await task
+        except concurrent.futures.CancelledError:
+          # Ignore CancelledError because we caused it
+          pass
 
     logger.info('Tasks exited')

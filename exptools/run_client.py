@@ -291,8 +291,9 @@ class CommandHandler:
         finally:
           gen_next.cancel()
           try:
-            await asyncio.gather(gen_next, loop=self.loop)
+            await gen_next
           except concurrent.futures.CancelledError:
+            # Ignore CancelledError because we caused it
             pass
     else:
       state = await self.client.queue.get_state()
@@ -384,15 +385,12 @@ class CommandHandler:
       job_id_lens = [len(param['_'].get('job_id', '')) for param in params if '_' in param]
       if job_id_lens:
         return max(job_id_lens)
-      else:
-        return 3
+      return 3
     elif jobs is None:
       if jobs:
         return max([len(job['job_id']) for job in jobs])
-      else:
-        return 3
-    else:
       return 3
+    return 3
 
   @arg_export('command_d')
   @arg_import('common_read_params')
@@ -1043,30 +1041,27 @@ async def run_client(argv, loop):
   pipe_break.append(True)
 
   # Run commands
-  try:
-    client_pool = {}
-    stdin = sys.stdin
-    if pipe_break[0]:
+  client_pool = {}
+  stdin = sys.stdin
+  if pipe_break[0]:
+    stdout = sys.stdout
+  else:
+    stdout = io.StringIO()
+  for i, (args, unknown_args) in enumerate(args_list):
+    # Run a handler
+    handler = CommandHandler(stdin, stdout, common_args, args, unknown_args, client_pool, loop)
+    await handler.init()
+    await handler.handle()
+
+    if pipe_break[i]:
+      stdin = sys.stdin
+    else:
+      # Connect stdout to stdin
+      assert isinstance(stdout, io.StringIO)
+      stdout.seek(0)
+      stdin = stdout
+
+    if i + 1 < len(args_list) and pipe_break[i + 1]:
       stdout = sys.stdout
     else:
       stdout = io.StringIO()
-    for i, (args, unknown_args) in enumerate(args_list):
-      # Run a handler
-      handler = CommandHandler(stdin, stdout, common_args, args, unknown_args, client_pool, loop)
-      await handler.init()
-      await handler.handle()
-
-      if pipe_break[i]:
-        stdin = sys.stdin
-      else:
-        # Connect stdout to stdin
-        assert isinstance(stdout, io.StringIO)
-        stdout.seek(0)
-        stdin = stdout
-
-      if i + 1 < len(args_list) and pipe_break[i + 1]:
-        stdout = sys.stdout
-      else:
-        stdout = io.StringIO()
-  except concurrent.futures.CancelledError:
-    pass
