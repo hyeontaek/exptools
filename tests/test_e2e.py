@@ -4,6 +4,7 @@ import pytest
 import asyncio
 import concurrent
 import os
+import re
 import tempfile
 
 from exptools.run_server import run_server
@@ -37,14 +38,15 @@ async def server(unused_tcp_port, loop):
     except concurrent.futures.CancelledError:
       pass
 
-async def run(server, *args, stdin=None, loop=None):
+async def run(server, args, stdin=None, loop=None):
   '''Run a exptools client'''
   args = [server['port_arg']] + list(args)
   return await run_client(args, loop=loop)
 
 @pytest.mark.asyncio
 async def test_s(capsys, loop, server):
-  await run(server, 's', loop=loop)
+  await run(server, ['--color=no', 's'], loop=loop)
   stdout, stderr = capsys.readouterr()
   # pytest -s
-  print(stdout)
+  #print(stdout)
+  assert re.search(r'^S:0 F:0 A:0 Q:0  Remaining 0s  Finish by .*  Concurrency 1\.0$', stdout) is not None
