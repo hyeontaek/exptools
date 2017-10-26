@@ -25,21 +25,23 @@ async def server(unused_tcp_port, loop):
 
   cwd = os.getcwd()
 
-  with tempfile.TemporaryDirectory() as tmp_dir:
-    print(f'Using temporary directory: {tmp_dir}')
-    os.chdir(tmp_dir)
+  try:
+    with tempfile.TemporaryDirectory() as tmp_dir:
+      print(f'Using temporary directory: {tmp_dir}')
+      os.chdir(tmp_dir)
 
-    task = asyncio.ensure_future(run_server(argv, ready_event=ready_event, loop=loop), loop=loop)
-    await ready_event.wait()
+      task = asyncio.ensure_future(run_server(argv, ready_event=ready_event, loop=loop), loop=loop)
+      await ready_event.wait()
 
-    yield {'port_arg': f'--port={port}'}
+      yield {'port_arg': f'--port={port}'}
 
-    task.cancel()
-    try:
-      await task
-    except concurrent.futures.CancelledError:
-      pass
+      task.cancel()
+      try:
+        await task
+      except concurrent.futures.CancelledError:
+        pass
 
+  finally:
     os.chdir(cwd)
 
 async def run(server, args, stdin=None, loop=None):
