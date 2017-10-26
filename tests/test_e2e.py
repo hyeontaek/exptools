@@ -23,6 +23,8 @@ async def server(unused_tcp_port, loop):
   argv = [f'--port={port}']
   ready_event = asyncio.Event()
 
+  cwd = os.getcwd()
+
   with tempfile.TemporaryDirectory() as tmp_dir:
     print(f'Using temporary directory: {tmp_dir}')
     os.chdir(tmp_dir)
@@ -37,6 +39,8 @@ async def server(unused_tcp_port, loop):
       await task
     except concurrent.futures.CancelledError:
       pass
+
+    os.chdir(cwd)
 
 async def run(server, args, stdin=None, loop=None):
   '''Run a exptools client'''
