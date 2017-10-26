@@ -29,12 +29,12 @@ def make_parser():
                       default='secret.json', help='the secret file path (default: %(default)s)')
 
   parser.add_argument('--scheduler-type', type=str, default='serial',
-                      help='the scheduler type')
+                      help='the scheduler type (default: %(default)s)')
   parser.add_argument('--scheduler-mode', type=str, default='start',
                       choices=['start', 'stop', 'oneshot'],
-                      help='initial scheduler mode')
+                      help='initial scheduler mode (default: %(default)s)')
   parser.add_argument('--scheduler-file', type=str, default='sched_conf.json',
-                      help='the scheduler configuration file path')
+                      help='the scheduler configuration file path (default: %(default)s)')
 
   parser.add_argument('--history-file', type=str, default='history.json',
                       help='the history file path (default: %(default)s)')

@@ -334,7 +334,6 @@ class GreedyScheduler(Scheduler):
 def get_scheduler(scheduler):
   '''Return a matching scheduler.'''
   schedulers = {
-      None: SerialScheduler,
       'serial': SerialScheduler,
       'greedy': GreedyScheduler,
       }
