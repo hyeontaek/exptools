@@ -299,23 +299,39 @@ class Queue:
   @rpc_export_function
   async def move(self, job_ids, offset):
     '''Reorder queued jobs.'''
-    if offset > 0:
-      offset += 0.5
-    elif offset < 0:
-      offset -= 0.5
-
     affected_count = 0
     async with self.lock:
-      current_job_ids = self.state['queued_jobs'].keys()
-      job_count = len(self.state['queued_jobs'])
+      job_ids = set(job_ids)
 
-      order = dict(zip(current_job_ids, range(job_count)))
+      current_job_ids = list(self.state['queued_jobs'].keys())
+      if offset < 0:
+        # Add sentinels
+        current_job_ids = [None] * -offset + current_job_ids
 
-      for job_id in job_ids:
-        if job_id in order:
-          order[job_id] += offset
-          affected_count += 1
+        # Shift matching job IDs
+        for i in range(-offset, len(current_job_ids)):
+          if current_job_ids[i] in job_ids:
+            current_job_ids[i + offset:i + 1] = \
+              [current_job_ids[i]] + current_job_ids[i + offset:i]
+            affected_count += 1
+      else:
+        # Add sentinels
+        current_job_ids = current_job_ids + [None] * offset
 
+        # Shift matching job IDs
+        for i in range(len(current_job_ids) - 1 - offset, -1, -1):
+          if current_job_ids[i] in job_ids:
+            current_job_ids[i:i + offset + 1] = \
+              current_job_ids[i + 1:i + offset + 1] + [current_job_ids[i]]
+            affected_count += 1
+
+      # Remove sentinels
+      current_job_ids = list(filter(lambda job_id: job_id is not None, current_job_ids))
+
+      # Get job ID order index
+      order = dict(zip(current_job_ids, range(len(current_job_ids))))
+
+      # Apply the new order
       sort_key = lambda job: order[job['job_id']]
       self.state['queued_jobs'] = self._make_ordered_dict(
           sorted(self.state['queued_jobs'].values(), key=sort_key))
