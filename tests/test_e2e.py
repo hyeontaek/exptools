@@ -2,6 +2,8 @@ import asynctest.mock
 import pytest
 
 import asyncio
+import concurrent
+import os
 import tempfile
 
 from exptools.run_server import run_server
@@ -20,13 +22,20 @@ async def server(unused_tcp_port, loop):
   argv = [f'--port={port}']
   ready_event = asyncio.Event()
 
-  task = asyncio.ensure_future(run_server(argv, ready_event=ready_event, loop=loop), loop=loop)
-  await ready_event.wait()
+  with tempfile.TemporaryDirectory() as tmp_dir:
+    print(f'Using temporary directory: {tmp_dir}')
+    os.chdir(tmp_dir)
 
-  yield {'port_arg': f'--port={port}'}
+    task = asyncio.ensure_future(run_server(argv, ready_event=ready_event, loop=loop), loop=loop)
+    await ready_event.wait()
 
-  task.cancel()
-  await task
+    yield {'port_arg': f'--port={port}'}
+
+    task.cancel()
+    try:
+      await task
+    except concurrent.futures.CancelledError:
+      pass
 
 async def run(server, *args, stdin=None, loop=None):
   '''Run a exptools client'''
