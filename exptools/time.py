@@ -108,10 +108,12 @@ def format_sec_short(sec, max_component_count=2):
        (component_count == 0 and unit == 's') or \
        component_count > 0:
       if component_count < max_component_count:
-        if component_count < max_component_count - 1 and unit != 's':
-          value = int(sec / unit_secs)
-        else:
-          value = round(sec / unit_secs)
+        value = int(sec / unit_secs)
+        #if component_count < max_component_count - 1 and unit != 's':
+        #  value = int(sec / unit_secs)
+        #else:
+        #  value = round(sec / unit_secs)
+        value = int(sec / unit_secs)
         sec -= value * unit_secs
         output += '%2d%s ' % (value, unit)
         component_count += 1
