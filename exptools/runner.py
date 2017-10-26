@@ -73,7 +73,7 @@ class Runner:
 
     for key in ['time_limit']:
       with open(os.path.join(job_dir, key), 'wt') as file:
-        assert isinstance(job[key], int) or isinstance(job[key], float)
+        assert isinstance(job[key], (int, float))
         file.write(str(job[key]) + '\n')
 
     # Dump structured properties
