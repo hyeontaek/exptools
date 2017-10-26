@@ -299,34 +299,42 @@ class Queue:
   @rpc_export_function
   async def move(self, job_ids, offset):
     '''Reorder queued jobs.'''
+    assert isinstance(offset, int)
+    if offset == 0:
+      return 0
+
     affected_count = 0
     async with self.lock:
       job_ids = set(job_ids)
 
       current_job_ids = list(self.state['queued_jobs'].keys())
+
       if offset < 0:
-        # Add sentinels
-        current_job_ids = [None] * -offset + current_job_ids
-
-        # Shift matching job IDs
-        for i in range(-offset, len(current_job_ids)):
-          if current_job_ids[i] in job_ids:
-            current_job_ids[i + offset:i + 1] = \
-              [current_job_ids[i]] + current_job_ids[i + offset:i]
-            affected_count += 1
+        reverse = False
       else:
-        # Add sentinels
-        current_job_ids = current_job_ids + [None] * offset
+        reverse = True
+        current_job_ids.reverse()
+        offset = -offset
 
-        # Shift matching job IDs
-        for i in range(len(current_job_ids) - 1 - offset, -1, -1):
-          if current_job_ids[i] in job_ids:
-            current_job_ids[i:i + offset + 1] = \
-              current_job_ids[i + 1:i + offset + 1] + [current_job_ids[i]]
-            affected_count += 1
+      # Limit offset to reduce memory use required for sentinels
+      if offset < -len(current_job_ids):
+        offset = -len(current_job_ids)
+
+      # Add sentinels
+      current_job_ids = [None] * -offset + current_job_ids
+
+      # Shift matching job IDs
+      for i in range(-offset, len(current_job_ids)):
+        if current_job_ids[i] in job_ids:
+          current_job_ids[i + offset:i + 1] = \
+            [current_job_ids[i]] + current_job_ids[i + offset:i]
+          affected_count += 1
 
       # Remove sentinels
       current_job_ids = list(filter(lambda job_id: job_id is not None, current_job_ids))
+
+      if reverse:
+        current_job_ids.reverse()
 
       # Get job ID order index
       order = dict(zip(current_job_ids, range(len(current_job_ids))))
