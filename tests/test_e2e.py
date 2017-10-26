@@ -1,11 +1,10 @@
-import asynctest.mock
-import pytest
-
 import asyncio
 import concurrent
 import os
 import re
 import tempfile
+
+import pytest
 
 from exptools.run_server import run_server
 from exptools.run_client import run_client
@@ -33,15 +32,16 @@ async def server(unused_tcp_port, loop):
         f'--output-dir={tmp_dir}/output',
         ]
 
-    task = asyncio.ensure_future(run_server(server_args, ready_event=ready_event, loop=loop), loop=loop)
+    task = asyncio.ensure_future(
+        run_server(server_args, ready_event=ready_event, loop=loop), loop=loop)
     await ready_event.wait()
 
     yield {
         'client_args': [
-          f'--host=127.0.0.1',
-          f'--port={port}',
-          f'--secret-file={tmp_dir}/secret.json',
-          ]
+            f'--host=127.0.0.1',
+            f'--port={port}',
+            f'--secret-file={tmp_dir}/secret.json',
+            ]
         }
 
     task.cancel()
@@ -61,4 +61,6 @@ async def test_s(capsys, loop, server):
   stdout, stderr = capsys.readouterr()
   # pytest -s
   #print(stdout)
-  assert re.search(r'^S:0 F:0 A:0 Q:0  Remaining 0s  Finish by .*  Concurrency 1\.0$', stdout) is not None
+  assert re.search(
+      r'^S:0 F:0 A:0 Q:0  Remaining 0s  Finish by .*  Concurrency 1\.0$',
+      stdout) is not None

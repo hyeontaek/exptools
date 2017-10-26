@@ -1,7 +1,7 @@
+import datetime
+
 import asynctest.mock
 import pytest
-
-import datetime
 
 from exptools.time import *
 
