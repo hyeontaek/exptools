@@ -303,20 +303,52 @@ class CommandHandler:
   @arg_define('job_ids', type=str, nargs='*', help='job IDs; use "last" to select the last job')
   @arg_define('-a', '--all', action='store_true', default=False, help='select all jobs')
   async def _get_job_ids(self, job_type):
+    if self.args.all:
+      queue_state = await self.client.queue.get_state()
+      job_ids = [job['job_id'] for job in queue_state[job_type]]
+      return job_ids
+
     job_ids = []
+    queue_state = None
 
     for job_id in self.args.job_ids:
       if job_id == 'last':
-        queue_state = await self.client.queue.get_state()
+        if queue_state is None:
+          queue_state = await self.client.queue.get_state()
+
         if not queue_state[job_type]:
           raise RuntimeError(f'No last job found')
         job_ids.append(queue_state[job_type][-1]['job_id'])
+
+      elif job_id.find(':') != -1:
+        if queue_state is None:
+          queue_state = await self.client.queue.get_state()
+
+        begin_job_id, _, end_job_id = job_id.partition(':')
+
+        begin_pos = 0
+        if begin_job_id:
+          while begin_pos < len(queue_state[job_type]):
+            if queue_state[job_type][begin_pos]['job_id'] == begin_job_id:
+              break
+            begin_pos += 1
+          else:
+            raise RuntimeError(f'No job found: {begin_job_id}')
+
+        end_pos = len(queue_state[job_type]) - 1
+        if end_job_id:
+          end_pos = begin_pos
+          while end_pos < len(queue_state[job_type]):
+            if queue_state[job_type][end_pos]['job_id'] == end_job_id:
+              break
+            end_pos += 1
+          else:
+            raise RuntimeError(f'No job found: {end_job_id}')
+
+        job_ids.extend([job['job_id'] for job \
+                        in queue_state[job_type][begin_pos:end_pos + 1]])
       else:
         job_ids.append(job_id)
-
-    if self.args.all:
-      queue_state = await self.client.queue.get_state()
-      job_ids.extend([job['job_id'] for job in queue_state[job_type]])
 
     return job_ids
 
