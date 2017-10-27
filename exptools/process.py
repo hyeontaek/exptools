@@ -89,17 +89,20 @@ def wait_for_procs(*args, **kwargs):
 def kill_procs(procs, signal_type=None):
   '''Kill processes.'''
   for proc in procs:
-    if signal_type == 'int':
-      # Ctrl-C
-      proc.send_signal(signal.SIGINT)
-    elif not signal_type or signal_type == 'term':
-      # Can be caught/ignored (default)
-      proc.send_signal(signal.SIGTERM)
-    elif signal_type == 'kill':
-      # Cannot be ignored
-      proc.send_signal(signal.SIGKILL)
-    else:
-      raise RuntimeError(f'Unknown signal: {signal_type}')
+    try:
+      if signal_type == 'int':
+        # Ctrl-C
+        proc.send_signal(signal.SIGINT)
+      elif not signal_type or signal_type == 'term':
+        # Can be caught/ignored (default)
+        proc.send_signal(signal.SIGTERM)
+      elif signal_type == 'kill':
+        # Cannot be ignored
+        proc.send_signal(signal.SIGKILL)
+      else:
+        raise RuntimeError(f'Unknown signal: {signal_type}')
+    except ProcessLookupError:
+      traceback.print_exc()
 
 def all_success_returncode(returncode_list):
   '''Check if all of the returncode indicates a sucess code.'''
