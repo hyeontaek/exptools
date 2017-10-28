@@ -318,6 +318,8 @@ class CommandHandler:
   @arg_define('params_file', type=str,
               help='path to json files containing parameters; ' + \
                    '"-" reads from standard input')
+  @arg_define('-f', '--force', action='store_true', default=False,
+              help='replace existing parameter set if exists')
   async def _register(self):
     '''register a new parameter set.'''
     paramset = self.args.paramset
@@ -326,6 +328,12 @@ class CommandHandler:
     else:
       with open(self.args.params_file) as file:
         params = json.loads(file.read())
+
+    if self.args.force:
+      if paramset in await self.client.registry.paramsets():
+        count = await self.client.registry.remove(paramset)
+        print(f'Unregistered parameters for {paramset}: {count}')
+
     count = await self.client.registry.add(paramset, params)
     print(f'Registered parameters for {paramset}: {count}')
 
