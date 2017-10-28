@@ -362,4 +362,4 @@ class Queue(State):
   @rpc_export_function
   async def job(self, job_id, job_types=('finished', 'started', 'queued')):
     '''Return a job that match the given job ID.'''
-    return await self.jobs([job_id], job_types=job_types)[0]
+    return (await self.jobs([job_id], job_types=job_types))[0]

@@ -785,6 +785,20 @@ class CommandHandler:
     print('Estimated: ' + \
         await format_estimated_time(estimator, queue_state, oneshot, use_color))
 
+  @arg_export('command_retry')
+  @arg_import('common_job_ids')
+  @arg_define('-t', '--top', action='store_true', default=False,
+              help='insert at the queue top instead of bottom')
+  async def _handle_retry(self):
+    '''retry finished jobs'''
+    job_ids = await self._parse_job_ids(['finished'])
+
+    jobs = await self.client.queue.jobs(job_ids)
+    param_ids = [get_param_id(job['param']) for job in jobs]
+
+    job_ids = await self.client.queue.add(param_ids, not self.args.top)
+    print(f'Added queued jobs: {" ".join(job_ids)}')
+
   @arg_export('command_rm')
   @arg_import('common_job_ids')
   async def _handle_rm(self):
