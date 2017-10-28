@@ -438,30 +438,27 @@ class CommandHandler:
   @arg_define('omit_types',
               choices=[
                   'succeeded', 'S',
-                  'failed',
-                  'finished', 'F',
+                  'failed', 'F',
+                  'finished', 'f',
                   'started', 'A',
                   'queued', 'Q',
                   'duplicate', 'D'],
               nargs='*',
               help='omit specified parameter types; ' + \
-              'S=success, F=finished, A=started, Q=queued, D=duplicate')
+              'S=success, F=failed, f=finished, A=started, Q=queued, D=duplicate')
   async def _handle_omit(self):
     '''omit parameters of specified types'''
     types = []
     for type_ in self.args.omit_types:
-      if type_ == 'S':
-        types.append('succeeded')
-      elif type_ == 'F':
-        types.append('finished')
-      elif type_ == 'A':
-        types.append('started')
-      elif type_ == 'Q':
-        types.append('queued')
-      elif type_ == 'D':
-        types.append('duplicate')
-      else:
-        types.append(type_)
+      type_ = {
+          'S': 'succeeded',
+          'F': 'failed',
+          'f': 'finished',
+          'A': 'started',
+          'Q': 'queued',
+          'D': 'duplicate',
+        }.get(type_, type_)
+      types.append(type_)
 
     self._add_to_chain('omit', types)
 
@@ -469,30 +466,27 @@ class CommandHandler:
   @arg_define('only_types',
               choices=[
                   'succeeded', 'S',
-                  'failed',
-                  'finished', 'F',
+                  'failed', 'F',
+                  'finished', 'f',
                   'started', 'A',
                   'queued', 'Q',
                   'duplicate', 'D'],
               nargs='*',
               help='only include specified parameter types; ' + \
-              'S=success, F=finished, A=started, Q=queued, D=duplicate')
+              'S=success, F=failed, f=finished, A=started, Q=queued, D=duplicate')
   async def _handle_only(self):
     '''only include parameters of specified types'''
     types = []
     for type_ in self.args.only_types:
-      if type_ == 'S':
-        types.append('succeeded')
-      elif type_ == 'F':
-        types.append('finished')
-      elif type_ == 'A':
-        types.append('started')
-      elif type_ == 'Q':
-        types.append('queued')
-      elif type_ == 'D':
-        types.append('duplicate')
-      else:
-        types.append(type_)
+      type_ = {
+          'S': 'succeeded',
+          'F': 'failed',
+          'f': 'finished',
+          'A': 'started',
+          'Q': 'queued',
+          'D': 'duplicate',
+        }.get(type_, type_)
+      types.append(type_)
 
     self._add_to_chain('only', types)
 
