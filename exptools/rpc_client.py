@@ -8,6 +8,7 @@ import hashlib
 import hmac
 import json
 import math
+import sys
 
 import websockets
 
@@ -145,7 +146,9 @@ class FunctionProxy:
     assert response['id'] == request['id']
 
     if 'error' in response:
-      raise RuntimeError(response['error'], response['data'])
+      #sys.stderr.write(response['error'] + '\n' + response['data'] + '\n')
+      sys.stderr.write(response['data'] + '\n')
+      raise RuntimeError('Exception returned from the server')
     return response['result']
 
 # pylint: disable=too-few-public-methods
@@ -176,5 +179,7 @@ class GeneratorProxy:
         if response['error'] == 'StopAsyncIteration':
           break
         else:
-          raise RuntimeError(response['error'], response['data'])
+          #sys.stderr.write(response['error'] + '\n' + response['data'] + '\n')
+          sys.stderr.write(response['data'] + '\n')
+          raise RuntimeError('Exception returned from the server')
       yield response['result']
