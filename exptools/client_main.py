@@ -205,16 +205,15 @@ class CommandHandler:
   #### Formatting methods
 
   @staticmethod
-  def _get_job_id_max_len(params=None, jobs=None):
-    if params is not None:
-      job_id_lens = [len(param['_'].get('job_id', '')) for param in params if '_' in param]
-      if job_id_lens:
-        return max(job_id_lens)
-      return 3
-    elif jobs is None:
-      if jobs:
-        return max([len(job['job_id']) for job in jobs])
-      return 3
+  def _get_job_id_max_len(jobs=None):
+    if jobs:
+      return max([len(job['job_id']) for job in jobs])
+    return 3
+
+  @staticmethod
+  def _get_param_id_max_len(params=None):
+    if params:
+      return max([len(get_param_id(param)) for param in params])
     return 3
 
   #### Common methods
@@ -504,8 +503,11 @@ class CommandHandler:
     '''summarize parameters'''
     params = await self._execute_chain('params')
 
+    param_id_max_len = self._get_param_id_max_len(params)
+
     for param in params:
-      line = f'{get_param_id(param)}  '
+      line = f'{get_param_id(param):{param_id_max_len}} '
+      line += f'{get_hash_id(param)}  '
       line += get_name(param)
 
       print(line)
@@ -517,12 +519,15 @@ class CommandHandler:
     '''summarize parameters with time information'''
     params = await self._execute_chain('params')
 
+    param_id_max_len = self._get_param_id_max_len(params)
+
     for param in params:
       meta = None
       if '_' in param:
         meta = param['_']
 
-      line = f'{get_param_id(param)} '
+      line = f'{get_param_id(param):{param_id_max_len}} '
+      line += f'{get_hash_id(param)} '
 
       if meta and 'finished' in meta and meta['finished'] is not None:
         finished = meta['finished']
@@ -619,10 +624,13 @@ class CommandHandler:
 
       output = ''
 
-      job_id_max_len = self._get_job_id_max_len(
-          jobs=queue_state['finished_jobs'] + \
-              queue_state['started_jobs'] + \
-              queue_state['queued_jobs'])
+      all_jobs = queue_state['finished_jobs'] + \
+                 queue_state['started_jobs'] + \
+                 queue_state['queued_jobs']
+      all_params = [job['param'] for job in all_jobs]
+
+      job_id_max_len = self._get_job_id_max_len(all_jobs)
+      param_id_max_len = self._get_param_id_max_len(all_params)
 
       if 'finished' in job_types:
         succeeded_count = len([job for job in queue_state['finished_jobs'] if job['succeeded']])
@@ -646,10 +654,11 @@ class CommandHandler:
           else:
             line = colored('  ', 'red', attrs=['reverse'])
 
+          param_id = get_param_id(job['param'])
           hash_id = get_hash_id(job['param'])
           name = get_name(job['param'])
 
-          line += f" {job['job_id']:{job_id_max_len}} {hash_id}"
+          line += f" {job['job_id']:{job_id_max_len}} {param_id:{param_id_max_len}} {hash_id}"
           line += f' [{format_sec_short(job_elapsed_time(job)):>7}]'
           if job['succeeded']:
             line += ' succeeded  '
@@ -679,11 +688,12 @@ class CommandHandler:
         for job in jobs:
           rem = rem_map[job['job_id']]
 
+          param_id = get_param_id(job['param'])
           hash_id = get_hash_id(job['param'])
           name = get_name(job['param'])
 
           line = colored('  ', 'cyan', attrs=['reverse'])
-          line += f" {job['job_id']:{job_id_max_len}} {hash_id}"
+          line += f" {job['job_id']:{job_id_max_len}} {param_id:{param_id_max_len}} {hash_id}"
           line += f' [{format_sec_short(job_elapsed_time(job)):>7}]' + \
               f'+[{format_sec_short(max(rem - last_rem, 0)):>7}]'
           line += '  '
@@ -714,11 +724,12 @@ class CommandHandler:
         for job in jobs:
           rem = rem_map[job['job_id']]
 
+          param_id = get_param_id(job['param'])
           hash_id = get_hash_id(job['param'])
           name = get_name(job['param'])
 
           line = colored('  ', 'blue', attrs=['reverse'])
-          line += f" {job['job_id']:{job_id_max_len}} {hash_id}"
+          line += f" {job['job_id']:{job_id_max_len}} {param_id:{param_id_max_len}} {hash_id}"
           line += f'           [{format_sec_short(max(rem - last_rem, 0)):>7}]'
           line += '  '
           last_rem = rem
