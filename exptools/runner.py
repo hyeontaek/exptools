@@ -376,7 +376,8 @@ class Runner:
 
       job_id = os.readlink(path).strip('/')
       if job_id in filenames:
-        valid_job_ids.add(job_id)
+        if filename != 'last':
+          valid_job_ids.add(job_id)
         continue
 
       new_path = os.path.join(trash_dir, filename)
@@ -422,6 +423,8 @@ class Runner:
     hash_ids -= set([get_hash_id(job['param']) for job in queue_state['started_jobs']])
 
     count = self._remove_output(trash_dir, param_ids, hash_ids)
+    count += self._remove_dangling_noref(trash_dir)
+    # Second pass to ensure deleting "last" if needed
     count += self._remove_dangling_noref(trash_dir)
     return count
 
