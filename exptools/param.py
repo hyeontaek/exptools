@@ -2,6 +2,8 @@
 
 __all__ = [
     'get_param_id',
+    'get_hash_id',
+    'make_hash_id',
     'get_name',
     'get_command',
     'get_cwd',
@@ -19,15 +21,19 @@ _HASH_FUNC = hashlib.blake2b # pylint: disable=no-member
 
 def get_param_id(param):
   '''Return the parameter ID of a parameter.'''
-  if '_' in param and 'param_id' in param['_']:
-    param_id = param['_']['param_id']
-    if not param_id.startswith('p-'):
-      raise RuntimeError(f'Invalid param_id: {param_id}')
-    return param_id
+  return param['_']['param_id']
+
+def get_hash_id(param):
+  '''Return the hash ID of a parameter.'''
+  return param['_']['hash_id']
+
+def make_hash_id(param):
+  '''Calculate the hash ID of a parameter.'''
   filtered_param = {key: value for key, value in param.items() if not key.startswith('_')}
   param_str = json.dumps(filtered_param, sort_keys=True)
+  #param_str = json.dumps(filtered_param, sort_keys=True, separators=(',', ':'))
   # Skip first few bytes because they are typically skewed to a few characters in base58
-  return 'p-' + base58.b58encode(
+  return 'h-' + base58.b58encode(
       _HASH_FUNC(param_str.encode('utf-8')).digest())[3:3+20]
 
 def get_name(param):
@@ -74,6 +80,7 @@ def get_time_limit(param):
 class ParamBuilder(collections.ChainMap):
   '''A parameter builder.'''
   def __add__(self, update):
+    '''Return a new parameter with updates on top of the current parameter.'''
     child = self.new_child()
     child.update(update)
     return child

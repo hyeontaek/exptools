@@ -22,16 +22,17 @@ class Server:
 
   # pylint: disable=too-many-arguments
   def __init__(self, host, port, secret,
-               history, queue, scheduler, runner, filter_,
+               registry, history, queue, resolver, scheduler, runner,
                ready_event, loop):
     self.host = host
     self.port = port
     self.secret = secret
+    self.registry = registry
     self.history = history
     self.queue = queue
+    self.resolver = resolver
     self.scheduler = scheduler
     self.runner = runner
-    self.filter = filter_
     self.ready_event = ready_event
     self.loop = loop
 
@@ -47,22 +48,27 @@ class Server:
     self.exports = {}
 
     for object_name, obj in [
+        ('registry', self.registry),
         ('history', self.history),
         ('queue', self.queue),
+        ('resolver', self.resolver),
         ('scheduler', self.scheduler),
         ('runner', self.runner),
-        ('filter', self.filter),
         ]:
       for method_name in dir(obj):
         method = getattr(obj, method_name)
+
         if not hasattr(method, 'rpc_export'):
           continue
-        if getattr(method, 'rpc_export') == 'function':
+        method_type = getattr(method, 'rpc_export')
+
+        if method_type == 'function':
           self.exports[f'function:{object_name}.{method_name}'] = method
-        elif getattr(method, 'rpc_export') == 'generator':
+        elif method_type == 'generator':
           self.exports[f'generator:{object_name}.{method_name}'] = method
         else:
           assert False
+
     self.logger.debug('Exported: %s', list(self.exports.keys()))
 
   async def _authenticate(self, websocket):
@@ -130,11 +136,13 @@ class Server:
       kwargs = request['kwargs']
 
       if method.startswith('function:'):
-        result = await self.exports[method](*args, **kwargs)
+        coro = self.exports[method](*args, **kwargs)
+        result = await coro
         await self._send_data(websocket, json.dumps({'id': id_, 'result': result}))
 
       elif method.startswith('generator:'):
-        async for result in self.exports[method](*args, **kwargs):
+        coro = self.exports[method](*args, **kwargs)
+        async for result in coro:
           await self._send_data(websocket, json.dumps({'id': id_, 'result': result}))
         await self._send_data(
             websocket, json.dumps({'id': id_, 'error': 'StopAsyncIteration', 'data': None}))

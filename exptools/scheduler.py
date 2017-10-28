@@ -18,11 +18,11 @@ from exptools.rpc_helper import rpc_export_function
 class Scheduler:
   '''A scheduler interface.'''
 
-  def __init__(self, initial_mode, path, history, queue, loop):
+  def __init__(self, initial_mode, path, queue, history, loop):
     self.initial_mode = initial_mode
     self.path = path
-    self.history = history
     self.queue = queue
+    self.history = history
     self.loop = loop
 
     self.lock = asyncio.Condition(loop=self.loop)
@@ -205,11 +205,10 @@ class GreedyScheduler(Scheduler):
         # Choose the first queued job
         job = queue_state['queued_jobs'][0]
         job_id = job['job_id']
-        param_id = job['param_id']
         param = job['param']
-        meta = param.get('_', None)
+        meta = param['_']
 
-        if meta and 'demands' in meta:
+        if 'demands' in meta:
           demands = list(meta['demands'].items())
         else:
           demands = list(self.resources.items())
@@ -245,7 +244,7 @@ class GreedyScheduler(Scheduler):
               if re.fullmatch(resource_pattern, r) is not None]
 
           if not candidate_resources:
-            raise RuntimeError(f'No suitable resource found for {job_id} {param_id}: ' + \
+            raise RuntimeError(f'No suitable resource found for {job_id}: ' + \
                                f'{resource_pattern}')
 
           return sum([model.x[r] for r in candidate_resources]) == requirement
@@ -270,7 +269,7 @@ class GreedyScheduler(Scheduler):
         if results.solver.status != pyomo.opt.SolverStatus.ok or \
           results.solver.termination_condition != pyomo.opt.TerminationCondition.optimal:
           # No suitable solution found
-          self.logger.warning(f'Insufficient resources for {job_id} {param_id}')
+          self.logger.warning(f'Insufficient resources for {job_id}')
           continue
 
         # Resource allocation possible
@@ -291,24 +290,23 @@ class GreedyScheduler(Scheduler):
             self.running = False
             self.oneshot = False
 
-        self.logger.info(f'Scheduled {job_id} {param_id}: {allocation}')
+        self.logger.info(f'Scheduled {job_id}: {allocation}')
         yield job
 
       except Exception: # pylint: disable=broad-except
-        self.logger.exception(f'Exception while scheduling {job_id} {param_id}')
+        self.logger.exception(f'Exception while scheduling {job_id}')
 
   async def retire(self, job):
     '''Return resources of a finished job.'''
     try:
       job_id = job['job_id']
-      param_id = job['param_id']
       allocation = job['resources']
       async with self.lock:
         for key, value in allocation.items():
           self.resources[key] = self.resources.get(key, 0) + value
-        self.logger.info(f'Retired {job_id} {param_id}: {allocation}')
+        self.logger.info(f'Retired {job_id}: {allocation}')
     except Exception: # pylint: disable=broad-except
-      self.logger.exception(f'Exception while retiring {job_id} {param_id}')
+      self.logger.exception(f'Exception while retiring {job_id}')
 
   @rpc_export_function
   async def add_resource(self, key, value):

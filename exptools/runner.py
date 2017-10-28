@@ -13,7 +13,8 @@ import signal
 import aiofiles
 import aionotify
 
-from exptools.file import mkdirs, rmdirs, get_job_dir, get_param_path
+from exptools.file import mkdirs, rmdirs
+from exptools.param import get_param_id, get_hash_id, get_name, get_command, get_cwd, get_time_limit
 from exptools.rpc_helper import rpc_export_function, rpc_export_generator
 
 class Runner:
@@ -58,26 +59,15 @@ class Runner:
           pass
 
   @staticmethod
-  def _create_job_files(job, job_dir, expanded_command):
+  def _create_job_files(job, job_dir):
     '''Create job filles.'''
 
     # Dump job
     with open(os.path.join(job_dir, 'job.json'), 'wt') as file:
       file.write(json.dumps(job) + '\n')
 
-    # Dump simple properties
-    for key in ['job_id', 'param_id', 'name', 'cwd']:
-      with open(os.path.join(job_dir, key), 'wt') as file:
-        assert isinstance(job[key], str)
-        file.write(job[key] + '\n')
-
-    for key in ['time_limit']:
-      with open(os.path.join(job_dir, key), 'wt') as file:
-        assert isinstance(job[key], (int, float))
-        file.write(str(job[key]) + '\n')
-
     # Dump structured properties
-    for key in ['command', 'param', 'resources']:
+    for key in ['param', 'resources']:
       with open(os.path.join(job_dir, key + '.json'), 'wt') as file:
         file.write(json.dumps(job[key]) + '\n')
 
@@ -86,28 +76,24 @@ class Runner:
       status = {'progress': 0.}
       file.write(json.dumps(status) + '\n')
 
-    # Dump expanded properties
-    with open(os.path.join(job_dir, 'expanded_command.json'), 'wt') as file:
-      file.write(json.dumps(expanded_command) + '\n')
-
   @staticmethod
   def _construct_env(job, job_dir):
     '''Construct environment variables.'''
-    env = dict(os.environ)
+    param = job['param']
 
-    env['EXPTOOLS_JOB_JSON_PATH'] = os.path.join(job_dir, 'job.json')
+    env = dict(os.environ)
 
     env['EXPTOOLS_JOB_DIR'] = job_dir
     env['EXPTOOLS_JOB_ID'] = job['job_id']
-    env['EXPTOOLS_PARAM_ID'] = job['param_id']
-    env['EXPTOOLS_NAME'] = job['name']
-    env['EXPTOOLS_CWD'] = job['cwd']
-    env['EXPTOOLS_TIME_LIMIT'] = str(job['time_limit'])
+    env['EXPTOOLS_PARAM_ID'] = get_param_id(param)
+    env['EXPTOOLS_HASH_ID'] = get_hash_id(param)
+    env['EXPTOOLS_NAME'] = get_name(param)
+    env['EXPTOOLS_CWD'] = get_cwd(param) or os.getcwd()
+    env['EXPTOOLS_TIME_LIMIT'] = str(get_time_limit(param))
 
-    env['EXPTOOLS_COMMAND_JSON_PATH'] = os.path.join(job_dir, 'command.json')
+    env['EXPTOOLS_JOB_JSON_PATH'] = os.path.join(job_dir, 'job.json')
     env['EXPTOOLS_PARAM_JSON_PATH'] = os.path.join(job_dir, 'param.json')
     env['EXPTOOLS_RESOURCES_JSON_PATH'] = os.path.join(job_dir, 'resources.json')
-    env['EXPTOOLS_EXPANDED_COMMAND_JSON_PATH'] = os.path.join(job_dir, 'expanded_command.json')
 
     env['EXPTOOLS_STATUS_JSON_PATH'] = os.path.join(job_dir, 'status.json')
     return env
@@ -116,43 +102,48 @@ class Runner:
     '''Run a job.'''
 
     job_id = job['job_id']
-    param_id = job['param_id']
     param = job['param']
+    param_id = get_param_id(param)
+    hash_id = get_hash_id(param)
 
-    name = job['name']
-    expanded_command = [arg.format(**param) for arg in job['command']]
-    cwd = job['cwd']
-    time_limit = job['time_limit']
+    name = get_name(param)
+    expanded_command = [arg.format(**param) for arg in get_command(param)]
+    cwd = get_cwd(param) or os.getcwd()
+    time_limit = get_time_limit(param)
 
     try:
       if not await self.queue.set_started(job_id):
         self.logger.info(f'Ignoring missing job {job_id}')
         return
 
-      self.logger.info(f'Launching job {job_id} for {param_id}: {name}')
+      self.logger.info(f'Launching job {job_id}: {name}')
 
-      job_dir = get_job_dir(self.base_dir, job)
+      # Make the job directory
+      job_dir = os.path.join(self.base_dir, job['job_id'])
       os.mkdir(job_dir)
 
-      self._create_job_files(job, job_dir, expanded_command)
+      self._create_job_files(job, job_dir)
       env = self._construct_env(job, job_dir)
-
-      param_path = get_param_path(self.base_dir, param_id)
-      if os.path.exists(param_path + '_tmp'):
-        os.unlink(param_path + '_tmp')
-      os.symlink(job_id, param_path + '_tmp', target_is_directory=True)
-
-      try:
-        if os.path.exists(os.path.join(self.base_dir, 'last_tmp')):
-          os.unlink(os.path.join(self.base_dir, 'last_tmp'))
-        os.symlink(job_id, os.path.join(self.base_dir, 'last_tmp'), target_is_directory=True)
-
-        os.rename(os.path.join(self.base_dir, 'last_tmp'), os.path.join(self.base_dir, 'last'))
-      except IOError:
-        pass
 
       with open(os.path.join(job_dir, 'stdout'), 'wb', buffering=0) as stdout, \
            open(os.path.join(job_dir, 'stderr'), 'wb', buffering=0) as stderr:
+        # Create symlinks
+        param_path = os.path.join(self.base_dir, param_id)
+        if os.path.exists(param_path + '_tmp'):
+          os.unlink(param_path + '_tmp')
+        os.symlink(job_id, param_path + '_tmp', target_is_directory=True)
+
+        hash_path = os.path.join(self.base_dir, hash_id)
+        if os.path.exists(hash_path + '_tmp'):
+          os.unlink(hash_path + '_tmp')
+        os.symlink(job_id, hash_path + '_tmp', target_is_directory=True)
+
+        last_path = os.path.join(self.base_dir, 'last')
+        if os.path.exists(last_path):
+          os.unlink(last_path)
+        os.symlink(job_id, last_path, target_is_directory=True)
+
+        # Launch process
         proc = await asyncio.create_subprocess_exec(
             *expanded_command,
             cwd=cwd,
@@ -196,14 +187,26 @@ class Runner:
         await self._read_status(job_id, job_dir)
 
       if proc.returncode == 0:
-        os.rename(param_path + '_tmp', param_path)
+        # Make symlinks
+        if os.path.exists(param_path):
+          os.unlink(param_path)
+        os.symlink(job_id, param_path, target_is_directory=True)
+
+        if os.path.exists(hash_path):
+          os.unlink(hash_path)
+        os.symlink(job_id, hash_path, target_is_directory=True)
+
         await self.queue.set_finished(job_id, True)
       else:
-        os.unlink(param_path + '_tmp')
         await self.queue.set_finished(job_id, False)
 
+      if os.path.exists(param_path + '_tmp'):
+        os.unlink(param_path + '_tmp')
+      if os.path.exists(hash_path + '_tmp'):
+        os.unlink(hash_path + '_tmp')
+
     except Exception: # pylint: disable=broad-except
-      self.logger.exception(f'Exception while running job {job_id} ({param_id}): {name}')
+      self.logger.exception(f'Exception while running job {job_id}')
 
       # Read before making the job finished
       await self._read_status(job_id, job_dir)
@@ -286,29 +289,147 @@ class Runner:
         count += 1
     return count
 
-  @rpc_export_generator
-  async def cat(self, job_id, read_stdout, extra_args):
-    '''Run cat on the job output.'''
-    async for data in self._read_output(job_id, read_stdout, 'cat', extra_args):
-      yield data
+  @rpc_export_function
+  async def migrate(self, param_id_pairs, hash_id_pairs):
+    '''Migrate symlinks for parameter and hash ID changes.'''
+    count = 0
 
-  @rpc_export_generator
-  async def head(self, job_id, read_stdout, extra_args):
-    '''Run head on the job output.'''
-    async for data in self._read_output(job_id, read_stdout, 'head', extra_args):
-      yield data
+    for old_id, new_id in param_id_pairs + hash_id_pairs:
+      old_path = os.path.join(self.base_dir, old_id)
+      new_path = os.path.join(self.base_dir, new_id)
 
-  @rpc_export_generator
-  async def tail(self, job_id, read_stdout, extra_args):
-    '''Run tail on the job output.'''
-    async for data in self._read_output(job_id, read_stdout, 'tail', extra_args):
-      yield data
+      if not os.path.exists(old_path):
+        self.logger.info(f'Ignoring missing symlink for old parameter {old_id}')
+        continue
 
-  async def _read_output(self, job_id, read_stdout, external_command, extra_args):
+      if os.path.exists(new_path):
+        self.logger.info(f'Ignoring existing symlink for new parameter {new_id}')
+        continue
+
+      job_id = os.readlink(old_path).strip('/')
+      os.symlink(job_id, new_path, target_is_directory=True)
+      self.logger.info(f'Migrated symlink {old_id} to {new_id}')
+      count += 1
+
+    return count
+
+  @rpc_export_function
+  async def job_ids(self):
+    '''Return job IDs in the output directory.'''
+    job_ids = []
+    for filename in os.listdir(self.base_dir):
+      if filename.startswith('j-'):
+        job_ids.append(filename)
+    return job_ids
+
+  @rpc_export_function
+  async def param_ids(self):
+    '''Return parameter IDs in the output directory.'''
+    param_ids = []
+    for filename in os.listdir(self.base_dir):
+      if filename.startswith('p-'):
+        param_ids.append(filename.partition('_')[0])
+    return param_ids
+
+  @rpc_export_function
+  async def hash_ids(self):
+    '''Return hash IDs in the output directory.'''
+    hash_ids = []
+    for filename in os.listdir(self.base_dir):
+      if filename.startswith('h-'):
+        hash_ids.append(filename.partition('_')[0])
+    return hash_ids
+
+  def _remove_output(self, trash_dir, param_ids, hash_ids):
+    '''Remove job output directories that (mis)matches given job IDs.'''
+    count = 0
+
+    for id_ in list(param_ids) + list(hash_ids):
+      path = os.path.join(self.base_dir, id_)
+      if not os.path.exists(path):
+        continue
+
+      new_path = os.path.join(trash_dir, id_)
+      if os.path.exists(new_path):
+        if os.path.isdir(new_path):
+          rmdirs(new_path)
+        else:
+          os.unlink(new_path)
+
+      os.rename(path, new_path)
+      self.logger.info(f'Moved {id_} to trash')
+      count += 1
+    return count
+
+  def _remove_dangling_noref(self, trash_dir):
+    '''Remove dangling last, p-*, or h-* symlinks and not referenced j-* directories in output.'''
+    count = 0
+    filenames = os.listdir(self.base_dir)
+    filenames = set(filenames)
+
+    valid_job_ids = set()
+    for filename in sorted(filenames):
+      if filename != 'last' and not filename.startswith('p-') and not filename.startswith('h-'):
+        continue
+
+      path = os.path.join(self.base_dir, filename)
+
+      job_id = os.readlink(path).strip('/')
+      if job_id in filenames:
+        valid_job_ids.add(job_id)
+        continue
+
+      new_path = os.path.join(trash_dir, filename)
+      if os.path.exists(new_path):
+        os.unlink(new_path)
+
+      os.rename(path, new_path)
+      self.logger.info(f'Moved {filename} to trash')
+      count += 1
+
+    for filename in sorted(filenames):
+      if not filename.startswith('j-'):
+        continue
+
+      if filename in valid_job_ids:
+        continue
+
+      path = os.path.join(self.base_dir, filename)
+
+      new_path = os.path.join(trash_dir, filename)
+      if os.path.exists(new_path):
+        rmdirs(new_path)
+
+      os.rename(path, new_path)
+      self.logger.info(f'Moved {filename} to trash')
+      count += 1
+    return count
+
+  @rpc_export_function
+  async def remove_output(self, param_ids, hash_ids):
+    '''Remove job output data that match given IDs.'''
+    trash_dir = os.path.join(self.base_dir, 'trash')
+    if not os.path.exists(trash_dir):
+      os.mkdir(trash_dir)
+
+    queue_state = await self.queue.get_state()
+
+    # Keep symlinks related to started jobs
+    param_ids = set(param_ids)
+    param_ids -= set([get_param_id(job['param']) for job in queue_state['started_jobs']])
+
+    hash_ids = set(hash_ids)
+    hash_ids -= set([get_hash_id(job['param']) for job in queue_state['started_jobs']])
+
+    count = self._remove_output(trash_dir, param_ids, hash_ids)
+    count += self._remove_dangling_noref(trash_dir)
+    return count
+
+  async def _read_output(self, id_, read_stdout, external_command, extra_args):
     '''Yield the output of an external command on the job output.'''
-    assert job_id.startswith('j-') and job_id.find('/') == -1
+    assert id_.find('/') == -1 and id_.find('\\') == -1
 
-    path = os.path.join(self.base_dir, job_id)
+    path = os.path.join(self.base_dir, id_)
     if read_stdout:
       path = os.path.join(path, 'stdout')
     else:
@@ -337,85 +458,9 @@ class Runner:
       except Exception: # pylint: disable=broad-except
         self.logger.exception('Exception while waiting for process')
 
-  @rpc_export_function
-  async def migrate(self, changes):
-    '''Migrate symlinks for parameter ID changes.'''
-    count = 0
-    for old_param_id, new_param_id in changes:
-      old_param_path = get_param_path(self.base_dir, old_param_id)
-      new_param_path = get_param_path(self.base_dir, new_param_id)
-
-      if not os.path.exists(old_param_path):
-        self.logger.info(f'Ignoring missing symlink for old parameter {old_param_id}')
-        continue
-
-      if os.path.exists(new_param_path):
-        self.logger.info(f'Ignoring existing symlink for new parameter {new_param_id}')
-        continue
-
-      job_id = os.readlink(old_param_path).strip('/')
-      os.symlink(job_id, new_param_path, target_is_directory=True)
-      self.logger.info(f'Migrated symlink of old parameter {old_param_id} ' + \
-                       f'to new parameter {new_param_id}')
-      count += 1
-    return count
-
-  @rpc_export_function
-  async def prune(self, param_ids, *, prune_matching=False, prune_mismatching=False):
-    '''Prune output data.'''
-    trash_dir = os.path.join(self.base_dir, 'trash')
-    if not os.path.exists(trash_dir):
-      os.mkdir(trash_dir)
-
-    queue_state = await self.queue.get_state()
-    started_job_param_ids = [job['param_id'] for job in queue_state['started_jobs']]
-
-    # The below code must not use any coroutine so that
-    # Runner does not create any new symlink or directory concurrently
-    # by launching/finishing jobs
-    filenames = os.listdir(self.base_dir)
-
-    symlink_count = 0
-    dir_count = 0
-
-    param_ids = set(param_ids)
-    valid_job_ids = set()
-    for filename in filenames:
-      if not filename.startswith('p-'):
-        continue
-      path = os.path.join(self.base_dir, filename)
-
-      prune = False
-      if filename.endswith('_tmp'):
-        # prune p-*_tmp symlinks for any non-started jobs
-        if filename.partition('_')[0] not in started_job_param_ids:
-          prune = True
-      elif (prune_matching and filename in param_ids) or \
-         (prune_mismatching and filename not in param_ids):
-        prune = True
-
-      if prune:
-        new_path = os.path.join(trash_dir, filename)
-        if os.path.exists(new_path):
-          os.unlink(new_path)
-        os.rename(path, new_path)
-        self.logger.info(f'Moved {filename} to trash')
-        symlink_count += 1
-      else:
-        valid_job_ids.add(os.readlink(path).strip('/'))
-
-    # Prune j-* directories if no symlinks point to it
-    for filename in filenames:
-      if not filename.startswith('j-'):
-        continue
-      path = os.path.join(self.base_dir, filename)
-
-      if filename not in valid_job_ids:
-        new_path = os.path.join(trash_dir, filename)
-        if os.path.exists(new_path):
-          rmdirs(new_path)
-        os.rename(path, new_path)
-        self.logger.info(f'Moved {filename} to trash')
-        dir_count += 1
-
-    return symlink_count, dir_count
+  @rpc_export_generator
+  async def cat_like(self, id_, read_stdout, external_command, extra_args):
+    '''Run an external command on the job output.'''
+    assert external_command in ['cat', 'head', 'tail']
+    async for data in self._read_output(id_, read_stdout, external_command, extra_args):
+      yield data

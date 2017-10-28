@@ -11,11 +11,12 @@ import math
 
 import websockets
 
-from exptools.filter import Filter
+from exptools.registry import Registry
 from exptools.history import History
 from exptools.queue import Queue
-from exptools.runner import Runner
+from exptools.resolver import Resolver
 from exptools.scheduler import Scheduler
+from exptools.runner import Runner
 
 # pylint: disable=too-few-public-methods
 # pylint: disable=too-many-instance-attributes
@@ -28,11 +29,12 @@ class Client:
     self.secret = secret
     self.loop = loop
 
+    self.registry = ObjectProxy(self, 'registry', Registry)
     self.history = ObjectProxy(self, 'history', History)
-    self.filter = ObjectProxy(self, 'filter', Filter)
     self.queue = ObjectProxy(self, 'queue', Queue)
-    self.runner = ObjectProxy(self, 'runner', Runner)
+    self.resolver = ObjectProxy(self, 'resolver', Resolver)
     self.scheduler = ObjectProxy(self, 'scheduler', Scheduler)
+    self.runner = ObjectProxy(self, 'runner', Runner)
 
     self.max_size = 1048576
     self.max_chunk_size = self.max_size // 2
@@ -107,11 +109,14 @@ class ObjectProxy:
 
     for method_name in dir(class_):
       method = getattr(class_, method_name)
+
       if not hasattr(method, 'rpc_export'):
         continue
-      if getattr(method, 'rpc_export') == 'function':
+      method_type = getattr(method, 'rpc_export')
+
+      if method_type == 'function':
         setattr(self, method_name, FunctionProxy(self, method_name))
-      elif getattr(method, 'rpc_export') == 'generator':
+      elif method_type == 'generator':
         setattr(self, method_name, GeneratorProxy(self, method_name))
       else:
         assert False

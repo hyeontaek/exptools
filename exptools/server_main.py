@@ -1,6 +1,6 @@
 '''Run the RPC server.'''
 
-__all__ = ['run_server']
+__all__ = ['server_main']
 
 import argparse
 import asyncio
@@ -10,12 +10,13 @@ import logging
 import os
 import secrets
 
-from exptools.filter import Filter
+from exptools.registry import Registry
 from exptools.history import History
 from exptools.queue import Queue
-from exptools.runner import Runner
+from exptools.resolver import Resolver
 from exptools.scheduler import get_scheduler
-from exptools.server import Server
+from exptools.runner import Runner
+from exptools.rpc_server import Server
 
 def make_parser():
   '''Return a new argument parser.'''
@@ -36,6 +37,8 @@ def make_parser():
   parser.add_argument('--scheduler-file', type=str, default='sched_conf.json',
                       help='the scheduler configuration file path (default: %(default)s)')
 
+  parser.add_argument('--registry-file', type=str, default='registry.json',
+                      help='the registry file path (default: %(default)s)')
   parser.add_argument('--history-file', type=str, default='history.json',
                       help='the history file path (default: %(default)s)')
   parser.add_argument('--queue-file', type=str, default='queue.json',
@@ -47,7 +50,7 @@ def make_parser():
 
   return parser
 
-async def run_server(argv, ready_event, loop):
+async def server_main(argv, ready_event, loop):
   '''Run the server.'''
   logging_fmt = '%(asctime)s %(name)-19s %(levelname)-8s %(message)s'
   logging.basicConfig(format=logging_fmt, level=logging.INFO)
@@ -55,7 +58,7 @@ async def run_server(argv, ready_event, loop):
   # less verbose websockets messages
   logging.getLogger('websockets.protocol').setLevel(logging.WARNING)
 
-  logger = logging.getLogger('exptools.run_server')
+  logger = logging.getLogger('exptools.server_main')
 
   args = make_parser().parse_args(argv)
 
@@ -71,18 +74,20 @@ async def run_server(argv, ready_event, loop):
     logger.info(f'Using secret file at {args.secret_file}')
   secret = json.load(open(args.secret_file))
 
+  registry = Registry(args.registry_file, loop)
   history = History(args.history_file, loop)
-  queue = Queue(args.queue_file, history, loop)
+  queue = Queue(args.queue_file, registry, history, loop)
+  resolver = Resolver(registry, history, queue, loop)
   scheduler = get_scheduler(args.scheduler_type)(
-      args.scheduler_mode, args.scheduler_file, history, queue, loop)
+      args.scheduler_mode, args.scheduler_file, queue, history, loop)
   runner = Runner(args.output_dir, queue, scheduler, loop)
-  filter_ = Filter(loop)
   server = Server(
       args.host, args.port, secret,
-      history, queue, scheduler, runner, filter_,
+      registry, history, queue, resolver, scheduler, runner,
       ready_event, loop)
 
   state_tasks = [
+      asyncio.ensure_future(registry.run_forever(), loop=loop),
       asyncio.ensure_future(history.run_forever(), loop=loop),
       asyncio.ensure_future(queue.run_forever(), loop=loop),
       asyncio.ensure_future(scheduler.run_forever(), loop=loop),

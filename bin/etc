@@ -4,16 +4,18 @@ import asyncio
 import concurrent
 import sys
 
-from exptools.run_client import run_client
+from exptools.client_main import client_main
 
 loop = asyncio.get_event_loop()
 argv = sys.argv[1:]
 
-task = asyncio.ensure_future(run_client(argv, loop=loop), loop=loop)
+task = asyncio.ensure_future(client_main(argv, loop=loop), loop=loop)
 
 ret = 1
 try:
   ret = loop.run_until_complete(task)
+except KeyboardInterrupt:
+  pass
 finally:
   if not task.done():
     task.cancel()

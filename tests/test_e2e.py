@@ -6,8 +6,8 @@ import tempfile
 
 import pytest
 
-from exptools.run_server import run_server
-from exptools.run_client import run_client
+from exptools.server_main import server_main
+from exptools.client_main import client_main
 
 @pytest.fixture
 async def loop(event_loop):
@@ -33,7 +33,7 @@ async def server(unused_tcp_port, loop):
         ]
 
     task = asyncio.ensure_future(
-        run_server(server_args, ready_event=ready_event, loop=loop), loop=loop)
+        server_main(server_args, ready_event=ready_event, loop=loop), loop=loop)
     await ready_event.wait()
 
     yield {
@@ -53,7 +53,7 @@ async def server(unused_tcp_port, loop):
 async def run(server, args, stdin=None, loop=None):
   '''Run a exptools client'''
   args = server['client_args'] + list(args)
-  return await run_client(args, loop=loop)
+  return await client_main(args, loop=loop)
 
 @pytest.mark.asyncio
 async def test_s(capsys, loop, server):

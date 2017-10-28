@@ -2,6 +2,7 @@
 
 __all__ = ['Estimator']
 
+from exptools.param import get_hash_id
 from exptools.time import diff_sec, utcnow, parse_utc
 
 # pylint: disable=too-few-public-methods
@@ -22,18 +23,21 @@ class Estimator:
     concurrency = max(1., min(state['concurrency'],
                               len(state['started_jobs']) + len(state['queued_jobs'])))
 
-    history_data = await self.history.get_all()
+    hash_ids = await self.history.hash_ids()
+    history_list = await self.history.history_list(hash_ids)
+    history_map = dict(zip(hash_ids, history_list))
 
     # Estimate average per-job duration
-    known_param_ids = set()
+    known_hash_ids = set()
     known_duration = 0.
     known_count = 0
 
-    # Consider recent jobs first (in case some jobs have duplicate param_id)
+    # Consider recent jobs first (in case some jobs have duplicate hash_id)
     for job in reversed(state['started_jobs']):
-      if job['param_id'] in known_param_ids:
+      hash_id = get_hash_id(job['param'])
+      if hash_id in known_hash_ids:
         continue
-      known_param_ids.add(job['param_id'])
+      known_hash_ids.add(hash_id)
 
       if job['started'] is None:
         started = now
@@ -44,13 +48,13 @@ class Estimator:
         known_duration += diff_sec(now, started) / job['status']['progress']
         known_count += 1
 
-    for param_id, history_entry in history_data.items():
-      if param_id in known_param_ids:
+    for hash_id, history in history_map.items():
+      if hash_id in known_hash_ids:
         continue
-      known_param_ids.add(param_id)
+      known_hash_ids.add(hash_id)
 
-      if history_entry['duration'] is not None and history_entry['succeeded']:
-        known_duration += history_entry['duration']
+      if history['duration'] is not None:
+        known_duration += history['duration']
         known_count += 1
 
     avg_duration = known_duration / max(known_count, 1)
@@ -63,7 +67,8 @@ class Estimator:
     # Calculate started jobs' remaining time
     remaining_duration = 0.
     for job in state['started_jobs']:
-      history_entry = await self.history.get(job['param_id'])
+      hash_id = get_hash_id(job['param'])
+      history = history_map.get(hash_id, None)
 
       if job['started'] is None:
         started = now
@@ -73,8 +78,8 @@ class Estimator:
       if job.get('status', None) and job['status'].get('progress') >= epsilon:
         exp_duration = diff_sec(now, started) / job['status']['progress']
         remaining_duration += max(exp_duration - diff_sec(now, started), 0.)
-      elif history_entry['duration'] is not None and history_entry['succeeded']:
-        remaining_duration += max(history_entry['duration'] - diff_sec(now, started), 0.)
+      elif history and history['duration'] is not None:
+        remaining_duration += max(history['duration'] - diff_sec(now, started), 0.)
       else:
         remaining_duration += max(avg_duration - diff_sec(now, started), 0.)
 
@@ -84,10 +89,11 @@ class Estimator:
     # Calculate queued jobs' remaining time
     if not oneshot:
       for job in state['queued_jobs']:
-        history_entry = await self.history.get(job['param_id'])
+        hash_id = get_hash_id(job['param'])
+        history = history_map.get(hash_id, None)
 
-        if history_entry['duration'] is not None and history_entry['succeeded']:
-          remaining_duration += history_entry['duration']
+        if history and history['duration'] is not None:
+          remaining_duration += history['duration']
         else:
           remaining_duration += avg_duration
 

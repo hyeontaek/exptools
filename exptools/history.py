@@ -2,177 +2,133 @@
 
 __all__ = ['History']
 
-import asyncio
-import json
-import os
-import logging
-
-import aiofiles
-
-from exptools.param import get_param_id
+from exptools.param import get_hash_id
 from exptools.rpc_helper import rpc_export_function
+from exptools.state import State
 
-class History:
+class History(State):
   '''Manage the history data of previous job execution.'''
 
   stub = {
-      'job_id': None,
       'queued': None,
       'started': None,
       'finished': None,
       'duration': None,
+      'resources': None,
       'status': None,
       'succeeded': None,
       }
 
   def __init__(self, path, loop):
-    self.path = path
-    self.loop = loop
+    super().__init__('History', path, loop)
 
-    self.logger = logging.getLogger('exptools.History')
+  def _initialize_state(self):
+    self._state = {}
 
-    self.lock = asyncio.Lock(loop=self.loop)
-    self._dump_scheduled = False
-    self._load()
+  def _serialize_state(self):
+    return self._state
 
-  async def run_forever(self):
-    '''Manage the history.'''
-    try:
-      while True:
-        await self._dump()
-
-        await asyncio.sleep(10, loop=self.loop)
-    finally:
-      await self._dump()
-
-  def _load(self):
-    '''Load the history file.'''
-    if os.path.exists(self.path):
-      self.state = json.load(open(self.path))
-      self.logger.info(f'Loaded history data at {self.path}')
-    else:
-      self.state = {}
-      self.logger.info(f'Initialized new history data')
-
-  def _schedule_dump(self):
-    self._dump_scheduled = True
-
-  async def _dump(self):
-    '''Dump the current state to the history file.'''
-    async with self.lock:
-      if not self._dump_scheduled:
-        return
-      self._dump_scheduled = False
-      data = json.dumps(self.state, sort_keys=True, indent=2)
-      async with aiofiles.open(self.path + '.tmp', 'w') as file:
-        await file.write(data)
-      os.rename(self.path + '.tmp', self.path)
-      self.logger.info(f'Stored history data at {self.path}')
+  def _deserialize_state(self, state):
+    self._state = state
 
   async def update(self, job):
-    '''Record finished time and result.'''
-    param_id = job['param_id']
+    '''Record the job execution result.'''
+    hash_id = get_hash_id(job['param'])
+
+    hist_data = {}
+    for key in self.stub:
+      hist_data[key] = job[key]
+
     async with self.lock:
-      hist_data = self._get(param_id)
-      for key in self.stub:
-        hist_data[key] = job[key]
-      self.state[param_id] = hist_data
-      self.logger.info(f'Updated history entry for parameter {param_id}')
+      self._state[hash_id] = hist_data
+
+      self.logger.info(f'Updated history for parameter {hash_id}')
+      self.lock.notify_all()
       self._schedule_dump()
 
   @rpc_export_function
-  async def get_all(self, param_ids=None):
-    '''Get all history entries.'''
+  async def reset(self, hash_ids):
+    '''Reset the job execution history.'''
+    if not hash_ids:
+      return 0
+
     async with self.lock:
-      if param_ids is None:
-        return {param_id: self._get(param_id) for param_id in self.state}
+      hash_ids = set(hash_ids)
 
-      param_ids = set(param_ids)
-      return {param_id: self._get(param_id) for param_id in param_ids}
+      for hash_id in hash_ids:
+        self._state[hash_id] = dict(self.stub)
+        self.logger.info(f'Reset history for parameter {hash_id}')
 
-  @rpc_export_function
-  async def get(self, param_id):
-    '''Get a parameter's history entry.'''
-    async with self.lock:
-      return self._get(param_id)
-
-  def _get(self, param_id):
-    '''Get a parameter's history entry.'''
-    assert self.lock.locked()
-
-    if param_id in self.state:
-      return dict(self.state[param_id])
-    return dict(self.stub)
-
-  @rpc_export_function
-  async def add(self, param_id, hist_data):
-    '''Add a parameter's history entries manually.'''
-    async with self.lock:
-      self.state[param_id] = hist_data
+      self.lock.notify_all()
       self._schedule_dump()
+    return len(hash_ids)
 
   @rpc_export_function
-  async def remove(self, param_id):
-    '''Remove a parameter's history entries manually.'''
-    async with self.lock:
-      del self.state[param_id]
-      self._schedule_dump()
+  async def remove(self, hash_ids):
+    '''Remove the job execution history.'''
+    if not hash_ids:
+      return 0
 
-  @rpc_export_function
-  async def migrate(self, changes):
-    '''Migrate symlinks for parameter ID changes.'''
     count = 0
     async with self.lock:
-      for old_param_id, new_param_id in changes:
-        if old_param_id not in self.state:
-          self.logger.info(f'Ignoring missing history entry for old parameter {old_param_id}')
-          continue
+      for hash_id in hash_ids:
+        if hash_id in self._state:
+          del self._state[hash_id]
+          self.logger.info(f'Removed history for parameter {hash_id}')
+          count += 1
 
-        if new_param_id in self.state:
-          self.logger.info(f'Ignoring existing history entry for new parameter {new_param_id}')
-          continue
-
-        self.state[new_param_id] = self.state[old_param_id]
-        self.logger.info(f'Migrated history entry of old parameter {old_param_id} ' + \
-                         f'to new parameter {new_param_id}')
-        count += 1
+      self.lock.notify_all()
+      self._schedule_dump()
     return count
 
   @rpc_export_function
-  async def prune(self, param_ids, *, prune_matching=False, prune_mismatching=False):
-    '''Remove history entries.'''
-    entry_count = 0
-    param_ids = set(param_ids)
+  async def migrate(self, hash_id_pairs):
+    '''Migrate symlinks for hash ID changes.'''
+    count = 0
     async with self.lock:
-      for param_id in list(self.state.keys()):
-        if (prune_matching and param_id in param_ids) or \
-           (prune_mismatching and param_id not in param_ids):
-          del self.state[param_id]
-          self.logger.info(f'Removed history entry of parameter {param_id}')
-          entry_count += 1
+      for old_hash_id, new_hash_id in hash_id_pairs:
+        if old_hash_id not in self._state:
+          self.logger.info(f'Ignoring missing history for old parameter {old_hash_id}')
+          continue
 
+        if new_hash_id in self._state:
+          self.logger.info(f'Ignoring existing history for new parameter {new_hash_id}')
+          continue
+
+        self._state[new_hash_id] = self._state[old_hash_id]
+        self.logger.info(f'Migrated history of old parameter {old_hash_id} ' + \
+                         f'to new parameter {new_hash_id}')
+        count += 1
+
+      self.lock.notify_all()
       self._schedule_dump()
-
-    return entry_count
-
-  @rpc_export_function
-  async def is_finished(self, param_id):
-    '''Check if a parameter finished.'''
-    async with self.lock:
-      return param_id in self.state and self.state[param_id]['finished']
+    return count
 
   @rpc_export_function
-  async def is_succeded(self, param_id):
-    '''Check if a paramter did not succeed.'''
+  async def hash_ids(self):
+    '''Get all hash IDs.'''
     async with self.lock:
-      return param_id in self.state and self.state[param_id]['succeeded']
+      return list(self._state.keys())
 
   @rpc_export_function
-  async def omit(self, params, *, only_succeeded=False):
-    '''Omit parameters that has finished (and succeeded), leavning unfinished (or failed) ones.'''
+  async def history_list(self, hash_ids):
+    '''Get history data for given hash IDs.'''
     async with self.lock:
-      if not only_succeeded:
-        params = filter(lambda param: not self._get(get_param_id(param))['finished'], params)
+      history_list = []
+      for hash_id in hash_ids:
+        if hash_id in self._state:
+          history = self._state[hash_id]
+        else:
+          history = self.stub
+        history_list.append(history)
+      return history_list
+
+  @rpc_export_function
+  async def history(self, hash_id):
+    '''Get history data for the given hash ID.'''
+    async with self.lock:
+      if hash_id in self._state:
+        history = self._state[hash_id]
       else:
-        params = filter(lambda param: not self._get(get_param_id(param))['succeeded'], params)
-      return list(params)
+        history = self.stub
+      return history
