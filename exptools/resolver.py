@@ -31,30 +31,32 @@ class Resolver:
     return params
 
   @rpc_export_function
-  async def select_paramset(self, paramset):
-    '''Select parameters in the parameter set.'''
-    param_ids = await self.registry.paramset(paramset)
+  async def select_paramset(self, paramsets):
+    '''Select parameters in parameter sets.'''
+    param_ids = []
+    for paramset in paramsets:
+      param_ids.extend(await self.registry.paramset(paramset))
     params = await self.registry.params(param_ids)
     await self._augment(params)
     return params
 
   @rpc_export_function
-  async def select_ids(self, ids):
+  async def select_id(self, ids):
     '''Select parameters indicated by IDs.'''
 
-    param_ids = []
+    params = []
     for id_ in ids:
       if id_.startswith('p-'):
-        param_ids.append(id_)
+        params.append(await self.registry.param(id_))
       elif id_.startswith('h-'):
-        param_ids.extend(self.registry.param_ids_by_hash_id(hash_id=id_))
+        param_ids = self.registry.param_ids_by_hash_id(id_)
+        params.extend(await self.registry.params(param_ids))
       elif id_.startswith('j-'):
         job = await self.queue.job(job_id=id_)
-        param_ids.append(get_param_id(job['param']))
+        params.append(job['param'])
       else:
         raise RuntimeError(f'Unrecognized ID: {id_}')
 
-    params = await self.registry.params(param_ids)
     await self._augment(params)
     return params
 
@@ -207,10 +209,10 @@ class Resolver:
         if i != 0:
           raise RuntimeError('Parameters already loaded')
         data = await self.select_paramset(*args, **kwargs)
-      elif operation == 'ids':
+      elif operation == 'id':
         if i != 0:
           raise RuntimeError('Parameters already loaded')
-        data = await self.select_ids(*args, **kwargs)
+        data = await self.select_id(*args, **kwargs)
 
       # Filter
       elif operation == 'grep':

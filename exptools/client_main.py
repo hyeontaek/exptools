@@ -123,7 +123,7 @@ class CommandHandler:
     if not self.pipe_break:
       raise RuntimeError('Chain can be executed only at the end of the chain')
 
-    if not self.chain or self.chain[0][0] not in ['all', 'paramset', 'ids']:
+    if not self.chain or self.chain[0][0] not in ['all', 'paramset', 'id']:
       self.chain.insert(0, ['all', [], {}])
 
     if output_type == 'params':
@@ -308,7 +308,7 @@ class CommandHandler:
   #### Parameter set handlers
 
   @arg_export('command_paramsets')
-  async def _paramsets(self):
+  async def _handle_paramsets(self):
     '''list existing parameter sets.'''
     paramsets = await self.client.registry.paramsets()
     print('\n'.join(paramsets))
@@ -320,7 +320,7 @@ class CommandHandler:
                    '"-" reads from standard input')
   @arg_define('-f', '--force', action='store_true', default=False,
               help='replace existing parameter set if exists')
-  async def _register(self):
+  async def _handle_register(self):
     '''register a new parameter set.'''
     paramset = self.args.paramset
     if self.args.params_file == '-':
@@ -338,12 +338,12 @@ class CommandHandler:
     print(f'Registered parameters for {paramset}: {count}')
 
   @arg_export('command_unregister')
-  @arg_define('paramset', type=str, help='parameter set')
-  async def _unregister(self):
+  @arg_define('paramsets', type=str, nargs='+', help='parameter sets')
+  async def _handle_unregister(self):
     '''unregister an existing parameter set.'''
-    paramset = self.args.paramset
-    count = await self.client.registry.remove(paramset)
-    print(f'Unregistered parameters for {paramset}: {count}')
+    for paramset in self.args.paramsets:
+      count = await self.client.registry.remove(paramset)
+      print(f'Unregistered parameters for {paramset}: {count}')
 
   @arg_export('command_migrate')
   @arg_define('old_paramset', type=str, help='old parameter set')
@@ -403,16 +403,16 @@ class CommandHandler:
     self._add_to_chain('all')
 
   @arg_export('command_paramset')
-  @arg_define('paramset', type=str, help='parameter set')
+  @arg_define('paramsets', type=str, nargs='+', help='parameter sets')
   async def _handle_paramset(self):
-    '''select parameters in the parameter set'''
-    self._add_to_chain('paramset', self.args.paramset)
+    '''select parameters in parameter sets'''
+    self._add_to_chain('paramset', self.args.paramsets)
 
-  @arg_export('command_ids')
+  @arg_export('command_id')
   @arg_define('ids', type=str, nargs='+', help='IDs')
   async def _handle_ids(self):
     '''select parameters indicated by IDs'''
-    self._add_to_chain('ids', self.args.ids)
+    self._add_to_chain('id', self.args.ids)
 
   @arg_export('command_grep')
   @arg_define('filter_expr', type=str, help='regular expression')
