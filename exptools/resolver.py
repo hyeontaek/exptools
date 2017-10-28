@@ -105,7 +105,7 @@ class Resolver:
 
     hash_ids = [get_hash_id(param) for param in params]
 
-    if 'succeeded' in types or 'failed' in types:
+    if 'succeeded' in types or 'failed' in types or 'finished' in types:
       history_list = await self.history.history_list(hash_ids)
 
       new_params = []
@@ -114,26 +114,26 @@ class Resolver:
           continue
         if 'failed' in types and history['succeeded'] is not None:
           continue
+        if 'finished' in types and history['finished'] is not None:
+          continue
         new_params.append(param)
       params = new_params
 
-    if 'finished' in types or 'started' in types or 'queued' in types:
-      jobs = await self.queue.jobs(await self.queue.job_ids())
+    if 'started' in types or 'queued' in types:
+      started_jobs = await self.queue.jobs(await self.queue.job_ids(['started']))
+      queued_jobs = await self.queue.jobs(await self.queue.job_ids(['queued']))
 
       new_params = []
       for param, hash_id in zip(params, hash_ids):
-        matching_jobs = [job for job in jobs if get_hash_id(job['param']) == hash_id]
-
-        for job in matching_jobs:
-          if 'finished' in types and job['finished'] is not None:
-            break
-          if 'started' in types and job['started'] is not None:
-            break
-          if 'queued' in types and job['queued'] is not None:
-            break
-        else:
-          # No omit condition met
-          new_params.append(param)
+        if 'started' in types:
+          matching_jobs = [job for job in started_jobs if get_hash_id(job['param']) == hash_id]
+          if matching_jobs:
+            continue
+        if 'queued' in types:
+          matching_jobs = [job for job in queued_jobs if get_hash_id(job['param']) == hash_id]
+          if matching_jobs:
+            continue
+        new_params.append(param)
 
       params = new_params
 
