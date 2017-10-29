@@ -238,9 +238,9 @@ class Queue(State):
     assert isinstance(offset, int)
 
     if not job_ids:
-      return 0
+      return job_ids
     if offset == 0:
-      return 0
+      return []
 
     async with self.lock:
       existing_job_ids = set(list(self._state['queued_jobs'].keys()))
@@ -248,7 +248,7 @@ class Queue(State):
         if job_id not in existing_job_ids:
           raise KeyError(f'Job not found: {job_id}')
 
-      job_ids = set(job_ids)
+      job_ids_set = set(job_ids)
 
       current_job_ids = list(self._state['queued_jobs'].keys())
 
@@ -268,7 +268,7 @@ class Queue(State):
 
       # Shift matching job IDs
       for i in range(-offset, len(current_job_ids)):
-        if current_job_ids[i] in job_ids:
+        if current_job_ids[i] in job_ids_set:
           current_job_ids[i + offset:i + 1] = \
             [current_job_ids[i]] + current_job_ids[i + offset:i]
 
@@ -289,13 +289,13 @@ class Queue(State):
       self.logger.info(f'Reordered {len(job_ids)} jobs')
       self.lock.notify_all()
       self._schedule_dump()
-      return len(job_ids)
+      return job_ids
 
   @rpc_export_function
   async def remove_finished(self, job_ids):
     '''Remove finished jobs.'''
     if not job_ids:
-      return 0
+      return job_ids
 
     async with self.lock:
       existing_job_ids = set(list(self._state['finished_jobs'].keys()))
@@ -303,8 +303,8 @@ class Queue(State):
         if job_id not in existing_job_ids:
           raise KeyError(f'Job not found: {job_id}')
 
-      job_ids = set(job_ids)
-      filter_func = lambda job: job['job_id'] not in job_ids
+      job_ids_set = set(job_ids)
+      filter_func = lambda job: job['job_id'] not in job_ids_set
       self._state['finished_jobs'] = self._make_ordered_dict(
           filter(filter_func, self._state['finished_jobs'].values()))
 
@@ -312,13 +312,13 @@ class Queue(State):
       self.lock.notify_all()
       self._check_empty()
       self._schedule_dump()
-      return len(job_ids)
+      return job_ids
 
   @rpc_export_function
   async def remove_queued(self, job_ids):
     '''Remove queued jobs.'''
     if not job_ids:
-      return 0
+      return job_ids
 
     async with self.lock:
       existing_job_ids = set(list(self._state['queued_jobs'].keys()))
@@ -326,8 +326,8 @@ class Queue(State):
         if job_id not in existing_job_ids:
           raise KeyError(f'Job not found: {job_id}')
 
-      job_ids = set(job_ids)
-      filter_func = lambda job: job['job_id'] not in job_ids
+      job_ids_set = set(job_ids)
+      filter_func = lambda job: job['job_id'] not in job_ids_set
       self._state['queued_jobs'] = self._make_ordered_dict(
           filter(filter_func, self._state['queued_jobs'].values()))
 
@@ -335,7 +335,7 @@ class Queue(State):
       self.lock.notify_all()
       self._check_empty()
       self._schedule_dump()
-      return len(job_ids)
+      return job_ids
 
   @rpc_export_function
   async def job_ids(self, job_types=('finished', 'started', 'queued')):

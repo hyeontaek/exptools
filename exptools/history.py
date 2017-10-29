@@ -50,41 +50,39 @@ class History(State):
   async def reset(self, hash_ids):
     '''Reset the job execution history.'''
     if not hash_ids:
-      return 0
+      return hash_ids
 
     async with self.lock:
-      hash_ids = set(hash_ids)
-
       for hash_id in hash_ids:
         self._state[hash_id] = dict(self.stub)
         self.logger.info(f'Reset history for parameter {hash_id}')
 
       self.lock.notify_all()
       self._schedule_dump()
-    return len(hash_ids)
+    return hash_ids
 
   @rpc_export_function
   async def remove(self, hash_ids):
     '''Remove the job execution history.'''
     if not hash_ids:
-      return 0
+      return hash_ids
 
-    count = 0
+    removed_hash_ids = []
     async with self.lock:
       for hash_id in hash_ids:
         if hash_id in self._state:
           del self._state[hash_id]
           self.logger.info(f'Removed history for parameter {hash_id}')
-          count += 1
+          removed_hash_ids.append(hash_id)
 
       self.lock.notify_all()
       self._schedule_dump()
-    return count
+    return removed_hash_ids
 
   @rpc_export_function
   async def migrate(self, hash_id_pairs):
     '''Migrate symlinks for hash ID changes.'''
-    count = 0
+    migrated_hash_id_pairs = []
     async with self.lock:
       for old_hash_id, new_hash_id in hash_id_pairs:
         if old_hash_id not in self._state:
@@ -98,11 +96,11 @@ class History(State):
         self._state[new_hash_id] = self._state[old_hash_id]
         self.logger.info(f'Migrated history of old parameter {old_hash_id} ' + \
                          f'to new parameter {new_hash_id}')
-        count += 1
+        migrated_hash_id_pairs.append((old_hash_id, new_hash_id))
 
       self.lock.notify_all()
       self._schedule_dump()
-    return count
+    return migrated_hash_id_pairs
 
   @rpc_export_function
   async def hash_ids(self):

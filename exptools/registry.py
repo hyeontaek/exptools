@@ -58,15 +58,15 @@ class Registry(State):
     self._schedule_dump()
     return 'p-' + base58.b58encode_int(next_param_id)
 
-  async def _add(self, paramset, params):
+  async def _add(self, paramset, params, overwrite, append):
     '''Add parameters.'''
     assert self.lock.locked()
 
-    if not params:
-      return 0
-
     if paramset in self._state['paramsets']:
-      raise RuntimeError(f'Parameter set already exists: {paramset}')
+      if not overwrite and not append:
+        raise RuntimeError(f'Parameter set already exists: {paramset}')
+      if overwrite:
+        await self._remove(paramset)
 
     param_ids = []
     for param in params:
@@ -88,18 +88,22 @@ class Registry(State):
       else:
         self._hash_id_index[hash_id].append(param_id)
 
-    self._state['paramsets'][paramset] = param_ids
+    if paramset not in self._state['paramsets']:
+      self._state['paramsets'][paramset] = param_ids
+    else:
+      assert append
+      self._state['paramsets'][paramset].extend(param_ids)
 
     self.logger.info(f'Added {len(params)} parameters')
     self.lock.notify_all()
     self._schedule_dump()
-    return len(params)
+    return param_ids
 
   @rpc_export_function
-  async def add(self, paramset, params):
+  async def add(self, paramset, params, overwrite=False, append=False):
     '''Add parameters.'''
     async with self.lock:
-      return await self._add(paramset, params)
+      return await self._add(paramset, params, overwrite, append)
 
   async def _remove(self, paramset):
     '''Remove parameters.'''
@@ -124,7 +128,7 @@ class Registry(State):
     self.logger.info(f'Removed {len(param_ids)} parameters')
     self.lock.notify_all()
     self._schedule_dump()
-    return len(param_ids)
+    return param_ids
 
   @rpc_export_function
   async def remove(self, paramset):

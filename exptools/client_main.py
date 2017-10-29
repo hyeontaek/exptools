@@ -317,33 +317,35 @@ class CommandHandler:
   @arg_define('paramset', type=str, help='parameter set')
   @arg_define('params_file', type=str,
               help='path to json files containing parameters; ' + \
-                   '"-" reads from standard input')
-  @arg_define('-f', '--force', action='store_true', default=False,
-              help='replace existing parameter set if exists')
+                   '"-" reads from standard input; ' + \
+                   '"selected" to use the parameter selection result')
+  @arg_define('-o', '--overwrite', action='store_true', default=False,
+              help='overwrite an existing parameter set if exists')
+  @arg_define('-a', '--append', action='store_true', default=False,
+              help='append to an existing parameter set if exists')
   async def _handle_register(self):
     '''register a new parameter set.'''
     paramset = self.args.paramset
     if self.args.params_file == '-':
       params = json.loads(sys.stdin.read())
+    elif self.args.params_file == 'selected':
+      params = await self._execute_chain('params')
     else:
       with open(self.args.params_file) as file:
         params = json.loads(file.read())
 
-    if self.args.force:
-      if paramset in await self.client.registry.paramsets():
-        count = await self.client.registry.remove(paramset)
-        print(f'Unregistered parameters for {paramset}: {count}')
+    param_ids = await self.client.registry.add(
+        paramset, params, overwrite=self.args.overwrite, append=self.args.append)
 
-    count = await self.client.registry.add(paramset, params)
-    print(f'Registered parameters for {paramset}: {count}')
+    print(f'Registered parameters for {paramset}: {len(param_ids)}')
 
   @arg_export('command_unregister')
   @arg_define('paramsets', type=str, nargs='+', help='parameter sets')
   async def _handle_unregister(self):
     '''unregister an existing parameter set.'''
     for paramset in self.args.paramsets:
-      count = await self.client.registry.remove(paramset)
-      print(f'Unregistered parameters for {paramset}: {count}')
+      param_ids = await self.client.registry.remove(paramset)
+      print(f'Unregistered parameters for {paramset}: {len(param_ids)}')
 
   @arg_export('command_migrate')
   @arg_define('old_paramset', type=str, help='old parameter set')
@@ -368,17 +370,20 @@ class CommandHandler:
     param_id_pairs = list(zip(old_param_ids, new_param_ids))
     hash_id_pairs = list(zip(old_hash_ids, new_hash_ids))
 
-    runner_count = await self.client.runner.migrate(param_id_pairs, hash_id_pairs)
-    history_count = await self.client.history.migrate(hash_id_pairs)
-    print(f'Migrated: {runner_count} runner data, {history_count} histroy data')
+    migrated_param_id_pairs, migrated_hash_id_pairs = \
+        await self.client.runner.migrate(param_id_pairs, hash_id_pairs)
+    migrated_hash_id_pairs = await self.client.history.migrate(hash_id_pairs)
+    print(f'Migrated: ' + \
+          f'{len(migrated_param_id_pairs) + len(migrated_hash_id_pairs)} runner data, ' + \
+          f'{len(migrated_hash_id_pairs)} histroy data')
 
   @arg_export('command_reset')
   async def _handle_reset(self):
     '''reset history data of matching IDs'''
     hash_ids = await self._execute_chain('hash_ids')
 
-    history_count = await self.client.history.reset(hash_ids)
-    print(f'Reset: {history_count} history data')
+    reset_hash_ids = await self.client.history.reset(hash_ids)
+    print(f'Reset: {len(reset_hash_ids)} history data')
 
   @arg_export('command_prune')
   async def _handle_prune(self):
@@ -388,12 +393,13 @@ class CommandHandler:
 
     param_ids = set(await self.client.runner.param_ids()) - valid_param_ids
     hash_ids = set(await self.client.runner.hash_ids()) - valid_hash_ids
-    runner_count = await self.client.runner.remove_output(list(param_ids), list(hash_ids))
+    removed_outputs = await self.client.runner.remove_output(list(param_ids), list(hash_ids))
 
     hash_ids = set(await self.client.history.hash_ids()) - valid_hash_ids
-    history_count = await self.client.history.remove(list(hash_ids))
+    removed_hash_ids = await self.client.history.remove(list(hash_ids))
 
-    print(f'Pruned: {runner_count} runner data, {history_count} history data')
+    print(f'Pruned: {len(removed_outputs)} runner data, ' + \
+          f'{len(removed_hash_ids)} history data')
 
   #### Parameter selection and filtering handlers
 
@@ -802,8 +808,8 @@ class CommandHandler:
     job_ids = await self.client.queue.add(param_ids, not self.args.top)
     print(f'Added queued jobs: {" ".join(job_ids)}')
 
-    count = await self.client.queue.remove_finished(finished_job_ids)
-    print(f'Removed finished jobs: {count}')
+    removed_job_ids = await self.client.queue.remove_finished(finished_job_ids)
+    print(f'Removed finished jobs: {len(removed_job_ids)}')
 
   @arg_export('command_rm')
   @arg_import('common_job_ids')
@@ -811,20 +817,20 @@ class CommandHandler:
     '''remove queued jobs'''
     job_ids = await self._parse_job_ids(['queued'])
 
-    count = await self.client.queue.remove_queued(job_ids)
-    print(f'Removed queued jobs: {count}')
+    removed_job_ids = await self.client.queue.remove_queued(job_ids)
+    print(f'Removed queued jobs: {len(removed_job_ids)}')
 
   @arg_export('command_move')
   @arg_define('offset', type=int,
               help='offset in the queue position; ' + \
                    'negative numbers to prioritize, positive numbers for deprioritize')
   @arg_import('common_job_ids')
-  async def _handle_up(self):
+  async def _handle_move(self):
     '''priorize or deprioritize queued jobs'''
     job_ids = await self._parse_job_ids(['queued'])
 
-    count = await self.client.queue.move(job_ids, self.args.offset)
-    print(f'Moved queued jobs: {count}')
+    moved_job_ids = await self.client.queue.move(job_ids, self.args.offset)
+    print(f'Moved queued jobs: {len(moved_job_ids)}')
 
   @arg_export('command_kill')
   @arg_define('-2', '--int', action='store_true', default=False,
@@ -837,13 +843,13 @@ class CommandHandler:
     job_ids = await self._parse_job_ids(['started'])
 
     if self.args.kill:
-      count = await self.client.runner.kill(job_ids, signal_type='kill')
+      killed_job_ids = await self.client.runner.kill(job_ids, signal_type='kill')
     elif self.args.int:
-      count = await self.client.runner.kill(job_ids, signal_type='int')
+      killed_job_ids = await self.client.runner.kill(job_ids, signal_type='int')
     else:
-      count = await self.client.runner.kill(job_ids)
+      killed_job_ids = await self.client.runner.kill(job_ids)
 
-    print(f'Killed jobs: {count}')
+    print(f'Killed jobs: {len(killed_job_ids)}')
 
   @arg_export('command_dismiss')
   @arg_import('common_job_ids')
@@ -851,8 +857,8 @@ class CommandHandler:
     '''clear finished jobs'''
     job_ids = await self._parse_job_ids(['finished'])
 
-    count = await self.client.queue.remove_finished(job_ids)
-    print(f'Removed finished jobs: {count}')
+    removed_job_ids = await self.client.queue.remove_finished(job_ids)
+    print(f'Removed finished jobs: {len(removed_job_ids)}')
 
   #### Job output retrieval
 

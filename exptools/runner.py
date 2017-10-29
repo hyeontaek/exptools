@@ -271,9 +271,9 @@ class Runner:
       job_ids = [job['job_id'] for job in queue_state['started_jobs']]
 
     count = 0
-    job_ids = set(job_ids)
+    job_ids_set = set(job_ids)
     for job in queue_state['started_jobs']:
-      if job['job_id'] in job_ids and job['pid'] is not None:
+      if job['job_id'] in job_ids_set and job['pid'] is not None:
         job_id = job['job_id']
         if signal_type == 'int':
           self.logger.info(f'Interrupting job {job_id}')
@@ -287,14 +287,15 @@ class Runner:
         else:
           raise RuntimeError(f'Unknown signal: {signal_type}')
         count += 1
-    return count
+    return job_ids
 
   @rpc_export_function
   async def migrate(self, param_id_pairs, hash_id_pairs):
     '''Migrate symlinks for parameter and hash ID changes.'''
-    count = 0
 
-    for old_id, new_id in param_id_pairs + hash_id_pairs:
+    migrated_param_id_pairs = []
+    migrated_hash_id_pairs = []
+    for i, (old_id, new_id) in enumerate(list(param_id_pairs) + list(hash_id_pairs)):
       old_path = os.path.join(self.base_dir, old_id)
       new_path = os.path.join(self.base_dir, new_id)
 
@@ -309,9 +310,13 @@ class Runner:
       job_id = os.readlink(old_path).strip('/')
       os.symlink(job_id, new_path, target_is_directory=True)
       self.logger.info(f'Migrated symlink {old_id} to {new_id}')
-      count += 1
 
-    return count
+      if i < len(param_id_pairs):
+        migrated_param_id_pairs.append((old_id, new_id))
+      else:
+        migrated_hash_id_pairs.append((old_id, new_id))
+
+    return migrated_param_id_pairs, migrated_hash_id_pairs
 
   @rpc_export_function
   async def job_ids(self):
@@ -342,8 +347,8 @@ class Runner:
 
   def _remove_output(self, trash_dir, param_ids, hash_ids):
     '''Remove job output directories that (mis)matches given job IDs.'''
-    count = 0
 
+    removed_outputs = []
     for id_ in list(param_ids) + list(hash_ids):
       path = os.path.join(self.base_dir, id_)
       if not os.path.exists(path):
@@ -358,12 +363,13 @@ class Runner:
 
       os.rename(path, new_path)
       self.logger.info(f'Moved {id_} to trash')
-      count += 1
-    return count
+      removed_outputs.append(id_)
+
+    return removed_outputs
 
   def _remove_dangling_noref(self, trash_dir):
     '''Remove dangling last, p-*, or h-* symlinks and not referenced j-* directories in output.'''
-    count = 0
+    removed_outputs = []
     filenames = os.listdir(self.base_dir)
     filenames = set(filenames)
 
@@ -386,7 +392,7 @@ class Runner:
 
       os.rename(path, new_path)
       self.logger.info(f'Moved {filename} to trash')
-      count += 1
+      removed_outputs.append(filename)
 
     for filename in sorted(filenames):
       if not filename.startswith('j-'):
@@ -403,8 +409,8 @@ class Runner:
 
       os.rename(path, new_path)
       self.logger.info(f'Moved {filename} to trash')
-      count += 1
-    return count
+      removed_outputs.append(filename)
+    return removed_outputs
 
   @rpc_export_function
   async def remove_output(self, param_ids, hash_ids):
@@ -422,11 +428,11 @@ class Runner:
     hash_ids = set(hash_ids)
     hash_ids -= set([get_hash_id(job['param']) for job in queue_state['started_jobs']])
 
-    count = self._remove_output(trash_dir, param_ids, hash_ids)
-    count += self._remove_dangling_noref(trash_dir)
+    removed_output = self._remove_output(trash_dir, param_ids, hash_ids)
+    removed_output += self._remove_dangling_noref(trash_dir)
     # Second pass to ensure deleting "last" if needed
-    count += self._remove_dangling_noref(trash_dir)
-    return count
+    removed_output += self._remove_dangling_noref(trash_dir)
+    return removed_output
 
   async def _read_output(self, id_, read_stdout, external_command, extra_args):
     '''Yield the output of an external command on the job output.'''
