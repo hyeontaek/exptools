@@ -325,6 +325,9 @@ class CommandHandler:
               help='append to an existing parameter set if exists')
   async def _handle_register(self):
     '''register a new parameter set.'''
+    if self.args.overwrite and self.args.append:
+      raise RuntimeError('-o/--overwrite and -a/--append cannot be specified at the same time')
+
     paramset = self.args.paramset
     if self.args.params_file == '-':
       params = json.loads(sys.stdin.read())
@@ -856,12 +859,14 @@ class CommandHandler:
   @arg_import('common_job_ids')
   async def _handle_kill(self):
     '''kill started jobs'''
+    if self.args.int and self.args.kill:
+      raise RuntimeError('-2/--int and -9/--kill cannot be specified at the same time')
     job_ids = await self._parse_job_ids(['started'])
 
-    if self.args.kill:
-      killed_job_ids = await self.client.runner.kill(job_ids, signal_type='kill')
-    elif self.args.int:
+    if self.args.int:
       killed_job_ids = await self.client.runner.kill(job_ids, signal_type='int')
+    elif self.args.kill:
+      killed_job_ids = await self.client.runner.kill(job_ids, signal_type='kill')
     else:
       killed_job_ids = await self.client.runner.kill(job_ids)
 

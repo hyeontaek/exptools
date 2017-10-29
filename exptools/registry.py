@@ -61,6 +61,7 @@ class Registry(State):
   async def _add(self, paramset, params, overwrite, append):
     '''Add parameters.'''
     assert self.lock.locked()
+    assert not (overwrite and append)
 
     if paramset in self._state['paramsets']:
       if not overwrite and not append:

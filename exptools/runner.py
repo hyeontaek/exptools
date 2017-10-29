@@ -98,6 +98,44 @@ class Runner:
     env['EXPTOOLS_STATUS_JSON_PATH'] = os.path.join(job_dir, 'status.json')
     return env
 
+  def _make_tmp_symlinks(self, param_id, hash_id, job_id):
+    param_path = os.path.join(self.base_dir, param_id)
+    hash_path = os.path.join(self.base_dir, hash_id)
+
+    if os.path.lexists(param_path + '_tmp'):
+      os.unlink(param_path + '_tmp')
+    os.symlink(job_id, param_path + '_tmp', target_is_directory=True)
+
+    if os.path.lexists(hash_path + '_tmp'):
+      os.unlink(hash_path + '_tmp')
+    os.symlink(job_id, hash_path + '_tmp', target_is_directory=True)
+
+    last_path = os.path.join(self.base_dir, 'last')
+    if os.path.lexists(last_path):
+      os.unlink(last_path)
+    os.symlink(job_id, last_path, target_is_directory=True)
+
+  def _make_symlinks(self, param_id, hash_id, job_id):
+    param_path = os.path.join(self.base_dir, param_id)
+    hash_path = os.path.join(self.base_dir, hash_id)
+
+    if os.path.lexists(param_path):
+      os.unlink(param_path)
+    os.symlink(job_id, param_path, target_is_directory=True)
+
+    if os.path.lexists(hash_path):
+      os.unlink(hash_path)
+    os.symlink(job_id, hash_path, target_is_directory=True)
+
+  def _remove_tmp_symlinks(self, param_id, hash_id, job_id):
+    param_path = os.path.join(self.base_dir, param_id)
+    hash_path = os.path.join(self.base_dir, hash_id)
+
+    if os.path.lexists(param_path + '_tmp'):
+      os.unlink(param_path + '_tmp')
+    if os.path.lexists(hash_path + '_tmp'):
+      os.unlink(hash_path + '_tmp')
+
   async def _run(self, job):
     '''Run a job.'''
 
@@ -110,6 +148,8 @@ class Runner:
     expanded_command = [arg.format(**param) for arg in get_command(param)]
     cwd = get_cwd(param) or os.getcwd()
     time_limit = get_time_limit(param)
+
+    succeeded = False
 
     try:
       if not await self.queue.set_started(job_id):
@@ -127,21 +167,8 @@ class Runner:
 
       with open(os.path.join(job_dir, 'stdout'), 'wb', buffering=0) as stdout, \
            open(os.path.join(job_dir, 'stderr'), 'wb', buffering=0) as stderr:
-        # Create symlinks
-        param_path = os.path.join(self.base_dir, param_id)
-        if os.path.exists(param_path + '_tmp'):
-          os.unlink(param_path + '_tmp')
-        os.symlink(job_id, param_path + '_tmp', target_is_directory=True)
 
-        hash_path = os.path.join(self.base_dir, hash_id)
-        if os.path.exists(hash_path + '_tmp'):
-          os.unlink(hash_path + '_tmp')
-        os.symlink(job_id, hash_path + '_tmp', target_is_directory=True)
-
-        last_path = os.path.join(self.base_dir, 'last')
-        if os.path.exists(last_path):
-          os.unlink(last_path)
-        os.symlink(job_id, last_path, target_is_directory=True)
+        self._make_tmp_symlinks(param_id, hash_id, job_id)
 
         # Launch process
         proc = await asyncio.create_subprocess_exec(
@@ -164,12 +191,14 @@ class Runner:
             await proc.communicate()
           else:
             await asyncio.wait_for(proc.communicate(), time_limit, loop=self.loop)
+
         except Exception: # pylint: disable=broad-except
           # Do not use proc.kill() or terminate() to allow the job to exit gracefully
           try:
             proc.send_signal(signal.SIGINT)
           except Exception: # pylint: disable=broad-except
             self.logger.exception('Exception while killing process')
+
         finally:
           try:
             await proc.wait()
@@ -183,36 +212,29 @@ class Runner:
             # Ignore CancelledError because we caused it
             pass
 
-        # Read before making the job finished
-        await self._read_status(job_id, job_dir)
+      # Read status before making the job finished
+      await self._read_status(job_id, job_dir)
 
       if proc.returncode == 0:
-        # Make symlinks
-        if os.path.exists(param_path):
-          os.unlink(param_path)
-        os.symlink(job_id, param_path, target_is_directory=True)
-
-        if os.path.exists(hash_path):
-          os.unlink(hash_path)
-        os.symlink(job_id, hash_path, target_is_directory=True)
+        self._make_symlinks(param_id, hash_id, job_id)
 
         await self.queue.set_finished(job_id, True)
-      else:
-        await self.queue.set_finished(job_id, False)
 
-      if os.path.exists(param_path + '_tmp'):
-        os.unlink(param_path + '_tmp')
-      if os.path.exists(hash_path + '_tmp'):
-        os.unlink(hash_path + '_tmp')
+        succeeded = True
+
+    except concurrent.futures.CancelledError:
+      # Pass through
+      raise
 
     except Exception: # pylint: disable=broad-except
       self.logger.exception(f'Exception while running job {job_id}')
 
-      # Read before making the job finished
-      await self._read_status(job_id, job_dir)
-
-      await self.queue.set_finished(job_id, False)
     finally:
+      if not succeeded:
+        await self.queue.set_finished(job_id, False)
+
+      self._remove_tmp_symlinks(param_id, hash_id, job_id)
+
       await self.scheduler.retire(job)
 
   async def _watch_status(self, job_id, job_dir):
@@ -258,7 +280,7 @@ class Runner:
       await self.queue.set_status(job_id, status)
     except concurrent.futures.CancelledError:
       # Ignore (likely normal exit through task cancellation)
-      pass
+      raise
     except Exception: # pylint: disable=broad-except
       self.logger.exception(f'Exception while reading status of job {job_id}')
 
@@ -278,12 +300,12 @@ class Runner:
         if signal_type == 'int':
           self.logger.info(f'Interrupting job {job_id}')
           os.kill(job['pid'], signal.SIGINT)
-        elif not signal_type or signal_type == 'term':
-          self.logger.info(f'Terminating job {job_id}')
-          os.kill(job['pid'], signal.SIGTERM)
         elif signal_type == 'kill':
           self.logger.info(f'Killing job {job_id}')
           os.kill(job['pid'], signal.SIGKILL)
+        elif not signal_type or signal_type == 'term':
+          self.logger.info(f'Terminating job {job_id}')
+          os.kill(job['pid'], signal.SIGTERM)
         else:
           raise RuntimeError(f'Unknown signal: {signal_type}')
         count += 1
@@ -299,11 +321,11 @@ class Runner:
       old_path = os.path.join(self.base_dir, old_id)
       new_path = os.path.join(self.base_dir, new_id)
 
-      if not os.path.exists(old_path):
+      if not os.path.lexists(old_path):
         self.logger.info(f'Ignoring missing symlink for old parameter {old_id}')
         continue
 
-      if os.path.exists(new_path):
+      if os.path.lexists(new_path):
         self.logger.info(f'Ignoring existing symlink for new parameter {new_id}')
         continue
 
@@ -351,11 +373,11 @@ class Runner:
     removed_outputs = []
     for id_ in list(param_ids) + list(hash_ids):
       path = os.path.join(self.base_dir, id_)
-      if not os.path.exists(path):
+      if not os.path.lexists(path):
         continue
 
       new_path = os.path.join(trash_dir, id_)
-      if os.path.exists(new_path):
+      if os.path.lexists(new_path):
         if os.path.isdir(new_path):
           rmdirs(new_path)
         else:
@@ -387,7 +409,7 @@ class Runner:
         continue
 
       new_path = os.path.join(trash_dir, filename)
-      if os.path.exists(new_path):
+      if os.path.lexists(new_path):
         os.unlink(new_path)
 
       os.rename(path, new_path)
@@ -404,7 +426,7 @@ class Runner:
       path = os.path.join(self.base_dir, filename)
 
       new_path = os.path.join(trash_dir, filename)
-      if os.path.exists(new_path):
+      if os.path.lexists(new_path):
         rmdirs(new_path)
 
       os.rename(path, new_path)
