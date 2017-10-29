@@ -31,7 +31,7 @@ def make_parser():
 
   parser.add_argument('--scheduler-type', type=str, default='serial',
                       help='the scheduler type (default: %(default)s)')
-  parser.add_argument('--scheduler-mode', type=str, default='start',
+  parser.add_argument('--scheduler-mode', type=str, default='stop',
                       choices=['start', 'stop', 'oneshot'],
                       help='initial scheduler mode (default: %(default)s)')
   parser.add_argument('--scheduler-file', type=str, default='sched_conf.json',
