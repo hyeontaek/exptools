@@ -127,7 +127,7 @@ class Runner:
       os.unlink(hash_path)
     os.symlink(job_id, hash_path, target_is_directory=True)
 
-  def _remove_tmp_symlinks(self, param_id, hash_id, job_id):
+  def _remove_tmp_symlinks(self, param_id, hash_id):
     param_path = os.path.join(self.base_dir, param_id)
     hash_path = os.path.join(self.base_dir, hash_id)
 
@@ -246,7 +246,7 @@ class Runner:
       if not succeeded:
         await self.queue.set_finished(job_id, False)
 
-      self._remove_tmp_symlinks(param_id, hash_id, job_id)
+      self._remove_tmp_symlinks(param_id, hash_id)
 
       await self.scheduler.retire(job)
 
