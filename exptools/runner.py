@@ -192,25 +192,38 @@ class Runner:
           else:
             await asyncio.wait_for(proc.communicate(), time_limit, loop=self.loop)
 
-        except Exception: # pylint: disable=broad-except
-          # Do not use proc.kill() or terminate() to allow the job to exit gracefully
-          try:
-            proc.send_signal(signal.SIGINT)
-          except Exception: # pylint: disable=broad-except
-            self.logger.exception('Exception while killing process')
+        except asyncio.TimeoutError:
+          self.logger.error(f'Timeout while waiting for job {job_id}')
 
         finally:
-          try:
-            await proc.wait()
-          except Exception: # pylint: disable=broad-except
-            self.logger.exception('Exception while waiting for process')
-
           status_task.cancel()
           try:
             await status_task
           except concurrent.futures.CancelledError:
             # Ignore CancelledError because we caused it
             pass
+
+          if proc.returncode is None:
+            try:
+              proc.send_signal(signal.SIGTERM)
+            except Exception: # pylint: disable=broad-except
+              self.logger.exception('Exception while killing process')
+
+            try:
+              await asyncio.wait_for(proc.wait(), 10, loop=self.loop)
+            except Exception: # pylint: disable=broad-except
+              self.logger.exception('Exception while waiting for process')
+
+          if proc.returncode is None:
+            try:
+              proc.send_signal(signal.SIGKILL)
+            except Exception: # pylint: disable=broad-except
+              self.logger.exception('Exception while killing process')
+
+            try:
+              await proc.wait()
+            except Exception: # pylint: disable=broad-except
+              self.logger.exception('Exception while waiting for process')
 
       # Read status before making the job finished
       await self._read_status(job_id, job_dir)
