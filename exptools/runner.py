@@ -351,20 +351,22 @@ class Runner:
 
   @rpc_export_function
   async def param_ids(self):
-    '''Return parameter IDs in the output directory.'''
+    '''Return parameter IDs in the output directory.
+    Outputs may include temporary symlinks (*_tmp).'''
     param_ids = []
     for filename in os.listdir(self.base_dir):
       if filename.startswith('p-'):
-        param_ids.append(filename.partition('_')[0])
+        param_ids.append(filename)
     return param_ids
 
   @rpc_export_function
   async def hash_ids(self):
-    '''Return hash IDs in the output directory.'''
+    '''Return hash IDs in the output directory.
+    Outputs may include temporary symlinks (*_tmp).'''
     hash_ids = []
     for filename in os.listdir(self.base_dir):
       if filename.startswith('h-'):
-        hash_ids.append(filename.partition('_')[0])
+        hash_ids.append(filename)
     return hash_ids
 
   def _remove_output(self, trash_dir, param_ids, hash_ids):
