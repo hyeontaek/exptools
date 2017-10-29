@@ -112,9 +112,9 @@ class Resolver:
 
       new_params = []
       for param, history in zip(params, history_list):
-        if 'succeeded' in types and history['succeeded'] is not None:
+        if 'succeeded' in types and history['succeeded']:
           continue
-        if 'failed' in types and history['succeeded'] is not None:
+        if 'failed' in types and not history['succeeded']:
           continue
         if 'finished' in types and history['finished'] is not None:
           continue
