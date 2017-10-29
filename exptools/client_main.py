@@ -791,15 +791,19 @@ class CommandHandler:
   @arg_import('common_job_ids')
   @arg_define('-t', '--top', action='store_true', default=False,
               help='insert at the queue top instead of bottom')
+  @arg_define('-d', '--dismiss', action='store_true', default=False, help='dismiss retried jobs')
   async def _handle_retry(self):
     '''retry finished jobs'''
-    job_ids = await self._parse_job_ids(['finished'])
+    finished_job_ids = await self._parse_job_ids(['finished'])
 
-    jobs = await self.client.queue.jobs(job_ids)
-    param_ids = [get_param_id(job['param']) for job in jobs]
+    finished_jobs = await self.client.queue.jobs(finished_job_ids)
+    param_ids = [get_param_id(job['param']) for job in finished_jobs]
 
     job_ids = await self.client.queue.add(param_ids, not self.args.top)
     print(f'Added queued jobs: {" ".join(job_ids)}')
+
+    count = await self.client.queue.remove_finished(finished_job_ids)
+    print(f'Removed finished jobs: {count}')
 
   @arg_export('command_rm')
   @arg_import('common_job_ids')
