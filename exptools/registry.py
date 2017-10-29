@@ -188,4 +188,5 @@ class Registry(State):
   @rpc_export_function
   async def param_ids_by_hash_id(self, hash_id):
     '''Get all parameter IDs by a hash ID.'''
-    return (await self.param_ids_by_hash_ids([hash_id]))[0]
+    params = await self.param_ids_by_hash_ids([hash_id])
+    return params[0]
