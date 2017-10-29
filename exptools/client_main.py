@@ -762,6 +762,22 @@ class CommandHandler:
          not queue_state['started_jobs'] and (oneshot or not queue_state['queued_jobs']):
         break
 
+  @arg_export('command_adhoc')
+  @arg_define('-t', '--top', action='store_true', default=False,
+              help='insert at the queue top instead of bottom')
+  @arg_define('arguments', type=str, nargs='+',
+              help='command and arguments')
+  async def _handle_adhoc(self):
+    '''add an adhoc parameter to the queue'''
+    paramset = 'adhoc'
+    param = {'command': list(self.args.arguments)}
+
+    param_ids = await self.client.registry.add(paramset, [param], overwrite=False, append=True)
+    print(f'Registered parameters for {paramset}: {len(param_ids)}')
+
+    job_ids = await self.client.queue.add(param_ids, not self.args.top)
+    print(f'Added queued jobs: {" ".join(job_ids)}')
+
   @arg_export('command_add')
   @arg_define('-t', '--top', action='store_true', default=False,
               help='insert at the queue top instead of bottom')
