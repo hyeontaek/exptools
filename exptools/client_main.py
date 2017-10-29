@@ -124,7 +124,7 @@ class CommandHandler:
       raise RuntimeError('Chain can be executed only at the end of the chain')
 
     if not self.chain or self.chain[0][0] not in ['all', 'paramset', 'id']:
-      self.chain.insert(0, ['all', [], {}])
+      raise RuntimeError('No selector specified; use all, paramset, or id command')
 
     if output_type == 'params':
       self.chain.append(['get_params', [], {}])
