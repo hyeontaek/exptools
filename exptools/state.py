@@ -11,7 +11,6 @@ import aiofiles
 
 from exptools.rpc_helper import rpc_export_function, rpc_export_generator
 
-# pylint: disable=too-many-instance-attributes
 class State:
   '''Manage a persistent state.'''
 

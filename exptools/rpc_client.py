@@ -19,8 +19,6 @@ from exptools.resolver import Resolver
 from exptools.scheduler import Scheduler
 from exptools.runner import Runner
 
-# pylint: disable=too-few-public-methods
-# pylint: disable=too-many-instance-attributes
 class Client:
   '''Implement a RPC client that provides access to remote objects.'''
 
@@ -99,7 +97,6 @@ class Client:
         assert raw_data[0] == '1'
     return data
 
-# pylint: disable=too-few-public-methods
 class ObjectProxy:
   '''Serve as a proxy to an object.'''
 
@@ -122,7 +119,6 @@ class ObjectProxy:
       else:
         assert False
 
-# pylint: disable=too-few-public-methods
 class FunctionProxy:
   '''Serve as a proxy to a function.'''
 
@@ -151,7 +147,6 @@ class FunctionProxy:
       raise RuntimeError('Exception returned from the server')
     return response['result']
 
-# pylint: disable=too-few-public-methods
 class GeneratorProxy:
   '''Serve as a proxy to a generator.'''
 

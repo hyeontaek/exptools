@@ -14,7 +14,6 @@ import re
 
 from exptools.rpc_helper import rpc_export_function
 
-# pylint: disable=too-few-public-methods
 class Scheduler:
   '''A scheduler interface.'''
 
@@ -126,7 +125,6 @@ class Scheduler:
     '''Remove a resource.'''
     raise NotImplementedError()
 
-# pylint: disable=too-few-public-methods
 class SerialScheduler(Scheduler):
   '''A scheduler that chooses one job one at a time in order.'''
 

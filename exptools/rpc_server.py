@@ -15,12 +15,9 @@ import traceback
 
 import websockets
 
-# pylint: disable=too-few-public-methods
-# pylint: disable=too-many-instance-attributes
 class Server:
   '''Implement a RPC server that exposes internal objects.'''
 
-  # pylint: disable=too-many-arguments
   def __init__(self, host, port, secret,
                registry, history, queue, resolver, scheduler, runner,
                ready_event, loop):

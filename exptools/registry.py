@@ -11,7 +11,6 @@ from exptools.param import get_hash_id, make_hash_id
 from exptools.rpc_helper import rpc_export_function
 from exptools.state import State
 
-# pylint: disable=too-many-instance-attributes
 class Registry(State):
   '''Manage a parameter registry.'''
 

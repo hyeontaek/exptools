@@ -12,7 +12,6 @@ from exptools.rpc_helper import rpc_export_function
 from exptools.state import State
 from exptools.time import diff_sec, utcnow, format_utc, parse_utc
 
-# pylint: disable=too-many-instance-attributes
 class Queue(State):
   '''Manage a job queue.'''
 

@@ -5,7 +5,6 @@ __all__ = ['Estimator']
 from exptools.param import get_hash_id
 from exptools.time import diff_sec, utcnow, parse_utc
 
-# pylint: disable=too-few-public-methods
 class Estimator:
   '''Estimate the remaining time.'''
 

@@ -64,7 +64,6 @@ def arg_add_options(parser, func):
     else:
       assert False
 
-# pylint: disable=too-few-public-methods
 class CommandHandler:
   '''Handle a command.'''
   def __init__(self, common_args, args, unknown_args, pipe_break, chain, client_pool, loop):
