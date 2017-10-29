@@ -429,7 +429,7 @@ class CommandHandler:
         self.args.ignore_case, self.args.invert_match, self.args.line_regexp)
 
   @arg_export('command_yaql')
-  @arg_define('filter_expr', type=str, help='YAQL expression')
+  @arg_define('filter_expr', type=str, help='YAQL expression for $.where()')
   async def _handle_yaql(self):
     '''filter parameters using a YAQL expression'''
     self._add_to_chain('yaql', self.args.filter_expr)
@@ -457,7 +457,7 @@ class CommandHandler:
           'A': 'started',
           'Q': 'queued',
           'D': 'duplicate',
-        }.get(type_, type_)
+          }.get(type_, type_)
       types.append(type_)
 
     self._add_to_chain('omit', types)
@@ -485,7 +485,7 @@ class CommandHandler:
           'A': 'started',
           'Q': 'queued',
           'D': 'duplicate',
-        }.get(type_, type_)
+          }.get(type_, type_)
       types.append(type_)
 
     self._add_to_chain('only', types)
@@ -827,8 +827,10 @@ class CommandHandler:
     print(f'Moved queued jobs: {count}')
 
   @arg_export('command_kill')
-  @arg_define('-2', '--int', action='store_true', default=False, help='kill using SIGINT')
-  @arg_define('-9', '--kill', action='store_true', default=False, help='kill using SIGKILL')
+  @arg_define('-2', '--int', action='store_true', default=False,
+              help='kill using SIGINT instead of SIGTERM')
+  @arg_define('-9', '--kill', action='store_true', default=False,
+              help='kill using SIGKILL instead of SIGTERM')
   @arg_import('common_job_ids')
   async def _handle_kill(self):
     '''kill started jobs'''

@@ -96,7 +96,7 @@ class Resolver:
     '''Filter parameters using a YAQL expression.'''
     # load yaql lazily for fast startup
     import yaql
-    return yaql.eval(filter_expr, data=params)
+    return yaql.eval(f'$.where({filter_expr})', data=params)
 
   @rpc_export_function
   async def filter_omit(self, params, types):
