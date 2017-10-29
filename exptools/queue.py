@@ -217,7 +217,8 @@ class Queue(State):
       job['pid'] = None
       job['succeeded'] = succeeded
 
-      await self.history.update(job)
+      if succeeded:
+        await self.history.update(job)
 
       self._state['finished_jobs'][job_id] = job
       del self._state['started_jobs'][job_id]
