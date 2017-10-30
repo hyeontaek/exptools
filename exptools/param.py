@@ -4,6 +4,7 @@ __all__ = [
     'get_param_id',
     'get_hash_id',
     'make_hash_id',
+    'make_unique_id',
     'get_name',
     'get_command',
     'get_cwd',
@@ -11,11 +12,14 @@ __all__ = [
     'ParamBuilder',
     ]
 
+import copy
 import collections
 import hashlib
 import json
 
 import base58
+
+from exptools.history import History
 
 _HASH_FUNC = hashlib.blake2b # pylint: disable=no-member
 
@@ -34,6 +38,20 @@ def make_hash_id(param):
   #param_str = json.dumps(filtered_param, sort_keys=True, separators=(',', ':'))
   # Skip first few bytes because they are typically skewed to a few characters in base58
   return 'h-' + base58.b58encode(
+      _HASH_FUNC(param_str.encode('utf-8')).digest())[3:3+20]
+
+def make_unique_id(param):
+  '''Calculate the unique ID of a parameter for parameter equality tests.'''
+  filtered_param = copy.deepcopy(param)
+  if '_' in filtered_param:
+    meta = filtered_param['_']
+    for key in ['param_id', 'hash_id'] + list(History.stub.keys()):
+      if key in meta:
+        del meta[key]
+  param_str = json.dumps(filtered_param, sort_keys=True)
+  #param_str = json.dumps(filtered_param, sort_keys=True, separators=(',', ':'))
+  # Skip first few bytes because they are typically skewed to a few characters in base58
+  return 'u-' + base58.b58encode(
       _HASH_FUNC(param_str.encode('utf-8')).digest())[3:3+20]
 
 def get_name(param):

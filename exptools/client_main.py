@@ -451,10 +451,11 @@ class CommandHandler:
                   'finished', 'f',
                   'started', 'A',
                   'queued', 'Q',
+                  'identical', 'I',
                   'duplicate', 'D'],
               nargs='*',
               help='omit specified parameter types; ' + \
-              'S=success, F=failed, f=finished, A=started, Q=queued, D=duplicate')
+              'S=success, F=failed, f=finished, A=started, Q=queued, I=identical, D=duplicate')
   async def _handle_omit(self):
     '''omit parameters of specified types'''
     types = []
@@ -465,6 +466,7 @@ class CommandHandler:
           'f': 'finished',
           'A': 'started',
           'Q': 'queued',
+          'I': 'identical',
           'D': 'duplicate',
           }.get(type_, type_)
       types.append(type_)
@@ -479,10 +481,11 @@ class CommandHandler:
                   'finished', 'f',
                   'started', 'A',
                   'queued', 'Q',
+                  'identical', 'I',
                   'duplicate', 'D'],
               nargs='*',
               help='only include specified parameter types; ' + \
-              'S=success, F=failed, f=finished, A=started, Q=queued, D=duplicate')
+              'S=success, F=failed, f=finished, A=started, Q=queued, I=identical, D=duplicate')
   async def _handle_only(self):
     '''only include parameters of specified types'''
     types = []
@@ -493,6 +496,7 @@ class CommandHandler:
           'f': 'finished',
           'A': 'started',
           'Q': 'queued',
+          'I': 'identical',
           'D': 'duplicate',
           }.get(type_, type_)
       types.append(type_)

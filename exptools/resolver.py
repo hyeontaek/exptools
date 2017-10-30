@@ -2,7 +2,7 @@
 
 import re
 
-from exptools.param import get_param_id, get_hash_id, get_name
+from exptools.param import get_param_id, get_hash_id, get_name, make_unique_id
 from exptools.rpc_helper import rpc_export_function
 
 class Resolver:
@@ -101,7 +101,8 @@ class Resolver:
   @rpc_export_function
   async def filter_omit(self, params, types):
     '''Omit parameters of specified types'''
-    valid_types = ['succeeded', 'failed', 'finished', 'started', 'queued', 'duplicate']
+    valid_types = [
+        'succeeded', 'failed', 'finished', 'started', 'queued', 'identical', 'duplicate']
     for type_ in types:
       assert type_ in valid_types
 
@@ -137,6 +138,16 @@ class Resolver:
             continue
         new_params.append(param)
 
+      params = new_params
+
+    if 'identical' in types:
+      seen_unique_ids = set()
+      new_params = []
+      for param in params:
+        unique_id = make_unique_id(param)
+        if unique_id not in seen_unique_ids:
+          seen_unique_ids.add(unique_id)
+          new_params.append(param)
       params = new_params
 
     if 'duplicate' in types:
