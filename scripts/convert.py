@@ -9,12 +9,12 @@ def convert(base_dir):
       for job in jobs:
         job['param']['_']['hash_id'] = job['param']['_']['param_id'].replace('p-', 'h-')
         job['param']['_']['param_id'] = 'p-none'
-    json.dump(queue, open('new_queue.json'))
+    json.dump(queue, open('new_queue.json', 'w'))
 
   if os.path.exists('history.json'):
     history = json.load(open('history.json'))
     history = {key.replace('p-', 'h-'): value for key, value in history.items()}
-    json.dump(history, open('new_history.json'))
+    json.dump(history, open('new_history.json', 'w'))
 
   for filename in os.listdir(base_dir):
     if filename.startswith('p-'):
