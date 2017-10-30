@@ -19,8 +19,6 @@ import json
 
 import base58
 
-from exptools.history import History
-
 _HASH_FUNC = hashlib.blake2b # pylint: disable=no-member
 
 def get_param_id(param):
@@ -42,6 +40,9 @@ def make_hash_id(param):
 
 def make_unique_id(param):
   '''Calculate the unique ID of a parameter for parameter equality tests.'''
+  # Load lazily to avoid a cyclic module dependency
+  from exptools.history import History
+
   filtered_param = copy.deepcopy(param)
   if '_' in filtered_param:
     meta = filtered_param['_']
