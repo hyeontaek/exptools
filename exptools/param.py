@@ -51,9 +51,7 @@ def make_unique_id(param):
         del meta[key]
   param_str = json.dumps(filtered_param, sort_keys=True)
   #param_str = json.dumps(filtered_param, sort_keys=True, separators=(',', ':'))
-  # Skip first few bytes because they are typically skewed to a few characters in base58
-  return 'u-' + base58.b58encode(
-      _HASH_FUNC(param_str.encode('utf-8')).digest())[3:3+20]
+  return 'u-' + base58.b58encode(_HASH_FUNC(param_str.encode('utf-8')).digest())
 
 def _get_property(param, key, default):
   '''Return a property of a parameter.'''
