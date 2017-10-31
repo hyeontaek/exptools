@@ -23,39 +23,28 @@ class Resolver:
       param['_'].update(history)
 
   @rpc_export_function
-  async def select_all(self):
-    '''Select all parameters in the registry.'''
-    param_ids = await self.registry.param_ids()
-    params = await self.registry.params(param_ids)
-    await self._augment(params)
-    return params
-
-  @rpc_export_function
-  async def select_paramset(self, paramsets):
-    '''Select parameters in parameter sets.'''
-    param_ids = []
-    for paramset in paramsets:
-      param_ids.extend(await self.registry.paramset(paramset))
-    params = await self.registry.params(param_ids)
-    await self._augment(params)
-    return params
-
-  @rpc_export_function
-  async def select_id(self, ids):
-    '''Select parameters indicated by IDs.'''
-
+  async def select(self, ids):
+    '''Select parameters in the registry.'''
     params = []
     for id_ in ids:
-      if id_.startswith('p-'):
-        params.append(await self.registry.param(id_))
-      elif id_.startswith('h-'):
-        param_ids = self.registry.param_ids_by_hash_id(id_)
+      if id_ == 'all':
+        param_ids = await self.registry.param_ids()
         params.extend(await self.registry.params(param_ids))
+
+      elif id_.startswith('p-'):
+        params.append(await self.registry.param(param_id=id_))
+
+      elif id_.startswith('h-'):
+        param_ids = self.registry.param_ids_by_hash_id(hash_id=id_)
+        params.extend(await self.registry.params(param_ids))
+
       elif id_.startswith('j-'):
         job = await self.queue.job(job_id=id_)
         params.append(job['param'])
+
       else:
-        raise RuntimeError(f'Unrecognized ID: {id_}')
+        param_ids = await self.registry.paramset(paramset=id_)
+        params.extend(await self.registry.params(param_ids))
 
     await self._augment(params)
     return params
@@ -212,18 +201,10 @@ class Resolver:
     data = None
     for i, (operation, args, kwargs) in enumerate(chain):
       # Source
-      if operation == 'all':
+      if operation == 'select':
         if i != 0:
           raise RuntimeError('Parameters already loaded')
-        data = await self.select_all(*args, **kwargs)
-      elif operation == 'paramset':
-        if i != 0:
-          raise RuntimeError('Parameters already loaded')
-        data = await self.select_paramset(*args, **kwargs)
-      elif operation == 'id':
-        if i != 0:
-          raise RuntimeError('Parameters already loaded')
-        data = await self.select_id(*args, **kwargs)
+        data = await self.select(*args, **kwargs)
 
       # Filter
       elif operation == 'grep':

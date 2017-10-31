@@ -57,16 +57,36 @@ class Registry(State):
     self._schedule_dump()
     return 'p-' + base58.b58encode_int(next_param_id)
 
-  async def _add(self, paramset, params, overwrite, append):
-    '''Add parameters.'''
-    assert self.lock.locked()
-    assert not (overwrite and append)
-
-    if paramset in self._state['paramsets']:
-      if not overwrite and not append:
+  @rpc_export_function
+  async def add_paramset(self, paramset):
+    '''Add a new parameter set.'''
+    async with self.lock:
+      if paramset in self._state['paramsets']:
         raise RuntimeError(f'Parameter set already exists: {paramset}')
-      if overwrite:
-        await self._remove(paramset)
+      self._state['paramsets'][paramset] = []
+      return True
+
+  @rpc_export_function
+  async def remove_paramset(self, paramset):
+    '''Remove an existing parameter set.'''
+    async with self.lock:
+      if paramset not in self._state['paramsets']:
+        raise RuntimeError(f'Parameter set does not exist: {paramset}')
+
+      param_ids = self._state['paramsets'][paramset]
+      if param_ids:
+        self._remove(paramset, param_ids)
+        assert not self._state['paramsets'][paramset]
+
+      del self._state['paramsets'][paramset]
+      return True
+
+  async def _add(self, paramset, params):
+    '''Add parameters to a parameter set.'''
+    assert self.lock.locked()
+
+    if paramset not in self._state['paramsets']:
+      raise RuntimeError(f'Parameter set does not exist: {paramset}')
 
     param_ids = []
     for param in params:
@@ -88,28 +108,31 @@ class Registry(State):
       else:
         self._hash_id_index[hash_id].append(param_id)
 
-    if paramset not in self._state['paramsets']:
-      self._state['paramsets'][paramset] = param_ids
-    else:
-      assert append
-      self._state['paramsets'][paramset].extend(param_ids)
+    self._state['paramsets'][paramset].extend(param_ids)
 
-    self.logger.info(f'Added {len(params)} parameters')
+    self.logger.info(f'Added {len(params)} parameters to {paramset}')
     self.lock.notify_all()
     self._schedule_dump()
     return param_ids
 
   @rpc_export_function
-  async def add(self, paramset, params, overwrite=False, append=False):
-    '''Add parameters.'''
+  async def add(self, paramset, params):
+    '''Add parameters to a parameter set.'''
     async with self.lock:
-      return await self._add(paramset, params, overwrite, append)
+      return await self._add(paramset, params)
 
-  async def _remove(self, paramset):
-    '''Remove parameters.'''
+  async def _remove(self, paramset, param_ids):
+    '''Remove parameters from a parameter set.'''
     assert self.lock.locked()
 
-    param_ids = self._state['paramsets'][paramset]
+    if paramset not in self._state['paramsets']:
+      raise RuntimeError(f'Parameter set does not exist: {paramset}')
+
+    # Ensure not to delete parameters in a different parameter set
+    paramset_param_ids = set(self._state['paramsets'][paramset])
+    for param_id in param_ids:
+      if param_id not in paramset_param_ids:
+        raise RuntimeError(f'Parameter {param_id} is not in {paramset}')
 
     for param_id in param_ids:
       param = self._state['params'][param_id]
@@ -123,18 +146,21 @@ class Registry(State):
 
       del self._state['params'][param_id]
 
-    del self._state['paramsets'][paramset]
+    param_ids_set = set(param_ids)
+    self._state['paramsets'][paramset] = [
+        param_id for param_id in self._state['paramsets'][paramset] \
+        if param_id not in param_ids_set]
 
-    self.logger.info(f'Removed {len(param_ids)} parameters')
+    self.logger.info(f'Removed {len(param_ids)} parameters from {paramset}')
     self.lock.notify_all()
     self._schedule_dump()
     return param_ids
 
   @rpc_export_function
-  async def remove(self, paramset):
-    '''Remove parameters.'''
+  async def remove(self, paramset, param_ids):
+    '''Remove parameters from a parameter set.'''
     async with self.lock:
-      return await self._remove(paramset)
+      return await self._remove(paramset, param_ids)
 
   @rpc_export_function
   async def paramsets(self):

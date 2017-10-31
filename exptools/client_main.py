@@ -123,8 +123,8 @@ class CommandHandler:
     if not self.pipe_break:
       raise RuntimeError('Chain can be executed only at the end of the chain')
 
-    if not self.chain or self.chain[0][0] not in ['all', 'paramset', 'id']:
-      raise RuntimeError('No selector specified; use all, paramset, or id command')
+    if not self.chain or self.chain[0][0] != 'select':
+      raise RuntimeError('No selector specified; use select command')
 
     if output_type == 'params':
       self.chain.append(['get_params', [], {}])
@@ -307,57 +307,65 @@ class CommandHandler:
 
   #### Parameter set handlers
 
-  @arg_export('command_paramsets')
-  async def _handle_paramsets(self):
-    '''list existing parameter sets.'''
+  @arg_export('command_paramset')
+  @arg_define('-l', '--list', action='store_true', default=False,
+              help='list existing parameter sets')
+  @arg_define('-d', '--delete', action='store_true', default=False,
+              help='delete existing parameter sets')
+  @arg_define('-m', '--migrate', action='store_true', default=False,
+              help='migrate the output and history of a parameter set into another')
+  @arg_define('paramsets', type=str, nargs='*', help='parameter sets')
+  async def _handle_paramset(self):
+    '''manage parameter sets.'''
+    if int(self.args.list) + int(self.args.delete) + int(self.args.migrate) > 1:
+      raise RuntimeError('-l/--list, -d/--delete, -m/--migrate are mutually exclusive')
+
+    if self.args.list:
+      return await self._handle_paramset_list()
+
+    if self.args.migrate:
+      return await self._handle_paramset_migrate()
+
+    if self.args.delete:
+      return await self._handle_paramset_remove()
+
+    return await self._handle_paramset_add()
+
+  async def _handle_paramset_list(self):
+    if self.args.paramsets:
+      raise RuntimeError('-l/--list does not take parameter sets')
+
     paramsets = await self.client.registry.paramsets()
     print('\n'.join(paramsets))
 
-  @arg_export('command_register')
-  @arg_define('paramset', type=str, help='parameter set')
-  @arg_define('params_file', type=str,
-              help='path to json files containing parameters; ' + \
-                   '"-" reads from standard input; ' + \
-                   '"selected" to use the parameter selection result')
-  @arg_define('-o', '--overwrite', action='store_true', default=False,
-              help='overwrite an existing parameter set if exists')
-  @arg_define('-a', '--append', action='store_true', default=False,
-              help='append to an existing parameter set if exists')
-  async def _handle_register(self):
-    '''register a new parameter set.'''
-    if self.args.overwrite and self.args.append:
-      raise RuntimeError('-o/--overwrite and -a/--append cannot be specified at the same time')
+  async def _handle_paramset_add(self):
+    if not self.args.paramsets:
+      raise RuntimeError('No parameter set is given')
 
-    paramset = self.args.paramset
-    if self.args.params_file == '-':
-      params = json.loads(sys.stdin.read())
-    elif self.args.params_file == 'selected':
-      params = await self._execute_chain('params')
-    else:
-      with open(self.args.params_file) as file:
-        params = json.loads(file.read())
-
-    param_ids = await self.client.registry.add(
-        paramset, params, overwrite=self.args.overwrite, append=self.args.append)
-
-    print(f'Registered parameters for {paramset}: {len(param_ids)}')
-
-  @arg_export('command_unregister')
-  @arg_define('paramsets', type=str, nargs='+', help='parameter sets')
-  async def _handle_unregister(self):
-    '''unregister an existing parameter set.'''
     for paramset in self.args.paramsets:
-      param_ids = await self.client.registry.remove(paramset)
-      print(f'Unregistered parameters for {paramset}: {len(param_ids)}')
+      succeeded = await self.client.registry.add_paramset(paramset)
+      if succeeded:
+        print(f'Parmaeter set added: {paramset}')
+      else:
+        print(f'Failed to add parameter set: {paramset}')
 
-  @arg_export('command_migrate')
-  @arg_define('old_paramset', type=str, help='old parameter set')
-  @arg_define('new_paramset', type=str, help='new parameter set')
-  async def _handle_migrate(self):
-    '''migrate output data for new parameters'''
-    # Use vars() on Namespace to access a field containing -
-    old_paramset = self.args.old_paramset
-    new_paramset = self.args.new_paramset
+  async def _handle_paramset_remove(self):
+    if not self.args.paramsets:
+      raise RuntimeError('No parameter set is given')
+
+    for paramset in self.args.paramsets:
+      succeeded = await self.client.registry.remove_paramset(paramset)
+      if succeeded:
+        print(f'Parmaeter set removed: {paramset}')
+      else:
+        print(f'Failed to remove parameter set: {paramset}')
+
+  async def _handle_paramset_migrate(self):
+    if len(self.args.paramsets) != 2:
+      raise RuntimeError('-m/--migrate take two parameter sets')
+
+    old_paramset = self.args.paramsets[0]
+    new_paramset = self.args.paramsets[1]
 
     old_param_ids = await self.client.registry.paramset(old_paramset)
     new_param_ids = await self.client.registry.paramset(new_paramset)
@@ -379,6 +387,44 @@ class CommandHandler:
     print(f'Migrated: ' + \
           f'{len(migrated_param_id_pairs) + len(migrated_hash_id_pairs)} runner data, ' + \
           f'{len(migrated_hash_id_pairs)} histroy data')
+
+  @arg_export('command_add')
+  @arg_define('paramset', type=str, help='parameter set to modify')
+  @arg_define('-c', '--create', action='store_true', default=False,
+              help='create a new parameter set if not exists')
+  @arg_define('-f', '--file', type=str, default=None,
+              help='load from file instead of using selected parameters; ' + \
+                   'use "-" to use standard input')
+  async def _handle_add(self):
+    '''add parameters to a parameter set'''
+    paramset = self.args.paramset
+    if self.args.file is None:
+      params = await self._execute_chain('params')
+    elif self.args.file == '-':
+      params = json.loads(sys.stdin.read())
+    else:
+      with open(self.args.file) as file:
+        params = json.loads(file.read())
+
+    if self.args.create and paramset not in await self.client.registry.paramsets():
+      succeeded = await self.client.registry.add_paramset(paramset)
+      if succeeded:
+        print(f'Parmaeter set added: {paramset}')
+      else:
+        print(f'Failed to add parameter set: {paramset}')
+
+    param_ids = await self.client.registry.add(paramset, params)
+    print(f'Added parameters to {paramset}: {" ".join(param_ids)}')
+
+  @arg_export('command_rm')
+  @arg_define('paramset', type=str, help='parameter set to modify')
+  async def _handle_rm(self):
+    '''remove parameters from a parameter set'''
+    paramset = self.args.paramset
+    param_ids = await self._execute_chain('param_ids')
+
+    param_ids = await self.client.registry.remove(paramset, param_ids)
+    print(f'Removed parameters to {paramset}: {" ".join(param_ids)}')
 
   @arg_export('command_reset')
   async def _handle_reset(self):
@@ -406,22 +452,11 @@ class CommandHandler:
 
   #### Parameter selection and filtering handlers
 
-  @arg_export('command_all')
-  async def _handle_all(self):
-    '''select all parameters in the registry'''
-    self._add_to_chain('all')
-
-  @arg_export('command_paramset')
-  @arg_define('paramsets', type=str, nargs='+', help='parameter sets')
-  async def _handle_paramset(self):
-    '''select parameters in parameter sets'''
-    self._add_to_chain('paramset', self.args.paramsets)
-
-  @arg_export('command_id')
-  @arg_define('ids', type=str, nargs='+', help='IDs')
-  async def _handle_ids(self):
-    '''select parameters indicated by IDs'''
-    self._add_to_chain('id', self.args.ids)
+  @arg_export('command_select')
+  @arg_define('ids', type=str, nargs='+', help='parameter sets or IDs; use "all" to select all')
+  async def _handle_select(self):
+    '''select parameters in the registry'''
+    self._add_to_chain('select', self.args.ids)
 
   @arg_export('command_grep')
   @arg_define('filter_expr', type=str, help='regular expression')
@@ -581,11 +616,19 @@ class CommandHandler:
       print('')
 
   @arg_export('command_dump')
+  @arg_define('-f', '--file', type=str, default=None,
+              help='write to a file instead of standard output')
   async def _handle_dump(self):
     '''dump parameters in JSON'''
     params = await self._execute_chain('params')
 
-    print(json.dumps(params, sort_keys=True, indent=2))
+    json_data = json.dumps(params, sort_keys=True, indent=2)
+
+    if self.args.file:
+      with open(self.args.file, 'w') as file:
+        file.write(json_data + '\n')
+    else:
+      print(json_data)
 
   #### Queue command handlers
 
@@ -788,10 +831,10 @@ class CommandHandler:
     param_ids = await self.client.registry.remove(paramset)
     #print(f'Unregistered parameters for {paramset}: {len(param_ids)}')
 
-  @arg_export('command_add')
+  @arg_export('command_enqueue')
   @arg_define('-t', '--top', action='store_true', default=False,
               help='insert at the queue top instead of bottom')
-  async def _handle_add(self):
+  async def _handle_enqueue(self):
     '''add parameters to the queue'''
     param_ids = await self._execute_chain('param_ids')
 
@@ -837,10 +880,10 @@ class CommandHandler:
     removed_job_ids = await self.client.queue.remove_finished(finished_job_ids)
     print(f'Removed finished jobs: {len(removed_job_ids)}')
 
-  @arg_export('command_rm')
+  @arg_export('command_cancel')
   @arg_import('common_job_ids')
-  async def _handle_rm(self):
-    '''remove queued jobs'''
+  async def _handle_cancel(self):
+    '''cancel queued jobs'''
     job_ids = await self._parse_job_ids(['queued'])
 
     removed_job_ids = await self.client.queue.remove_queued(job_ids)
@@ -959,11 +1002,13 @@ def make_parser():
   subparsers = parser.add_subparsers(dest='command')
 
   for name, func in _ARG_EXPORTS.items():
-    if name.startswith('command_'):
-      command = name.partition('_')[2]
-      subparser = subparsers.add_parser(command, help=func.__doc__)
+    if not name.startswith('command_'):
+      continue
 
-      arg_add_options(subparser, func)
+    command = name.partition('_')[2]
+    subparser = subparsers.add_parser(command, help=func.__doc__)
+
+    arg_add_options(subparser, func)
 
   return parser
 
