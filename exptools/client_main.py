@@ -316,7 +316,7 @@ class CommandHandler:
               help='migrate the output and history of a parameter set into another')
   @arg_define('paramsets', type=str, nargs='*', help='parameter sets')
   async def _handle_paramset(self):
-    '''manage parameter sets.'''
+    '''manage parameter sets'''
     if int(self.args.list) + int(self.args.delete) + int(self.args.migrate) > 1:
       raise RuntimeError('-l/--list, -d/--delete, -m/--migrate are mutually exclusive')
 
@@ -843,7 +843,7 @@ class CommandHandler:
 
   @arg_export('command_estimate')
   async def _handle_estimate(self):
-    '''estimate execution time instead of adding'''
+    '''estimate execution time instead of enqueueing'''
     hash_ids = await self._execute_chain('hash_ids')
 
     queue_state = await self.client.queue.get_state()
