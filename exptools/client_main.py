@@ -310,6 +310,8 @@ class CommandHandler:
   @arg_export('command_paramset')
   @arg_define('-l', '--list', action='store_true', default=False,
               help='list existing parameter sets')
+  @arg_define('-c', '--create', action='store_true', default=False,
+              help='create new parameter sets even if already exist')
   @arg_define('-d', '--delete', action='store_true', default=False,
               help='delete existing parameter sets')
   @arg_define('-r', '--rename', action='store_true', default=False,
@@ -349,6 +351,13 @@ class CommandHandler:
       raise RuntimeError('No parameter set is given')
 
     for paramset in self.args.paramsets:
+      if self.args.create_always and paramset in await self.client.registry.paramsets():
+        succeeded = await self.client.registry.remove_paramset(paramset)
+        if succeeded:
+          print(f'Parmaeter set removed: {paramset}')
+        else:
+          print(f'Failed to remove parameter set: {paramset}')
+
       succeeded = await self.client.registry.add_paramset(paramset)
       if succeeded:
         print(f'Parmaeter set added: {paramset}')
