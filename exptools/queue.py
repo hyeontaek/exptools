@@ -8,7 +8,8 @@ import concurrent
 
 import base58
 
-from exptools.rpc_helper import rpc_export_function
+from exptools.param import get_param_id, get_hash_id, get_name
+from exptools.rpc_helper import rpc_export_function, rpc_export_generator
 from exptools.state import State
 from exptools.time import diff_sec, utcnow, format_utc, parse_utc
 
@@ -75,6 +76,36 @@ class Queue(State):
       except concurrent.futures.CancelledError:
         # Ignore CancelledError because we caused it
         pass
+
+  def _get_state_fast(self):
+    '''Return the state. Parameter details are removed.'''
+    assert self.lock.locked()
+    state = self._serialize_state()
+
+    for key in ['finished_jobs', 'started_jobs', 'queued_jobs']:
+      for job in state[key]:
+        param = job['param']
+        param['_'] = {
+            'param_id': get_param_id(param),
+            'hash_id': get_hash_id(param),
+            'name': get_name(param),
+            }
+    return state
+
+  @rpc_export_function
+  async def get_state_fast(self):
+    '''Return the state. Parameter details are removed.'''
+    async with self.lock:
+      return self._get_state_fast()
+
+  @rpc_export_generator
+  async def watch_state_fast(self):
+    '''Wait for any changes to the state. Parameter details are removed.'''
+    while True:
+      async with self.lock:
+        self.logger.debug(f'State change notified')
+        yield self._get_state_fast()
+        await self.lock.wait()
 
   async def _update_concurrency(self):
     # Update the current concurrency

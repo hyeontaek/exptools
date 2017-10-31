@@ -248,14 +248,14 @@ class CommandHandler:
       interval = self.args.interval
 
       if not interval:
-        async for state in self.client_watch.queue.watch_state():
+        async for state in self.client_watch.queue.watch_state_fast():
           yield state
       else:
         # Manually access asynchronous generator to use asyncio.wait() for timeout
-        watch_state_gen = self.client_watch.queue.watch_state().__aiter__()
+        watch_state_gen = self.client_watch.queue.watch_state_fast().__aiter__()
         gen_next = asyncio.ensure_future(watch_state_gen.__anext__(), loop=self.loop)
         try:
-          state = await self.client.queue.get_state()
+          state = await self.client.queue.get_state_fast()
           try:
             while True:
               await asyncio.wait([gen_next], timeout=interval, loop=self.loop)
@@ -275,7 +275,7 @@ class CommandHandler:
             # Ignore CancelledError because we caused it
             pass
     else:
-      state = await self.client.queue.get_state()
+      state = await self.client.queue.get_state_fast()
       yield state
 
   @arg_export('common_get_stdout_stderr')
@@ -893,7 +893,7 @@ class CommandHandler:
     '''estimate execution time instead of enqueueing'''
     hash_ids = await self._execute_chain('hash_ids')
 
-    queue_state = await self.client.queue.get_state()
+    queue_state = await self.client.queue.get_state_fast()
     oneshot = await self.client.scheduler.is_oneshot()
     use_color = self.common_args.color == 'yes'
 
