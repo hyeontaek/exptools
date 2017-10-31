@@ -351,7 +351,7 @@ class CommandHandler:
       raise RuntimeError('No parameter set is given')
 
     for paramset in self.args.paramsets:
-      if self.args.create_always and paramset in await self.client.registry.paramsets():
+      if self.args.create and paramset in await self.client.registry.paramsets():
         succeeded = await self.client.registry.remove_paramset(paramset)
         if succeeded:
           print(f'Parmaeter set removed: {paramset}')
