@@ -157,14 +157,14 @@ class Runner:
       retry_delay = get_retry_delay(param)
 
       for i in range(retry + 1):
+        if i > 0:
+          self.logger.info(f'Retrying {job_id}: {i} / {retry}')
+          await asyncio.sleep(retry_delay, loop=self.loop)
+
         succeeded = await self._try(job, job_id, param)
 
         if succeeded:
           break
-
-        if i < retry:
-          self.logger.info(f'Retrying {job_id}: {i + 1} / {retry}')
-          await asyncio.sleep(retry_delay, loop=self.loop)
 
     finally:
       await self.scheduler.retire(job)
