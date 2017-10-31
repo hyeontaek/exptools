@@ -312,22 +312,28 @@ class CommandHandler:
               help='list existing parameter sets')
   @arg_define('-d', '--delete', action='store_true', default=False,
               help='delete existing parameter sets')
+  @arg_define('-r', '--rename', action='store_true', default=False,
+              help='rename an existing parameter set')
   @arg_define('-m', '--migrate', action='store_true', default=False,
               help='migrate the output and history of a parameter set into another')
   @arg_define('paramsets', type=str, nargs='*', help='parameter sets')
   async def _handle_paramset(self):
     '''manage parameter sets'''
-    if int(self.args.list) + int(self.args.delete) + int(self.args.migrate) > 1:
+    if int(self.args.list) + int(self.args.delete) + \
+       int(self.args.rename) + int(self.args.migrate) > 1:
       raise RuntimeError('-l/--list, -d/--delete, -m/--migrate are mutually exclusive')
 
     if self.args.list:
       return await self._handle_paramset_list()
 
-    if self.args.migrate:
-      return await self._handle_paramset_migrate()
-
     if self.args.delete:
       return await self._handle_paramset_remove()
+
+    if self.args.rename:
+      return await self._handle_paramset_rename()
+
+    if self.args.migrate:
+      return await self._handle_paramset_migrate()
 
     return await self._handle_paramset_add()
 
@@ -348,6 +354,19 @@ class CommandHandler:
         print(f'Parmaeter set added: {paramset}')
       else:
         print(f'Failed to add parameter set: {paramset}')
+
+  async def _handle_paramset_rename(self):
+    if len(self.args.paramsets) != 2:
+      raise RuntimeError('-r/--rename take two parameter sets')
+
+    old_paramset = self.args.paramsets[0]
+    new_paramset = self.args.paramsets[1]
+
+    succeeded = await self.client.registry.rename_paramset(old_paramset, new_paramset)
+    if succeeded:
+      print(f'Parmaeter set renamed: {old_paramset} to {new_paramset}')
+    else:
+      print(f'Failed to rename parameter set: {old_paramset} to {new_paramset}')
 
   async def _handle_paramset_remove(self):
     if not self.args.paramsets:

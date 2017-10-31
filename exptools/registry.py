@@ -63,7 +63,21 @@ class Registry(State):
     async with self.lock:
       if paramset in self._state['paramsets']:
         raise RuntimeError(f'Parameter set already exists: {paramset}')
+
       self._state['paramsets'][paramset] = []
+      return True
+
+  @rpc_export_function
+  async def rename_paramset(self, old_paramset, new_paramset):
+    '''Add a new parameter set.'''
+    async with self.lock:
+      if old_paramset not in self._state['paramsets']:
+        raise RuntimeError(f'Parameter set does not exist: {old_paramset}')
+      if new_paramset in self._state['paramsets']:
+        raise RuntimeError(f'Parameter set already exists: {new_paramset}')
+
+      self._state['paramsets'][new_paramset] = self._state['paramsets'][old_paramset]
+      del self._state['paramsets'][old_paramset]
       return True
 
   @rpc_export_function
