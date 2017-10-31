@@ -55,13 +55,29 @@ def arg_define(*args, **kwargs):
     return func
   return _wrapper
 
+def arg_define_exclusive(*args, **kwargs):
+  '''Add an argument option.'''
+  def _wrapper(func):
+    if 'arg_defs' not in dir(func):
+      func.arg_defs = []
+    func.arg_defs.insert(0, ('add-exclusive', args, kwargs))
+    return func
+  return _wrapper
+
 def arg_add_options(parser, func):
   '''Add argument options defined for the function to the parser.'''
+  exclusive_sets = collections.OrderedDict()
   for arg_def in func.arg_defs:
     if arg_def[0] == 'import':
       arg_add_options(parser, _ARG_EXPORTS[arg_def[1]])
     elif arg_def[0] == 'add':
       parser.add_argument(*arg_def[1], **arg_def[2])
+    elif arg_def[0] == 'add-exclusive':
+      if arg_def[1][0] not in exclusive_sets:
+        group = parser.add_mutually_exclusive_group()
+        exclusive_sets[arg_def[1][0]] = group
+      group = exclusive_sets[arg_def[1][0]]
+      group.add_argument(*arg_def[1][1:], **arg_def[2])
     else:
       assert False
 
@@ -263,10 +279,12 @@ class CommandHandler:
       yield state
 
   @arg_export('common_get_stdout_stderr')
-  @arg_define('-o', '--stdout', action='store_true', default=True,
-              help='read stdout (default)')
-  @arg_define('-e', '--stderr', action='store_false', dest='stdout',
-              help='read stderr instead of stdout', default=argparse.SUPPRESS)
+  @arg_define_exclusive('stdout',
+                        '-o', '--stdout', action='store_true', default=True,
+                        help='read stdout (default)')
+  @arg_define_exclusive('stdout',
+                        '-e', '--stderr', action='store_false', dest='stdout',
+                        help='read stderr instead of stdout', default=argparse.SUPPRESS)
   async def _get_stdout_stderr(self):
     return self.args.stdout
 
@@ -308,23 +326,24 @@ class CommandHandler:
   #### Parameter set handlers
 
   @arg_export('command_paramset')
-  @arg_define('-l', '--list', action='store_true', default=False,
-              help='list existing parameter sets')
-  @arg_define('-c', '--create', action='store_true', default=False,
-              help='create new parameter sets even if already exist')
-  @arg_define('-d', '--delete', action='store_true', default=False,
-              help='delete existing parameter sets')
-  @arg_define('-r', '--rename', action='store_true', default=False,
-              help='rename an existing parameter set')
-  @arg_define('-m', '--migrate', action='store_true', default=False,
-              help='migrate the output and history of a parameter set into another')
+  @arg_define_exclusive('operation',
+                        '-l', '--list', action='store_true', default=False,
+                        help='list existing parameter sets')
+  @arg_define_exclusive('operation',
+                        '-c', '--create', action='store_true', default=False,
+                        help='create new parameter sets even if already exist')
+  @arg_define_exclusive('operation',
+                        '-d', '--delete', action='store_true', default=False,
+                        help='delete existing parameter sets')
+  @arg_define_exclusive('operation',
+                        '-r', '--rename', action='store_true', default=False,
+                        help='rename an existing parameter set')
+  @arg_define_exclusive('operation',
+                        '-m', '--migrate', action='store_true', default=False,
+                        help='migrate the output and history of a parameter set into another')
   @arg_define('paramsets', type=str, nargs='*', help='parameter sets')
   async def _handle_paramset(self):
     '''manage parameter sets'''
-    if int(self.args.list) + int(self.args.delete) + \
-       int(self.args.rename) + int(self.args.migrate) > 1:
-      raise RuntimeError('-l/--list, -d/--delete, -m/--migrate are mutually exclusive')
-
     if self.args.list:
       return await self._handle_paramset_list()
 
@@ -930,23 +949,21 @@ class CommandHandler:
     print(f'Removed finished jobs: {len(removed_job_ids)}')
 
   @arg_export('command_kill')
-  @arg_define('-2', '--int', action='store_true', default=False,
-              help='kill using SIGINT instead of SIGTERM')
-  @arg_define('-9', '--kill', action='store_true', default=False,
-              help='kill using SIGKILL instead of SIGTERM')
+  @arg_define_exclusive('signal_type',
+                        '-2', '--int', action='store_const', const='int', dest='signal_type',
+                        default=argparse.SUPPRESS, help='kill using SIGINT')
+  @arg_define_exclusive('signal_type',
+                        '-9', '--kill', action='store_const', const='kill', dest='signal_type',
+                        default=argparse.SUPPRESS, help='kill using SIGKILL')
+  @arg_define_exclusive('signal_type',
+                        '-15', '--term', action='store_const', const='term', dest='signal_type',
+                        default='term', help='kill using SIGTERM (default)')
   @arg_import('common_job_ids')
   async def _handle_kill(self):
     '''kill started jobs'''
-    if self.args.int and self.args.kill:
-      raise RuntimeError('-2/--int and -9/--kill cannot be specified at the same time')
     job_ids = await self._parse_job_ids(['started'])
 
-    if self.args.int:
-      killed_job_ids = await self.client.runner.kill(job_ids, signal_type='int')
-    elif self.args.kill:
-      killed_job_ids = await self.client.runner.kill(job_ids, signal_type='kill')
-    else:
-      killed_job_ids = await self.client.runner.kill(job_ids)
+    killed_job_ids = await self.client.runner.kill(job_ids, signal_type=self.args.signal_type)
 
     print(f'Killed jobs: {len(killed_job_ids)}')
 
