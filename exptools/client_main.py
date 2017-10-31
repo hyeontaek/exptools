@@ -890,6 +890,27 @@ class CommandHandler:
     print('Estimated: ' + \
         await format_estimated_time(estimator, queue_state, oneshot, use_color))
 
+  @arg_export('command_move')
+  @arg_define('offset', type=int,
+              help='offset in the queue position; ' + \
+                   'negative numbers to prioritize, positive numbers for deprioritize')
+  @arg_import('common_job_ids')
+  async def _handle_move(self):
+    '''priorize or deprioritize queued jobs'''
+    job_ids = await self._parse_job_ids(['queued'])
+
+    moved_job_ids = await self.client.queue.move(job_ids, self.args.offset)
+    print(f'Moved queued jobs: {len(moved_job_ids)}')
+
+  @arg_export('command_cancel')
+  @arg_import('common_job_ids')
+  async def _handle_cancel(self):
+    '''cancel queued jobs'''
+    job_ids = await self._parse_job_ids(['queued'])
+
+    removed_job_ids = await self.client.queue.remove_queued(job_ids)
+    print(f'Removed queued jobs: {len(removed_job_ids)}')
+
   @arg_export('command_retry')
   @arg_import('common_job_ids')
   @arg_define('-t', '--top', action='store_true', default=False,
@@ -907,27 +928,6 @@ class CommandHandler:
 
     removed_job_ids = await self.client.queue.remove_finished(finished_job_ids)
     print(f'Removed finished jobs: {len(removed_job_ids)}')
-
-  @arg_export('command_cancel')
-  @arg_import('common_job_ids')
-  async def _handle_cancel(self):
-    '''cancel queued jobs'''
-    job_ids = await self._parse_job_ids(['queued'])
-
-    removed_job_ids = await self.client.queue.remove_queued(job_ids)
-    print(f'Removed queued jobs: {len(removed_job_ids)}')
-
-  @arg_export('command_move')
-  @arg_define('offset', type=int,
-              help='offset in the queue position; ' + \
-                   'negative numbers to prioritize, positive numbers for deprioritize')
-  @arg_import('common_job_ids')
-  async def _handle_move(self):
-    '''priorize or deprioritize queued jobs'''
-    job_ids = await self._parse_job_ids(['queued'])
-
-    moved_job_ids = await self.client.queue.move(job_ids, self.args.offset)
-    print(f'Moved queued jobs: {len(moved_job_ids)}')
 
   @arg_export('command_kill')
   @arg_define('-2', '--int', action='store_true', default=False,
