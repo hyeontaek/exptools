@@ -147,7 +147,8 @@ class Runner:
 
     if not await self.queue.set_started(job_id):
       self.logger.info(f'Ignoring missing job {job_id}')
-      return True
+      await self.scheduler.retire(job)
+      return
 
     succeeded = False
     try:
