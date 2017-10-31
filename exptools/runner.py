@@ -149,6 +149,7 @@ class Runner:
       self.logger.info(f'Ignoring missing job {job_id}')
       return True
 
+    succeeded = False
     try:
       param = job['param']
 
@@ -167,6 +168,8 @@ class Runner:
 
     finally:
       await self.scheduler.retire(job)
+
+      await self.queue.set_finished(job_id, succeeded)
 
   async def _try(self, job, job_id, param):
     '''Run a job.'''
@@ -259,8 +262,6 @@ class Runner:
       if proc.returncode == 0:
         self._make_symlinks(param_id, hash_id, job_id)
 
-        await self.queue.set_finished(job_id, True)
-
         succeeded = True
 
     except concurrent.futures.CancelledError:
@@ -271,9 +272,6 @@ class Runner:
       self.logger.exception(f'Exception while running job {job_id}')
 
     finally:
-      if not succeeded:
-        await self.queue.set_finished(job_id, False)
-
       self._remove_tmp_symlinks(param_id, hash_id)
 
     return succeeded
