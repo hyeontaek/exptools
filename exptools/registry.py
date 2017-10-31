@@ -75,7 +75,7 @@ class Registry(State):
 
       param_ids = self._state['paramsets'][paramset]
       if param_ids:
-        self._remove(paramset, param_ids)
+        await self._remove(paramset, param_ids)
         assert not self._state['paramsets'][paramset]
 
       del self._state['paramsets'][paramset]
