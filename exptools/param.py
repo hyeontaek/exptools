@@ -55,13 +55,18 @@ def make_unique_id(param):
   return 'u-' + base58.b58encode(
       _HASH_FUNC(param_str.encode('utf-8')).digest())[3:3+20]
 
+def _get_property(param, key, default):
+  '''Return a property of a parameter.'''
+  value = default
+  if '_' in param and key in param['_']:
+    value = param['_'][key]
+  elif key in param:
+    value = param[key]
+  return value
+
 def get_name(param):
   '''Return the name of a parameter.'''
-  name = None
-  if '_' in param and 'name' in param['_']:
-    name = param['_']['name']
-  elif 'name' in param:
-    name = param['name']
+  name = _get_property(param, 'name', None)
   if name is None:
     filtered_param = {key: value for key, value in param.items() if not key.startswith('_')}
     name = json.dumps(filtered_param, sort_keys=True)
@@ -69,32 +74,26 @@ def get_name(param):
 
 def get_command(param):
   '''Return the command of a parameter.'''
-  command = None
-  if '_' in param and 'command' in param['_']:
-    command = param['_']['command']
-  elif 'command' in param:
-    command = param['command']
+  command = _get_property(param, 'command', None)
   if command is None:
     raise RuntimeError(f'command must exists for parameter {get_param_id(param)}')
   return command
 
 def get_cwd(param):
   '''Return the working directory of a parameter.'''
-  cwd = None
-  if '_' in param and 'cwd' in param['_']:
-    cwd = param['_']['cwd']
-  elif 'cwd' in param:
-    cwd = param['cwd']
-  return cwd
+  return _get_property(param, 'cwd', None)
+
+def get_retry(param):
+  '''Return the retry of a parameter.'''
+  return _get_property(param, 'retry', 0)
+
+def get_retry_delay(param):
+  '''Return the retry delay of a parameter.'''
+  return _get_property(param, 'retry_delay', 0)
 
 def get_time_limit(param):
   '''Return the time limit of a parameter.'''
-  time_limit = 0
-  if '_' in param and 'time_limit' in param['_']:
-    time_limit = param['_']['time_limit']
-  elif 'time_limit' in param:
-    time_limit = param['time_limit']
-  return time_limit
+  return _get_property(param, 'time_limit', 0)
 
 class ParamBuilder(collections.ChainMap):
   '''A parameter builder.'''

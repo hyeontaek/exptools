@@ -14,7 +14,9 @@ import aiofiles
 import aionotify
 
 from exptools.file import mkdirs, rmdirs
-from exptools.param import get_param_id, get_hash_id, get_name, get_command, get_cwd, get_time_limit
+from exptools.param import (
+    get_param_id, get_hash_id,
+    get_name, get_command, get_cwd, get_retry, get_retry_delay, get_time_limit)
 from exptools.rpc_helper import rpc_export_function, rpc_export_generator
 
 class Runner:
@@ -89,6 +91,8 @@ class Runner:
     env['EXPTOOLS_HASH_ID'] = get_hash_id(param)
     env['EXPTOOLS_NAME'] = get_name(param)
     env['EXPTOOLS_CWD'] = get_cwd(param) or os.getcwd()
+    env['EXPTOOLS_RETRY'] = str(get_retry(param))
+    env['EXPTOOLS_RETRY_DELAY'] = str(get_retry_delay(param))
     env['EXPTOOLS_TIME_LIMIT'] = str(get_time_limit(param))
 
     env['EXPTOOLS_JOB_JSON_PATH'] = os.path.join(job_dir, 'job.json')
@@ -140,7 +144,33 @@ class Runner:
     '''Run a job.'''
 
     job_id = job['job_id']
-    param = job['param']
+
+    if not await self.queue.set_started(job_id):
+      self.logger.info(f'Ignoring missing job {job_id}')
+      return True
+
+    try:
+      param = job['param']
+
+      retry = get_retry(param)
+      retry_delay = get_retry_delay(param)
+
+      for i in range(retry + 1):
+        succeeded = await self._try(job, job_id, param)
+
+        if succeeded:
+          break
+
+        if i < retry:
+          self.logger.info(f'Retrying {job_id}: {i + 1} / {retry}')
+          await asyncio.sleep(retry_delay, loop=self.loop)
+
+    finally:
+      await self.scheduler.retire(job)
+
+  async def _try(self, job, job_id, param):
+    '''Run a job.'''
+
     param_id = get_param_id(param)
     hash_id = get_hash_id(param)
 
@@ -152,14 +182,12 @@ class Runner:
     succeeded = False
 
     try:
-      if not await self.queue.set_started(job_id):
-        self.logger.info(f'Ignoring missing job {job_id}')
-        return
-
       self.logger.info(f'Launching job {job_id}: {name}')
 
       # Make the job directory
       job_dir = os.path.join(self.base_dir, job['job_id'])
+      if os.path.exists(job_dir):
+        rmdirs(job_dir)
       os.mkdir(job_dir)
 
       self._create_job_files(job, job_dir)
@@ -248,7 +276,7 @@ class Runner:
 
       self._remove_tmp_symlinks(param_id, hash_id)
 
-      await self.scheduler.retire(job)
+    return succeeded
 
   async def _watch_status(self, job_id, job_dir):
     '''Watch the status file changes.'''
