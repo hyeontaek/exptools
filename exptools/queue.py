@@ -5,6 +5,7 @@ __all__ = ['Queue']
 import asyncio
 import collections
 import concurrent
+import copy
 
 import base58
 
@@ -84,7 +85,7 @@ class Queue(State):
 
     for key in ['finished_jobs', 'started_jobs', 'queued_jobs']:
       for job in state[key]:
-        param = job['param']
+        param = copy.deepcopy(job['param'])
         param['_'] = {
             'param_id': get_param_id(param),
             'hash_id': get_hash_id(param),
