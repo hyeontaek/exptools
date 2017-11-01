@@ -158,22 +158,28 @@ class Runner:
       retry = get_retry(param)
       retry_delay = get_retry_delay(param)
 
-      for i in range(retry + 1):
-        if i > 0:
-          self.logger.info(f'Retrying {job_id}: {i} / {retry}')
+      while True:
+        current_retry = job['retry']
+        if current_retry > retry:
+          break
+
+        if current_retry > 0:
+          self.logger.info(f'Retrying {job_id}: {current_retry} / {retry}')
           await asyncio.sleep(retry_delay, loop=self.loop)
 
-        succeeded = await self._try(job, job_id, param)
+        succeeded = await self._try(job, job_id, param, current_retry)
 
         if succeeded:
           break
+
+        await self.queue.increment_retry(job_id)
 
     finally:
       await self.scheduler.retire(job)
 
       await self.queue.set_finished(job_id, succeeded)
 
-  async def _try(self, job, job_id, param):
+  async def _try(self, job, job_id, param, current_retry):
     """Run a job."""
 
     param_id = get_param_id(param)
@@ -328,6 +334,7 @@ class Runner:
   @rpc_export_function
   async def kill(self, job_ids=None, signal_type=None):
     """Kill started jobs."""
+    assert signal_type in [None, 'int', 'kill', 'term']
     queue_state = await self.queue.get_state()
 
     if job_ids is None:
@@ -338,6 +345,7 @@ class Runner:
     for job in queue_state['started_jobs']:
       if job['job_id'] in job_ids_set and job['pid'] is not None:
         job_id = job['job_id']
+        await self.queue.increment_retry(job_id, set_to_max=True)
         if signal_type == 'int':
           self.logger.info(f'Interrupting job {job_id}')
           os.kill(job['pid'], signal.SIGINT)
@@ -348,7 +356,7 @@ class Runner:
           self.logger.info(f'Terminating job {job_id}')
           os.kill(job['pid'], signal.SIGTERM)
         else:
-          raise RuntimeError(f'Unknown signal: {signal_type}')
+          assert False
         count += 1
     return job_ids
 

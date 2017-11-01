@@ -9,7 +9,7 @@ import copy
 
 import base58
 
-from exptools.param import get_param_id, get_hash_id, get_name
+from exptools.param import get_param_id, get_hash_id, get_name, get_retry
 from exptools.rpc_helper import rpc_export_function, rpc_export_generator
 from exptools.state import State
 from exptools.time import diff_sec, utcnow, format_utc, parse_utc
@@ -158,6 +158,7 @@ class Queue(State):
           'finished': None,
           'duration': None,
           'resources': None,
+          'retry': 0,
           'pid': None,
           'status': None,
           'succeeded': None,
@@ -209,6 +210,24 @@ class Queue(State):
     self.logger.info(f'Updated job {job_id} resources')
     self._schedule_dump()
     return True
+
+  async def increment_retry(self, job_id, set_to_max=False):
+    """Update trials of a started job."""
+    async with self.lock:
+      if job_id not in self._state['started_jobs']:
+        return False
+
+      job = self._state['started_jobs'][job_id]
+      retry = job['retry']
+      if not set_to_max:
+        retry += 1
+      else:
+        retry = get_retry(job['param'])
+
+      job['retry'] = retry
+      self.logger.info(f'Updated job {job_id} retry count {retry}')
+      self._schedule_dump()
+      return True
 
   async def set_pid(self, job_id, pid):
     """Update pid of a started job."""
