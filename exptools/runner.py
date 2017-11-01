@@ -8,6 +8,7 @@ import concurrent
 import json
 import logging
 import os
+import random
 import signal
 
 import aiofiles
@@ -197,8 +198,10 @@ class Runner:
 
       # Make the job directory
       job_dir = os.path.join(self.base_dir, job['job_id'])
-      if os.path.exists(job_dir):
-        rmdirs(job_dir)
+      if current_retry > 0:
+        job_dir += f'_{current_retry}'
+      while os.path.exists(job_dir):
+        job_dir += f'_{random.randint(0, 9999)}'
       os.mkdir(job_dir)
 
       self._create_job_files(job, job_dir)
