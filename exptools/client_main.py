@@ -10,7 +10,6 @@ import concurrent
 import json
 import os
 import pprint
-import random
 import sys
 
 import termcolor
@@ -885,17 +884,22 @@ class CommandHandler:
               help='command and arguments')
   async def _handle_adhoc(self):
     """add an adhoc parameter to the queue"""
-    paramset = f'_adhoc_{random.randint(0, 9999)}_'
+    paramset = 'adhoc'
     param = {'command': list(self.args.arguments)}
 
-    param_ids = await self.client.registry.add(paramset, [param], overwrite=False, append=False)
-    # print(f'Registered parameters for {paramset}: {len(param_ids)}')
+    if paramset not in await self.client.registry.paramsets():
+      succeeded = await self.client.registry.add_paramset(paramset)
+      if succeeded:
+        print(f'Parameter set added: {paramset}')
+      else:
+        print(f'Failed to add parameter set: {paramset}')
+        return
+
+    param_ids = await self.client.registry.add(paramset, [param])
+    print(f'Registered parameters for {paramset}: {len(param_ids)}')
 
     job_ids = await self.client.queue.add(param_ids, not self.args.top)
     print(f'Added queued jobs: {" ".join(job_ids)}')
-
-    param_ids = await self.client.registry.remove(paramset)
-    # print(f'Unregistered parameters for {paramset}: {len(param_ids)}')
 
   @arg_export('command_enqueue')
   @arg_define('-t', '--top', action='store_true', default=False,
