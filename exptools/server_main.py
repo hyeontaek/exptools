@@ -1,4 +1,4 @@
-'''Run the RPC server.'''
+"""Run the RPC server."""
 
 __all__ = ['server_main']
 
@@ -10,16 +10,17 @@ import logging
 import os
 import secrets
 
-from exptools.registry import Registry
 from exptools.history import History
 from exptools.queue import Queue
+from exptools.registry import Registry
 from exptools.resolver import Resolver
-from exptools.scheduler import get_scheduler
-from exptools.runner import Runner
 from exptools.rpc_server import Server
+from exptools.runner import Runner
+from exptools.scheduler import get_scheduler
+
 
 def make_parser():
-  '''Return a new argument parser.'''
+  """Return a new argument parser."""
   parser = argparse.ArgumentParser(description='Run the exptools server.')
 
   parser.add_argument('--host', type=str, default='localhost',
@@ -50,8 +51,9 @@ def make_parser():
 
   return parser
 
+
 async def server_main(argv, ready_event, loop):
-  '''Run the server.'''
+  """Run the server."""
   logging_fmt = '%(asctime)s %(name)-19s %(levelname)-8s %(message)s'
   logging.basicConfig(format=logging_fmt, level=logging.INFO)
 
@@ -79,26 +81,26 @@ async def server_main(argv, ready_event, loop):
   queue = Queue(args.queue_file, registry, history, loop)
   resolver = Resolver(registry, history, queue, loop)
   scheduler = get_scheduler(args.scheduler_type)(
-      args.scheduler_mode, args.scheduler_file, queue, history, loop)
+    args.scheduler_mode, args.scheduler_file, queue, history, loop)
   runner = Runner(args.output_dir, queue, scheduler, loop)
   server = Server(
-      args.host, args.port, secret,
-      registry, history, queue, resolver, scheduler, runner,
-      ready_event, loop)
+    args.host, args.port, secret,
+    registry, history, queue, resolver, scheduler, runner,
+    ready_event, loop)
 
   state_tasks = [
-      asyncio.ensure_future(registry.run_forever(), loop=loop),
-      asyncio.ensure_future(history.run_forever(), loop=loop),
-      asyncio.ensure_future(queue.run_forever(), loop=loop),
-      asyncio.ensure_future(scheduler.run_forever(), loop=loop),
-      ]
+    asyncio.ensure_future(registry.run_forever(), loop=loop),
+    asyncio.ensure_future(history.run_forever(), loop=loop),
+    asyncio.ensure_future(queue.run_forever(), loop=loop),
+    asyncio.ensure_future(scheduler.run_forever(), loop=loop),
+  ]
 
   server_task = asyncio.ensure_future(server.run_forever(), loop=loop)
 
   execution_tasks = [
-      asyncio.ensure_future(runner.run_forever(), loop=loop),
-      server_task,
-      ]
+    asyncio.ensure_future(runner.run_forever(), loop=loop),
+    server_task,
+  ]
 
   try:
     await server_task

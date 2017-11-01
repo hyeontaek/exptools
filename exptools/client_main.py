@@ -1,9 +1,9 @@
-'''Handle client commands.'''
+"""Handle client commands."""
 
 __all__ = ['client_main']
 
-import asyncio
 import argparse
+import asyncio
 import base64
 import collections
 import concurrent
@@ -15,57 +15,70 @@ import sys
 
 import termcolor
 
-from exptools.rpc_client import Client
 from exptools.estimator import Estimator
-from exptools.time import (
-    job_elapsed_time,
-    format_sec_short,
-    format_estimated_time,
-    format_local,
-    parse_utc
-    )
 from exptools.param import get_param_id, get_hash_id, get_name
+from exptools.rpc_client import Client
+from exptools.time import (
+  job_elapsed_time,
+  format_sec_short,
+  format_estimated_time,
+  format_local,
+  parse_utc
+)
 
 _ARG_EXPORTS = collections.OrderedDict()
 
+
 def arg_export(name):
-  '''Export an argument set.'''
+  """Export an argument set."""
+
   def _wrapper(func):
     _ARG_EXPORTS[name] = func
     if 'arg_defs' not in dir(func):
       func.arg_defs = []
     return func
+
   return _wrapper
 
+
 def arg_import(name):
-  '''Import an argument set.'''
+  """Import an argument set."""
+
   def _wrapper(func):
     if 'arg_defs' not in dir(func):
       func.arg_defs = []
     func.arg_defs.insert(0, ('import', name))
     return func
+
   return _wrapper
 
+
 def arg_define(*args, **kwargs):
-  '''Add an argument option.'''
+  """Add an argument option."""
+
   def _wrapper(func):
     if 'arg_defs' not in dir(func):
       func.arg_defs = []
     func.arg_defs.insert(0, ('add', args, kwargs))
     return func
+
   return _wrapper
 
+
 def arg_define_exclusive(*args, **kwargs):
-  '''Add an argument option.'''
+  """Add an argument option."""
+
   def _wrapper(func):
     if 'arg_defs' not in dir(func):
       func.arg_defs = []
     func.arg_defs.insert(0, ('add-exclusive', args, kwargs))
     return func
+
   return _wrapper
 
+
 def arg_add_options(parser, func):
-  '''Add argument options defined for the function to the parser.'''
+  """Add argument options defined for the function to the parser."""
   exclusive_sets = collections.OrderedDict()
   for arg_def in func.arg_defs:
     if arg_def[0] == 'import':
@@ -81,8 +94,10 @@ def arg_add_options(parser, func):
     else:
       assert False
 
+
 class CommandHandler:
-  '''Handle a command.'''
+  """Handle a command."""
+
   def __init__(self, common_args, args, unknown_args, pipe_break, chain, client_pool, loop):
     self.common_args = common_args
     self.args = args
@@ -97,10 +112,10 @@ class CommandHandler:
     self._handler = None
 
   async def _init(self):
-    '''Initialize the command handler.'''
+    """Initialize the command handler."""
     command = self.args.command
 
-    #if command not in ['d', 'dum', 'dump', 'select', 'grep']:
+    # if command not in ['d', 'dum', 'dump', 'select', 'grep']:
     if 'client' not in self.client_pool:
       secret = json.load(open(self.common_args.secret_file))
       client = Client(self.common_args.host, self.common_args.port, secret, self.loop)
@@ -119,14 +134,14 @@ class CommandHandler:
     self._handler = _ARG_EXPORTS['command_' + command]
 
   async def handle(self):
-    '''Handle a command.'''
+    """Handle a command."""
     await self._init()
     await self._handler(self)
     if self.pipe_break and self.chain:
       args = argparse.Namespace()
       args.command = 'd'
       sink = CommandHandler(
-          self.common_args, args, None, True, self.chain, self.client_pool, self.loop)
+        self.common_args, args, None, True, self.chain, self.client_pool, self.loop)
       await sink.handle()
       assert not self.chain
 
@@ -160,13 +175,13 @@ class CommandHandler:
 
   @arg_export('common_job_ids')
   @arg_define('job_ids', type=str, nargs='+',
-              help='job IDs; ' + \
-              '"all" selects all jobs; ' + \
-              '"first[-N]" selects to the first [N] job; ' + \
-              '"last[-N]" selects to the last [N] job; ' + \
-              'BEGIN:END selects all jobs between two IDs (inclusive).')
+              help=('job IDs; ' +
+                    '"all" selects all jobs; ' +
+                    '"first[-N]" selects to the first [N] job; ' +
+                    '"last[-N]" selects to the last [N] job; ' +
+                    'BEGIN:END selects all jobs between two IDs (inclusive).'))
   async def _parse_job_ids(self, job_types):
-    '''Parse job IDs.'''
+    """Parse job IDs."""
     all_job_ids = await self.client.queue.job_ids(job_types)
 
     job_ids = []
@@ -237,8 +252,8 @@ class CommandHandler:
   @arg_export('common_get_queue_state')
   @arg_define('-f', '--follow', action='store_true', default=False, help='follow queue changes')
   @arg_define('-i', '--interval', type=float, default=0.,
-              help='refresh interval in seconds for no queue change; ' + \
-                   'use 0 to refresh upon changes only (default: %(default)s)')
+              help=('refresh interval in seconds for no queue change; ' +
+                    'use 0 to refresh upon changes only (default: %(default)s)'))
   @arg_define('-s', '--stop-empty', action='store_true', default=False,
               help='stop upon empty queue')
   @arg_define('-c', '--clear-screen', action='store_true', default=False,
@@ -292,21 +307,21 @@ class CommandHandler:
 
   @arg_export('command_start')
   async def _handle_start(self):
-    '''start the scheduler'''
+    """start the scheduler"""
     succeeded = await self.client.scheduler.start()
     print('Scheduler started' if succeeded else 'Failed to start scheduler')
 
   @arg_export('command_stop')
   async def _handle_stop(self):
-    '''stop the scheduler'''
+    """stop the scheduler"""
     succeeded = await self.client.scheduler.stop()
     print('Scheduler stopped' if succeeded else 'Failed to stop scheduler')
 
   @arg_export('command_oneshot')
   async def _handle_oneshot(self):
-    '''schedule only one job and stop'''
+    """schedule only one job and stop"""
     succeeded = await self.client.scheduler.set_oneshot()
-    print('Scheduler oneshot mode set' \
+    print('Scheduler oneshot mode set'
           if succeeded else 'Failed to set oneshot mode')
 
   @arg_export('command_resource')
@@ -314,7 +329,7 @@ class CommandHandler:
   @arg_define('key', type=str, help='resource key')
   @arg_define('value', type=str, help='resource value')
   async def _handle_resource(self):
-    '''add or remove a resource'''
+    """add or remove a resource"""
     if self.args.operation == 'add':
       succeeded = await self.client.scheduler.add_resource(self.args.key, self.args.value)
     elif self.args.operation == 'remove':
@@ -343,7 +358,7 @@ class CommandHandler:
                         help='migrate the output and history of a parameter set into another')
   @arg_define('paramsets', type=str, nargs='*', help='parameter sets')
   async def _handle_paramset(self):
-    '''manage parameter sets'''
+    """manage parameter sets"""
     if self.args.list:
       return await self._handle_paramset_list()
 
@@ -373,13 +388,13 @@ class CommandHandler:
       if self.args.create and paramset in await self.client.registry.paramsets():
         succeeded = await self.client.registry.remove_paramset(paramset)
         if succeeded:
-          print(f'Parmaeter set removed: {paramset}')
+          print(f'Parameter set removed: {paramset}')
         else:
           print(f'Failed to remove parameter set: {paramset}')
 
       succeeded = await self.client.registry.add_paramset(paramset)
       if succeeded:
-        print(f'Parmaeter set added: {paramset}')
+        print(f'Parameter set added: {paramset}')
       else:
         print(f'Failed to add parameter set: {paramset}')
 
@@ -392,7 +407,7 @@ class CommandHandler:
 
     succeeded = await self.client.registry.rename_paramset(old_paramset, new_paramset)
     if succeeded:
-      print(f'Parmaeter set renamed: {old_paramset} to {new_paramset}')
+      print(f'Parameter set renamed: {old_paramset} to {new_paramset}')
     else:
       print(f'Failed to rename parameter set: {old_paramset} to {new_paramset}')
 
@@ -403,7 +418,7 @@ class CommandHandler:
     for paramset in self.args.paramsets:
       succeeded = await self.client.registry.remove_paramset(paramset)
       if succeeded:
-        print(f'Parmaeter set removed: {paramset}')
+        print(f'Parameter set removed: {paramset}')
       else:
         print(f'Failed to remove parameter set: {paramset}')
 
@@ -417,9 +432,9 @@ class CommandHandler:
     old_param_ids = await self.client.registry.paramset(old_paramset)
     new_param_ids = await self.client.registry.paramset(new_paramset)
 
-    old_hash_ids = [get_hash_id(param) for param \
+    old_hash_ids = [get_hash_id(param) for param
                     in await self.client.registry.params(old_param_ids)]
-    new_hash_ids = [get_hash_id(param) for param \
+    new_hash_ids = [get_hash_id(param) for param
                     in await self.client.registry.params(new_param_ids)]
 
     if len(old_param_ids) != len(new_param_ids):
@@ -428,22 +443,22 @@ class CommandHandler:
     param_id_pairs = list(zip(old_param_ids, new_param_ids))
     hash_id_pairs = list(zip(old_hash_ids, new_hash_ids))
 
-    migrated_param_id_pairs, migrated_hash_id_pairs = \
-        await self.client.runner.migrate(param_id_pairs, hash_id_pairs)
+    migrated_param_id_pairs, migrated_hash_id_pairs = (
+      await self.client.runner.migrate(param_id_pairs, hash_id_pairs))
     migrated_hash_id_pairs = await self.client.history.migrate(hash_id_pairs)
-    print(f'Migrated: ' + \
-          f'{len(migrated_param_id_pairs) + len(migrated_hash_id_pairs)} runner data, ' + \
-          f'{len(migrated_hash_id_pairs)} histroy data')
+    print(f'Migrated: ' +
+          f'{len(migrated_param_id_pairs) + len(migrated_hash_id_pairs)} runner data, ' +
+          f'{len(migrated_hash_id_pairs)} history data')
 
   @arg_export('command_add')
   @arg_define('paramset', type=str, help='parameter set to modify')
   @arg_define('-c', '--create', action='store_true', default=False,
               help='create a new parameter set if not exists')
   @arg_define('-f', '--file', type=str, default=None,
-              help='load from file instead of using selected parameters; ' + \
-                   'use "-" to use standard input')
+              help=('load from file instead of using selected parameters; ' +
+                    'use "-" to use standard input'))
   async def _handle_add(self):
-    '''add parameters to a parameter set'''
+    """add parameters to a parameter set"""
     paramset = self.args.paramset
     if self.args.file is None:
       params = await self._execute_chain('params')
@@ -456,7 +471,7 @@ class CommandHandler:
     if self.args.create and paramset not in await self.client.registry.paramsets():
       succeeded = await self.client.registry.add_paramset(paramset)
       if succeeded:
-        print(f'Parmaeter set added: {paramset}')
+        print(f'Parameter set added: {paramset}')
       else:
         print(f'Failed to add parameter set: {paramset}')
 
@@ -466,7 +481,7 @@ class CommandHandler:
   @arg_export('command_rm')
   @arg_define('paramset', type=str, help='parameter set to modify')
   async def _handle_rm(self):
-    '''remove parameters from a parameter set'''
+    """remove parameters from a parameter set"""
     paramset = self.args.paramset
     param_ids = await self._execute_chain('param_ids')
 
@@ -475,7 +490,7 @@ class CommandHandler:
 
   @arg_export('command_reset')
   async def _handle_reset(self):
-    '''reset history data of matching IDs'''
+    """reset history data of matching IDs"""
     hash_ids = await self._execute_chain('hash_ids')
 
     reset_hash_ids = await self.client.history.reset(hash_ids)
@@ -483,7 +498,7 @@ class CommandHandler:
 
   @arg_export('command_prune')
   async def _handle_prune(self):
-    '''prune unknown output and history data'''
+    """prune unknown output and history data"""
     valid_param_ids = set(await self.client.registry.param_ids())
     valid_hash_ids = set(await self.client.registry.hash_ids())
 
@@ -494,7 +509,7 @@ class CommandHandler:
     hash_ids = set(await self.client.history.hash_ids()) - valid_hash_ids
     removed_hash_ids = await self.client.history.remove(list(hash_ids))
 
-    print(f'Pruned: {len(removed_outputs)} runner data, ' + \
+    print(f'Pruned: {len(removed_outputs)} runner data, ' +
           f'{len(removed_hash_ids)} history data')
 
   #### Parameter selection and filtering handlers
@@ -502,7 +517,7 @@ class CommandHandler:
   @arg_export('command_select')
   @arg_define('ids', type=str, nargs='+', help='parameter sets or IDs; use "all" to select all')
   async def _handle_select(self):
-    '''select parameters in the registry'''
+    """select parameters in the registry"""
     self._add_to_chain('select', self.args.ids)
 
   @arg_export('command_grep')
@@ -514,43 +529,44 @@ class CommandHandler:
   @arg_define('-x', '--line-regexp', action='store_true', default=False,
               help='match the whole line')
   async def _handle_grep(self):
-    '''filter parameters using a regular expression on parameter names'''
+    """filter parameters using a regular expression on parameter names"""
     self._add_to_chain(
-        'grep', self.args.filter_expr,
-        self.args.ignore_case, self.args.invert_match, self.args.line_regexp)
+      'grep', self.args.filter_expr,
+      self.args.ignore_case, self.args.invert_match, self.args.line_regexp)
 
   @arg_export('command_yaql')
   @arg_define('filter_expr', type=str, help='YAQL expression for $.where()')
   async def _handle_yaql(self):
-    '''filter parameters using a YAQL expression'''
+    """filter parameters using a YAQL expression"""
     self._add_to_chain('yaql', self.args.filter_expr)
 
   @arg_export('command_omit')
   @arg_define('omit_types',
               choices=[
-                  'succeeded', 'S',
-                  'failed', 'F',
-                  'finished', 'f',
-                  'started', 'A',
-                  'queued', 'Q',
-                  'identical', 'I',
-                  'duplicate', 'D'],
+                'succeeded', 'S',
+                'failed', 'F',
+                'finished', 'f',
+                'started', 'A',
+                'queued', 'Q',
+                'identical', 'I',
+                'duplicate', 'D'],
               nargs='*',
-              help='omit specified parameter types; ' + \
-              'S=success, F=failed, f=finished, A=started, Q=queued, I=identical, D=duplicate')
+              help=('omit specified parameter types; ' +
+                    'S=success, F=failed, f=finished, A=started, Q=queued, ' +
+                    'I=identical, D=duplicate'))
   async def _handle_omit(self):
-    '''omit parameters of specified types'''
+    """omit parameters of specified types"""
     types = []
     for type_ in self.args.omit_types:
       type_ = {
-          'S': 'succeeded',
-          'F': 'failed',
-          'f': 'finished',
-          'A': 'started',
-          'Q': 'queued',
-          'I': 'identical',
-          'D': 'duplicate',
-          }.get(type_, type_)
+        'S': 'succeeded',
+        'F': 'failed',
+        'f': 'finished',
+        'A': 'started',
+        'Q': 'queued',
+        'I': 'identical',
+        'D': 'duplicate',
+      }.get(type_, type_)
       types.append(type_)
 
     self._add_to_chain('omit', types)
@@ -558,29 +574,30 @@ class CommandHandler:
   @arg_export('command_only')
   @arg_define('only_types',
               choices=[
-                  'succeeded', 'S',
-                  'failed', 'F',
-                  'finished', 'f',
-                  'started', 'A',
-                  'queued', 'Q',
-                  'identical', 'I',
-                  'duplicate', 'D'],
+                'succeeded', 'S',
+                'failed', 'F',
+                'finished', 'f',
+                'started', 'A',
+                'queued', 'Q',
+                'identical', 'I',
+                'duplicate', 'D'],
               nargs='*',
-              help='only include specified parameter types; ' + \
-              'S=success, F=failed, f=finished, A=started, Q=queued, I=identical, D=duplicate')
+              help=('only include specified parameter types; ' +
+                    'S=success, F=failed, f=finished, A=started, Q=queued, ' +
+                    'I=identical, D=duplicate'))
   async def _handle_only(self):
-    '''only include parameters of specified types'''
+    """only include parameters of specified types"""
     types = []
     for type_ in self.args.only_types:
       type_ = {
-          'S': 'succeeded',
-          'F': 'failed',
-          'f': 'finished',
-          'A': 'started',
-          'Q': 'queued',
-          'I': 'identical',
-          'D': 'duplicate',
-          }.get(type_, type_)
+        'S': 'succeeded',
+        'F': 'failed',
+        'f': 'finished',
+        'A': 'started',
+        'Q': 'queued',
+        'I': 'identical',
+        'D': 'duplicate',
+      }.get(type_, type_)
       types.append(type_)
 
     self._add_to_chain('only', types)
@@ -590,14 +607,14 @@ class CommandHandler:
               help='sort parameters by the given key (e.g., _.finished)')
   @arg_define('-r', '--reverse', action='store_true', default=False, help='reverse sorting')
   async def _handle_sort(self):
-    '''sort parameters'''
+    """sort parameters"""
     self._add_to_chain('sort', self.args.sort_key, reverse=self.args.reverse)
 
   #### Parameter dump handlers
 
   @arg_export('command_d')
   async def _handle_d(self):
-    '''summarize parameters'''
+    """summarize parameters"""
     params = await self._execute_chain('params')
 
     param_id_max_len = self._get_param_id_max_len(params)
@@ -613,7 +630,7 @@ class CommandHandler:
   @arg_define('-l', '--local', action='store_true', default=False,
               help='show local time instead of UTC')
   async def _handle_du(self):
-    '''summarize parameters with time information'''
+    """summarize parameters with time information"""
     params = await self._execute_chain('params')
 
     param_id_max_len = self._get_param_id_max_len(params)
@@ -653,7 +670,7 @@ class CommandHandler:
 
   @arg_export('command_dum')
   async def _handle_dum(self):
-    '''dump parameters in Python'''
+    """dump parameters in Python"""
     params = await self._execute_chain('params')
 
     for param in params:
@@ -666,7 +683,7 @@ class CommandHandler:
   @arg_define('-f', '--file', type=str, default=None,
               help='write to a file instead of standard output')
   async def _handle_dump(self):
-    '''dump parameters in JSON'''
+    """dump parameters in JSON"""
     params = await self._execute_chain('params')
 
     json_data = json.dumps(params, sort_keys=True, indent=2)
@@ -682,7 +699,7 @@ class CommandHandler:
   @arg_export('command_s')
   @arg_import('common_get_queue_state')
   async def _handle_s(self):
-    '''summarize the queue state'''
+    """summarize the queue state"""
     estimator = Estimator(self.client.history)
     use_color = self.common_args.color == 'yes'
 
@@ -695,24 +712,24 @@ class CommandHandler:
         os.system('clear')
       print(output)
 
-      if self.args.stop_empty and \
-         not queue_state['started_jobs'] and (oneshot or not queue_state['queued_jobs']):
+      if (self.args.stop_empty and
+          not queue_state['started_jobs'] and (oneshot or not queue_state['queued_jobs'])):
         break
 
   @arg_export('command_status')
   @arg_import('common_get_queue_state')
   @arg_define('-l', '--limit', type=int, default=0,
-              help='limit the number of jobs for each job type; ' + \
-                   'use 0 to show all (default: %(default)s)')
+              help=('limit the number of jobs for each job type; ' +
+                    'use 0 to show all (default: %(default)s)'))
   @arg_define('job_types', type=str, nargs='*',
               choices=['all', 'finished', 'started', 'queued'], default='all',
               help='specify job types to show (default: %(default)s)')
   async def _handle_status(self):
-    '''show the queue state'''
+    """show the queue state"""
     limit = self.args.limit
 
     if self.args.job_types == 'all':
-      job_types = set(['finished', 'started', 'queued'])
+      job_types = {'finished', 'started', 'queued'}
     else:
       job_types = set(self.args.job_types)
 
@@ -722,16 +739,18 @@ class CommandHandler:
     if use_color:
       colored = termcolor.colored
     else:
-      colored = lambda s, *args, **kwargs: s
+      def colored(s, *args, **kwargs):  # pylint: disable=invalid-name,unused-argument
+        """Use no color."""
+        return s
 
     async for queue_state in self._get_queue_state():
       oneshot = await self.client.scheduler.is_oneshot()
 
       output = ''
 
-      all_jobs = queue_state['finished_jobs'] + \
-                 queue_state['started_jobs'] + \
-                 queue_state['queued_jobs']
+      all_jobs = (queue_state['finished_jobs'] +
+                  queue_state['started_jobs'] +
+                  queue_state['queued_jobs'])
       all_params = [job['param'] for job in all_jobs]
 
       job_id_max_len = self._get_job_id_max_len(all_jobs)
@@ -742,8 +761,8 @@ class CommandHandler:
         failed_count = len(queue_state['finished_jobs']) - succeeded_count
         finished_jobs_color = 'red' if failed_count else 'green'
         output += colored(
-            f"Finished jobs (S:{succeeded_count} / F:{failed_count})",
-            finished_jobs_color, attrs=['reverse']) + '\n'
+          f"Finished jobs (S:{succeeded_count} / F:{failed_count})",
+          finished_jobs_color, attrs=['reverse']) + '\n'
 
         if limit and len(queue_state['finished_jobs']) > limit:
           line = colored('  ', finished_jobs_color, attrs=['reverse'])
@@ -779,8 +798,8 @@ class CommandHandler:
 
       if 'started' in job_types:
         output += colored(
-            f"Started jobs (A:{len(queue_state['started_jobs'])})",
-            'cyan', attrs=['reverse']) + '\n'
+          f"Started jobs (A:{len(queue_state['started_jobs'])})",
+          'cyan', attrs=['reverse']) + '\n'
 
         if limit and len(queue_state['started_jobs']) > limit:
           line = colored('  ', 'cyan', attrs=['reverse'])
@@ -799,8 +818,8 @@ class CommandHandler:
 
           line = colored('  ', 'cyan', attrs=['reverse'])
           line += f" {job['job_id']:{job_id_max_len}} {param_id:{param_id_max_len}} {hash_id}"
-          line += f' [{format_sec_short(job_elapsed_time(job)):>7}]' + \
-              f'+[{format_sec_short(max(rem - last_rem, 0)):>7}]'
+          line += f' [{format_sec_short(job_elapsed_time(job)):>7}]'
+          line += f'+[{format_sec_short(max(rem - last_rem, 0)):>7}]'
           line += '  '
           last_rem = rem
           line += f"{name}"
@@ -810,8 +829,8 @@ class CommandHandler:
 
       if 'queued' in job_types:
         output += colored(
-            f"Queued jobs (Q:{len(queue_state['queued_jobs'])})",
-            'blue', attrs=['reverse']) + '  '
+          f"Queued jobs (Q:{len(queue_state['queued_jobs'])})",
+          'blue', attrs=['reverse']) + '  '
 
         output += 'Scheduler: '
         if oneshot:
@@ -847,7 +866,7 @@ class CommandHandler:
 
         output += '\n'
 
-      #output += f"Concurrency: {queue_state['concurrency']}"
+      # output += f"Concurrency: {queue_state['concurrency']}"
 
       output += await format_estimated_time(estimator, queue_state, oneshot, use_color) + '\n'
 
@@ -855,8 +874,8 @@ class CommandHandler:
         os.system('clear')
       print(output)
 
-      if self.args.stop_empty and \
-         not queue_state['started_jobs'] and (oneshot or not queue_state['queued_jobs']):
+      if (self.args.stop_empty and
+          not queue_state['started_jobs'] and (oneshot or not queue_state['queued_jobs'])):
         break
 
   @arg_export('command_adhoc')
@@ -865,24 +884,24 @@ class CommandHandler:
   @arg_define('arguments', type=str, nargs='+',
               help='command and arguments')
   async def _handle_adhoc(self):
-    '''add an adhoc parameter to the queue'''
+    """add an adhoc parameter to the queue"""
     paramset = f'_adhoc_{random.randint(0, 9999)}_'
     param = {'command': list(self.args.arguments)}
 
     param_ids = await self.client.registry.add(paramset, [param], overwrite=False, append=False)
-    #print(f'Registered parameters for {paramset}: {len(param_ids)}')
+    # print(f'Registered parameters for {paramset}: {len(param_ids)}')
 
     job_ids = await self.client.queue.add(param_ids, not self.args.top)
     print(f'Added queued jobs: {" ".join(job_ids)}')
 
     param_ids = await self.client.registry.remove(paramset)
-    #print(f'Unregistered parameters for {paramset}: {len(param_ids)}')
+    # print(f'Unregistered parameters for {paramset}: {len(param_ids)}')
 
   @arg_export('command_enqueue')
   @arg_define('-t', '--top', action='store_true', default=False,
               help='insert at the queue top instead of bottom')
   async def _handle_enqueue(self):
-    '''add parameters to the queue'''
+    """add parameters to the queue"""
     param_ids = await self._execute_chain('param_ids')
 
     job_ids = await self.client.queue.add(param_ids, not self.args.top)
@@ -890,7 +909,7 @@ class CommandHandler:
 
   @arg_export('command_estimate')
   async def _handle_estimate(self):
-    '''estimate execution time instead of enqueueing'''
+    """estimate execution time instead of enqueueing"""
     hash_ids = await self._execute_chain('hash_ids')
 
     queue_state = await self.client.queue.get_state_fast()
@@ -899,23 +918,23 @@ class CommandHandler:
 
     estimator = Estimator(self.client.history)
 
-    print('Current:   ' + \
-        await format_estimated_time(estimator, queue_state, oneshot, use_color))
+    print('Current:   ' +
+          await format_estimated_time(estimator, queue_state, oneshot, use_color))
 
     queue_state['queued_jobs'].extend(
-        [{'job_id': 'dummy-j-{i}', 'param': {'_': {'hash_id': hash_id}}} \
-          for i, hash_id in enumerate(hash_ids)])
+      [{'job_id': 'dummy-j-{i}', 'param': {'_': {'hash_id': hash_id}}}
+       for i, hash_id in enumerate(hash_ids)])
 
-    print('Estimated: ' + \
-        await format_estimated_time(estimator, queue_state, oneshot, use_color))
+    print('Estimated: ' +
+          await format_estimated_time(estimator, queue_state, oneshot, use_color))
 
   @arg_export('command_move')
   @arg_define('offset', type=int,
-              help='offset in the queue position; ' + \
-                   'negative numbers to prioritize, positive numbers for deprioritize')
+              help=('offset in the queue position; ' +
+                    'negative numbers to prioritize, positive numbers for deprioritize'))
   @arg_import('common_job_ids')
   async def _handle_move(self):
-    '''priorize or deprioritize queued jobs'''
+    """prioritize or deprioritize queued jobs"""
     job_ids = await self._parse_job_ids(['queued'])
 
     moved_job_ids = await self.client.queue.move(job_ids, self.args.offset)
@@ -924,7 +943,7 @@ class CommandHandler:
   @arg_export('command_cancel')
   @arg_import('common_job_ids')
   async def _handle_cancel(self):
-    '''cancel queued jobs'''
+    """cancel queued jobs"""
     job_ids = await self._parse_job_ids(['queued'])
 
     removed_job_ids = await self.client.queue.remove_queued(job_ids)
@@ -936,7 +955,7 @@ class CommandHandler:
               help='insert at the queue top instead of bottom')
   @arg_define('-d', '--dismiss', action='store_true', default=False, help='dismiss retried jobs')
   async def _handle_retry(self):
-    '''retry finished jobs'''
+    """retry finished jobs"""
     finished_job_ids = await self._parse_job_ids(['finished'])
 
     finished_jobs = await self.client.queue.jobs(finished_job_ids)
@@ -960,7 +979,7 @@ class CommandHandler:
                         default='term', help='kill using SIGTERM (default)')
   @arg_import('common_job_ids')
   async def _handle_kill(self):
-    '''kill started jobs'''
+    """kill started jobs"""
     job_ids = await self._parse_job_ids(['started'])
 
     killed_job_ids = await self.client.runner.kill(job_ids, signal_type=self.args.signal_type)
@@ -970,7 +989,7 @@ class CommandHandler:
   @arg_export('command_dismiss')
   @arg_import('common_job_ids')
   async def _handle_dismiss(self):
-    '''clear finished jobs'''
+    """clear finished jobs"""
     job_ids = await self._parse_job_ids(['finished'])
 
     removed_job_ids = await self.client.queue.remove_finished(job_ids)
@@ -982,7 +1001,7 @@ class CommandHandler:
   @arg_import('common_get_stdout_stderr')
   @arg_import('common_job_ids')
   async def _handle_cat(self):
-    '''show the job output'''
+    """show the job output"""
     stdout = await self._get_stdout_stderr()
 
     job_ids = await self._parse_job_ids(['finished', 'started'])
@@ -998,7 +1017,7 @@ class CommandHandler:
   @arg_import('common_get_stdout_stderr')
   @arg_import('common_job_ids')
   async def _handle_head(self):
-    '''show the head of job output'''
+    """show the head of job output"""
     stdout = await self._get_stdout_stderr()
 
     job_ids = await self._parse_job_ids(['finished', 'started'])
@@ -1014,7 +1033,7 @@ class CommandHandler:
   @arg_import('common_get_stdout_stderr')
   @arg_import('common_job_ids')
   async def _handle_tail(self):
-    '''show the tail of job output'''
+    """show the tail of job output"""
     stdout = await self._get_stdout_stderr()
 
     job_ids = await self._parse_job_ids(['finished', 'started'])
@@ -1026,11 +1045,13 @@ class CommandHandler:
       data = base64.b64decode(data.encode('ascii')).decode('utf-8')
       print(data, end='')
 
+
 def make_parser():
-  '''Return a new argument parser.'''
-  parser = argparse.ArgumentParser(description=\
-      '''interact with the exptools server.
-      ":" connects commands with pipes, and "::" chains commands without pipe connection.''')
+  """Return a new argument parser."""
+  parser = argparse.ArgumentParser(
+    description=(
+      'interact with the exptools server.' +
+      '":" connects commands with pipes, and "::" chains commands without pipe connection.'))
 
   parser.add_argument('--host', type=str, default='localhost',
                       help='the hostname of the server (default: %(default)s)')
@@ -1057,8 +1078,9 @@ def make_parser():
 
   return parser
 
+
 async def client_main(argv, loop):
-  '''Parse arguments and process a client command.'''
+  """Parse arguments and process a client command."""
   parser = make_parser()
 
   group_start = -1
@@ -1082,6 +1104,7 @@ async def client_main(argv, loop):
     else:
       args, unknown_args = parser.parse_args(argv[group_start:group_end]), None
     return args, unknown_args
+
   args_list = []
   pipe_break = []
   for i in range(group_start, len(argv)):
@@ -1103,5 +1126,5 @@ async def client_main(argv, loop):
   for i, (args, unknown_args) in enumerate(args_list):
     # Run a handler
     handler = CommandHandler(
-        common_args, args, unknown_args, pipe_break[i], chain, client_pool, loop)
+      common_args, args, unknown_args, pipe_break[i], chain, client_pool, loop)
     await handler.handle()

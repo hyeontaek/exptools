@@ -1,6 +1,7 @@
 import json
 import os
 
+
 def convert(base_dir):
   if os.path.exists('queue.json'):
     queue = json.load(open('queue.json'))
@@ -23,6 +24,7 @@ def convert(base_dir):
       path = os.path.join(base_dir, filename)
       new_path = os.path.join(base_dir, new_filename)
       os.rename(path, new_path)
+
 
 if __name__ == '__main__':
   convert('output')

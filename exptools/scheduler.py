@@ -1,10 +1,10 @@
-'''Define a scheduler interface and implement basic schedulers.'''
+"""Define a scheduler interface and implement basic schedulers."""
 
 __all__ = [
-    'Scheduler',
-    'SerialScheduler',
-    'get_scheduler',
-    ]
+  'Scheduler',
+  'SerialScheduler',
+  'get_scheduler',
+]
 
 import asyncio
 import json
@@ -14,8 +14,9 @@ import re
 
 from exptools.rpc_helper import rpc_export_function
 
+
 class Scheduler:
-  '''A scheduler interface.'''
+  """A scheduler interface."""
 
   def __init__(self, initial_mode, path, queue, history, loop):
     self.initial_mode = initial_mode
@@ -42,7 +43,7 @@ class Scheduler:
       self.logger.warning(f'No configuration found at {self.path}')
 
   async def run_forever(self):
-    '''Run the scheduler.  Note that scheduling jobs is done by schedule().'''
+    """Run the scheduler.  Note that scheduling jobs is done by schedule()."""
     if self.initial_mode == 'start':
       await self.start()
     elif self.initial_mode == 'stop':
@@ -58,17 +59,17 @@ class Scheduler:
 
   @rpc_export_function
   async def is_running(self):
-    '''Return True if running.'''
+    """Return True if running."""
     return self.running
 
   @rpc_export_function
   async def is_oneshot(self):
-    '''Return True if oneshot mode is enabled.'''
+    """Return True if oneshot mode is enabled."""
     return self.oneshot
 
   @rpc_export_function
   async def start(self):
-    '''Start the scheduler.'''
+    """Start the scheduler."""
     if self.running and not self.oneshot:
       self.logger.error('Already started')
       return False
@@ -83,7 +84,7 @@ class Scheduler:
 
   @rpc_export_function
   async def set_oneshot(self):
-    '''Start the scheduler and stop it after scheduling one job.'''
+    """Start the scheduler and stop it after scheduling one job."""
     async with self.lock:
       self.logger.info('Using oneshot mode')
       self.running = True
@@ -94,7 +95,7 @@ class Scheduler:
 
   @rpc_export_function
   async def stop(self):
-    '''Stop the runner.'''
+    """Stop the runner."""
     if not self.running:
       self.logger.error('Already stopped')
       return False
@@ -108,28 +109,29 @@ class Scheduler:
     return True
 
   async def schedule(self):
-    '''Schedule a job.'''
+    """Schedule a job."""
     raise NotImplementedError()
 
   async def retire(self, job):
-    '''Return resources of a finished job.'''
+    """Return resources of a finished job."""
     pass
 
   @rpc_export_function
   async def add_resource(self, key, value):
-    '''Add a resource.'''
+    """Add a resource."""
     raise NotImplementedError()
 
   @rpc_export_function
   async def remove_resource(self, key, value):
-    '''Remove a resource.'''
+    """Remove a resource."""
     raise NotImplementedError()
 
+
 class SerialScheduler(Scheduler):
-  '''A scheduler that chooses one job one at a time in order.'''
+  """A scheduler that chooses one job one at a time in order."""
 
   async def schedule(self):
-    '''Schedule a job.'''
+    """Schedule a job."""
     async for queue_state in self.queue.watch_state():
       # Ignore the queue change if not running
       if not self.running:
@@ -152,21 +154,23 @@ class SerialScheduler(Scheduler):
       yield queue_state['queued_jobs'][0]
 
   async def retire(self, job):
-    '''Return resources of a finished job.'''
+    """Return resources of a finished job."""
     pass
 
   @rpc_export_function
   async def add_resource(self, key, value):
-    '''Add a resource.'''
+    """Add a resource."""
     return False
 
   @rpc_export_function
   async def remove_resource(self, key, value):
-    '''Remove a resource.'''
+    """Remove a resource."""
     return False
 
+
 class GreedyScheduler(Scheduler):
-  '''A scheduler that chooses the first job if it can run.'''
+  """A scheduler that chooses the first job if it can run."""
+
   def __init__(self, *args, **kwargs):
     super().__init__(*args, **kwargs)
 
@@ -183,7 +187,7 @@ class GreedyScheduler(Scheduler):
     self.logger.info(f'Resources: {self.resources}')
 
   async def schedule(self):
-    '''Schedule a job.'''
+    """Schedule a job."""
     import pyomo.environ
     import pyomo.opt
 
@@ -238,11 +242,11 @@ class GreedyScheduler(Scheduler):
           resource_pattern, requirement = demands[d]
 
           candidate_resources = [
-              r for r in model.r \
-              if re.fullmatch(resource_pattern, r) is not None]
+            r for r in model.r
+            if re.fullmatch(resource_pattern, r) is not None]
 
           if not candidate_resources:
-            raise RuntimeError(f'No suitable resource found for {job_id}: ' + \
+            raise RuntimeError(f'No suitable resource found for {job_id}: ' +
                                f'{resource_pattern}')
 
           return sum([model.x[r] for r in candidate_resources]) == requirement
@@ -254,18 +258,18 @@ class GreedyScheduler(Scheduler):
           return sum([model.x[r] for r in model.r])
 
         model.objective = pyomo.environ.Objective(
-            rule=_objective_rule, sense=pyomo.environ.minimize)
+          rule=_objective_rule, sense=pyomo.environ.minimize)
 
         # Solve
         opt = pyomo.opt.SolverFactory('cbc')
         results = opt.solve(model)
 
-        #model.pprint()
-        #model.x.display()
+        # model.pprint()
+        # model.x.display()
 
         # pylint: disable=no-member
-        if results.solver.status != pyomo.opt.SolverStatus.ok or \
-          results.solver.termination_condition != pyomo.opt.TerminationCondition.optimal:
+        if (results.solver.status != pyomo.opt.SolverStatus.ok or
+            results.solver.termination_condition != pyomo.opt.TerminationCondition.optimal):
           # No suitable solution found
           self.logger.warning(f'Insufficient resources for {job_id}')
           continue
@@ -291,11 +295,11 @@ class GreedyScheduler(Scheduler):
         self.logger.info(f'Scheduled {job_id}: {allocation}')
         yield job
 
-      except Exception: # pylint: disable=broad-except
+      except Exception:  # pylint: disable=broad-except
         self.logger.exception(f'Exception while scheduling {job_id}')
 
   async def retire(self, job):
-    '''Return resources of a finished job.'''
+    """Return resources of a finished job."""
     try:
       job_id = job['job_id']
       allocation = job['resources']
@@ -303,12 +307,12 @@ class GreedyScheduler(Scheduler):
         for key, value in allocation.items():
           self.resources[key] = self.resources.get(key, 0) + value
         self.logger.info(f'Retired {job_id}: {allocation}')
-    except Exception: # pylint: disable=broad-except
+    except Exception:  # pylint: disable=broad-except
       self.logger.exception(f'Exception while retiring {job_id}')
 
   @rpc_export_function
   async def add_resource(self, key, value):
-    '''Add a resource.'''
+    """Add a resource."""
     assert isinstance(key, str)
     assert isinstance(value, int)
     assert value >= 0
@@ -318,7 +322,7 @@ class GreedyScheduler(Scheduler):
 
   @rpc_export_function
   async def remove_resource(self, key, value):
-    '''Remove a resource.'''
+    """Remove a resource."""
     assert isinstance(key, str)
     assert isinstance(value, int)
     assert value >= 0
@@ -327,10 +331,11 @@ class GreedyScheduler(Scheduler):
       self.resources[key] = self.resources.get(key, 0) - value
     return True
 
+
 def get_scheduler(scheduler):
-  '''Return a matching scheduler.'''
+  """Return a matching scheduler."""
   schedulers = {
-      'serial': SerialScheduler,
-      'greedy': GreedyScheduler,
-      }
+    'serial': SerialScheduler,
+    'greedy': GreedyScheduler,
+  }
   return schedulers[scheduler]

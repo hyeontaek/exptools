@@ -1,4 +1,4 @@
-'''Implement the RPC client.'''
+"""Implement the RPC client."""
 
 __all__ = ['Client']
 
@@ -12,15 +12,16 @@ import sys
 
 import websockets
 
-from exptools.registry import Registry
 from exptools.history import History
 from exptools.queue import Queue
+from exptools.registry import Registry
 from exptools.resolver import Resolver
-from exptools.scheduler import Scheduler
 from exptools.runner import Runner
+from exptools.scheduler import Scheduler
+
 
 class Client:
-  '''Implement a RPC client that provides access to remote objects.'''
+  """Implement a RPC client that provides access to remote objects."""
 
   def __init__(self, host, port, secret, loop=asyncio.get_event_loop()):
     self.host = host
@@ -42,15 +43,15 @@ class Client:
     self.websocket = None
 
   async def connect(self):
-    '''Connect to the server.'''
-    self.websocket = \
-        await websockets.connect(f'ws://{self.host}:{self.port}', max_size=self.max_size)
+    """Connect to the server."""
+    self.websocket = (
+      await websockets.connect(f'ws://{self.host}:{self.port}', max_size=self.max_size))
 
     authed = await self._authenticate(self.websocket)
     assert authed, 'Authentication failed'
 
   async def _authenticate(self, websocket):
-    '''Perform authentication.'''
+    """Perform authentication."""
     token = await websocket.recv()
 
     secret = self.secret.encode('ascii')
@@ -65,14 +66,14 @@ class Client:
     return True
 
   def get_next_id(self):
-    '''Return the next request ID.'''
+    """Return the next request ID."""
     next_id = self.next_id
     self.next_id += 1
     return next_id
 
   async def send_data(self, websocket, data):
-    '''Send data.'''
-    chunk_count = max(math.ceil(len(data) / self.max_chunk_size), 1)
+    """Send data."""
+    chunk_count = max(int(math.ceil(len(data) / self.max_chunk_size)), 1)
 
     for i in range(chunk_count):
       chunk = data[i * self.max_chunk_size:(i + 1) * self.max_chunk_size]
@@ -81,8 +82,9 @@ class Client:
       else:
         await websocket.send('2' + chunk)
 
-  async def recv_data(self, websocket):
-    '''Receive data.'''
+  @staticmethod
+  async def recv_data(websocket):
+    """Receive data."""
     data = ''
     while True:
       raw_data = await websocket.recv()
@@ -97,8 +99,9 @@ class Client:
         assert raw_data[0] == '1'
     return data
 
+
 class ObjectProxy:
-  '''Serve as a proxy to an object.'''
+  """Serve as a proxy to an object."""
 
   def __init__(self, client, object_name, class_):
     self.client = client
@@ -119,22 +122,23 @@ class ObjectProxy:
       else:
         assert False
 
+
 class FunctionProxy:
-  '''Serve as a proxy to a function.'''
+  """Serve as a proxy to a function."""
 
   def __init__(self, object_proxy, method_name):
     self.client = object_proxy.client
     self.method = f'function:{object_proxy.object_name}.{method_name}'
 
   async def __call__(self, *args, **kwargs):
-    '''Perform an RPC request to call a method on the server.'''
+    """Perform an RPC request to call a method on the server."""
 
     websocket = self.client.websocket
     request = {
-        'id': self.client.get_next_id(),
-        'method': self.method,
-        'args': args,
-        'kwargs': kwargs,
+      'id': self.client.get_next_id(),
+      'method': self.method,
+      'args': args,
+      'kwargs': kwargs,
     }
     await self.client.send_data(websocket, json.dumps(request))
 
@@ -142,27 +146,28 @@ class FunctionProxy:
     assert response['id'] == request['id']
 
     if 'error' in response:
-      #sys.stderr.write(response['error'] + '\n' + response['data'] + '\n')
+      # sys.stderr.write(response['error'] + '\n' + response['data'] + '\n')
       sys.stderr.write(response['data'] + '\n')
       raise RuntimeError('Exception returned from the server')
     return response['result']
 
+
 class GeneratorProxy:
-  '''Serve as a proxy to a generator.'''
+  """Serve as a proxy to a generator."""
 
   def __init__(self, object_proxy, method_name):
     self.client = object_proxy.client
     self.method = f'generator:{object_proxy.object_name}.{method_name}'
 
   async def __call__(self, *args, **kwargs):
-    '''Perform an RPC request to call a method on the server.'''
+    """Perform an RPC request to call a method on the server."""
 
     websocket = self.client.websocket
     request = {
-        'id': self.client.get_next_id(),
-        'method': self.method,
-        'args': args,
-        'kwargs': kwargs,
+      'id': self.client.get_next_id(),
+      'method': self.method,
+      'args': args,
+      'kwargs': kwargs,
     }
     await self.client.send_data(websocket, json.dumps(request))
 
@@ -174,7 +179,7 @@ class GeneratorProxy:
         if response['error'] == 'StopAsyncIteration':
           break
         else:
-          #sys.stderr.write(response['error'] + '\n' + response['data'] + '\n')
+          # sys.stderr.write(response['error'] + '\n' + response['data'] + '\n')
           sys.stderr.write(response['data'] + '\n')
           raise RuntimeError('Exception returned from the server')
       yield response['result']

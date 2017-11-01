@@ -1,22 +1,23 @@
-'''Provide Estimator.'''
+"""Provide Estimator."""
 
 __all__ = ['Estimator']
 
 from exptools.param import get_hash_id
 from exptools.time import diff_sec, utcnow, parse_utc
 
+
 class Estimator:
-  '''Estimate the remaining time.'''
+  """Estimate the remaining time."""
 
   def __init__(self, history):
     self.history = history
 
   async def estimate_remaining_time(self, state, oneshot):
-    '''Estimate the remaining time using the queue state.'''
+    """Estimate the remaining time using the queue state."""
 
     now = utcnow()
 
-    epsilon = 0.001  # Potential understimation until the progress reaches 0.1%
+    epsilon = 0.001  # Potential underestimation until the progress reaches 0.1%
 
     # Future parallelism cannot be higher than the remaining job count
     concurrency = max(1., min(state['concurrency'],

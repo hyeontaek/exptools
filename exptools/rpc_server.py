@@ -1,4 +1,4 @@
-'''Implement the RPC server.'''
+"""Implement the RPC server."""
 
 __all__ = ['Server']
 
@@ -15,8 +15,9 @@ import traceback
 
 import websockets
 
+
 class Server:
-  '''Implement a RPC server that exposes internal objects.'''
+  """Implement a RPC server that exposes internal objects."""
 
   def __init__(self, host, port, secret,
                registry, history, queue, resolver, scheduler, runner,
@@ -41,17 +42,19 @@ class Server:
     self._init_exports()
 
   def _init_exports(self):
-    '''Initialize the method map.'''
+    """Initialize the method map."""
     self.exports = {}
 
-    for object_name, obj in [
-        ('registry', self.registry),
-        ('history', self.history),
-        ('queue', self.queue),
-        ('resolver', self.resolver),
-        ('scheduler', self.scheduler),
-        ('runner', self.runner),
-        ]:
+    object_map = [
+      ('registry', self.registry),
+      ('history', self.history),
+      ('queue', self.queue),
+      ('resolver', self.resolver),
+      ('scheduler', self.scheduler),
+      ('runner', self.runner),
+    ]
+
+    for object_name, obj in object_map:
       for method_name in dir(obj):
         method = getattr(obj, method_name)
 
@@ -69,7 +72,7 @@ class Server:
     self.logger.debug('Exported: %s', list(self.exports.keys()))
 
   async def _authenticate(self, websocket):
-    '''Authenticate a client.'''
+    """Authenticate a client."""
 
     token = secrets.token_hex().encode('ascii')
     await websocket.send(token)
@@ -96,8 +99,8 @@ class Server:
       await websocket.send('0')
 
   async def _send_data(self, websocket, data):
-    '''Send data.'''
-    chunk_count = max(math.ceil(len(data) / self.max_chunk_size), 1)
+    """Send data."""
+    chunk_count = max(int(math.ceil(len(data) / self.max_chunk_size)), 1)
 
     for i in range(chunk_count):
       chunk = data[i * self.max_chunk_size:(i + 1) * self.max_chunk_size]
@@ -106,8 +109,9 @@ class Server:
       else:
         await websocket.send('2' + chunk)
 
-  async def _recv_data(self, websocket):
-    '''Receive data.'''
+  @staticmethod
+  async def _recv_data(websocket):
+    """Receive data."""
     data = ''
     while True:
       raw_data = await websocket.recv()
@@ -122,7 +126,8 @@ class Server:
     return data
 
   async def _handle_request(self, websocket, request):
-    '''Handle a request.'''
+    """Handle a request."""
+    id_ = None
     try:
       request = json.loads(request)
       self.logger.debug('Request: %s', request)
@@ -142,11 +147,11 @@ class Server:
         async for result in coro:
           await self._send_data(websocket, json.dumps({'id': id_, 'result': result}))
         await self._send_data(
-            websocket, json.dumps({'id': id_, 'error': 'StopAsyncIteration', 'data': None}))
+          websocket, json.dumps({'id': id_, 'error': 'StopAsyncIteration', 'data': None}))
 
       else:
         await self._send_data(
-            websocket, json.dumps({'id': id_, 'error': 'InvalidMethod', 'data': None}))
+          websocket, json.dumps({'id': id_, 'error': 'InvalidMethod', 'data': None}))
 
     except concurrent.futures.CancelledError:
       # Pass through
@@ -154,13 +159,13 @@ class Server:
     except websockets.exceptions.ConnectionClosed:
       # Pass through
       raise
-    except Exception as exc: # pylint: disable=broad-except
+    except Exception as exc:  # pylint: disable=broad-except
       self.logger.exception('Exception while handling request')
       await self._send_data(websocket, json.dumps({
-          'id': id_,
-          'error': exc.__class__.__name__,
-          'data': traceback.format_exc(),
-          }))
+        'id': id_,
+        'error': exc.__class__.__name__,
+        'data': traceback.format_exc(),
+      }))
 
   async def _handle_requests(self, websocket):
     while True:
@@ -168,12 +173,10 @@ class Server:
       await self._handle_request(websocket, request)
 
   def _get_serve(self):
-    # pylint: disable=unused-argument
-    async def _serve(websocket, path):
+    async def _serve(websocket, path):  # pylint: disable=unused-argument
       try:
         try:
-          if not await asyncio.wait_for(
-              self._authenticate(websocket), timeout=10, loop=self.loop):
+          if not await asyncio.wait_for(self._authenticate(websocket), timeout=10, loop=self.loop):
             # authentication failed
             return
         except asyncio.TimeoutError:
@@ -181,9 +184,9 @@ class Server:
           return
 
         tasks = [
-            asyncio.ensure_future(self._send_pings(websocket), loop=self.loop),
-            asyncio.ensure_future(self._handle_requests(websocket), loop=self.loop),
-            ]
+          asyncio.ensure_future(self._send_pings(websocket), loop=self.loop),
+          asyncio.ensure_future(self._handle_requests(websocket), loop=self.loop),
+        ]
         try:
           # Stop waiting if any of two handlers fails
           await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED, loop=self.loop)
@@ -200,14 +203,15 @@ class Server:
 
       except websockets.exceptions.ConnectionClosed:
         self.logger.debug('Connection closed')
+
     return _serve
 
   async def run_forever(self):
-    '''Serve websocket requests.'''
+    """Serve websocket requests."""
     try:
       server = await websockets.serve(
-          self._get_serve(), self.host, self.port, max_size=self.max_size, loop=self.loop)
-    except Exception: # pylint: disable=broad-except
+        self._get_serve(), self.host, self.port, max_size=self.max_size, loop=self.loop)
+    except Exception:  # pylint: disable=broad-except
       self.logger.exception('Exception while initializing server')
       if self.ready_event:
         self.ready_event.set()
@@ -228,5 +232,5 @@ class Server:
       await server.wait_closed()
 
   async def wait_for_ready(self):
-    '''Wait until the server becomes ready (or fails to initialize.'''
+    """Wait until the server becomes ready (or fails to initialize."""
     await self.ready_event.wait()

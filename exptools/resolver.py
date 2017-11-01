@@ -1,12 +1,13 @@
-'''Implement the Resolver class.'''
+"""Implement the Resolver class."""
 
 import re
 
 from exptools.param import get_param_id, get_hash_id, get_name, make_unique_id
 from exptools.rpc_helper import rpc_export_function
 
+
 class Resolver:
-  '''Filter parameters.'''
+  """Filter parameters."""
 
   def __init__(self, registry, history, queue, loop):
     self.registry = registry
@@ -24,7 +25,7 @@ class Resolver:
 
   @rpc_export_function
   async def select(self, ids):
-    '''Select parameters in the registry.'''
+    """Select parameters in the registry."""
     params = []
     for id_ in ids:
       if id_ == 'all':
@@ -52,7 +53,7 @@ class Resolver:
   @rpc_export_function
   async def filter_grep(self, params, filter_expr,
                         ignore_case=False, invert_match=False, line_regexp=False):
-    '''Filter parameters using a regular expression on parameter names.'''
+    """Filter parameters using a regular expression on parameter names."""
 
     flags = 0
     if ignore_case:
@@ -61,20 +62,20 @@ class Resolver:
     pat = re.compile(filter_expr, flags)
 
     if not line_regexp:
-      pat_punc = pat.search
+      pat_func = pat.search
     else:
-      pat_punc = pat.fullmatch
+      pat_func = pat.fullmatch
 
     selected_params = []
 
     if not invert_match:
       for param in params:
-        mat = pat_punc(get_name(param))
+        mat = pat_func(get_name(param))
         if mat is not None:
           selected_params.append(param)
     else:
       for param in params:
-        mat = pat_punc(get_name(param))
+        mat = pat_func(get_name(param))
         if mat is None:
           selected_params.append(param)
 
@@ -82,16 +83,16 @@ class Resolver:
 
   @rpc_export_function
   async def filter_yaql(self, params, filter_expr):
-    '''Filter parameters using a YAQL expression.'''
+    """Filter parameters using a YAQL expression."""
     # load yaql lazily for fast startup
     import yaql
     return yaql.eval(f'$.where({filter_expr})', data=params)
 
   @rpc_export_function
   async def filter_omit(self, params, types):
-    '''Omit parameters of specified types'''
+    """Omit parameters of specified types"""
     valid_types = [
-        'succeeded', 'failed', 'finished', 'started', 'queued', 'identical', 'duplicate']
+      'succeeded', 'failed', 'finished', 'started', 'queued', 'identical', 'duplicate']
     for type_ in types:
       assert type_ in valid_types
 
@@ -153,7 +154,7 @@ class Resolver:
 
   @rpc_export_function
   async def filter_only(self, params, types):
-    '''Only select parameters of specified types'''
+    """Only select parameters of specified types"""
     omitted_params = await self.filter_omit(params, types)
     omitted_param_ids = set([get_param_id(param) for param in omitted_params])
 
@@ -165,8 +166,9 @@ class Resolver:
 
   @rpc_export_function
   async def filter_sort(self, params, sort_key, reverse=False):
-    '''Sort parameters by given key'''
+    """Sort parameters by given key"""
     key_path = sort_key.split('.')
+
     def _key_func(param):
       current_obj = param
       for key in key_path:
@@ -182,22 +184,22 @@ class Resolver:
 
   @rpc_export_function
   async def get_params(self, params):
-    '''Return parameters.'''
+    """Return parameters."""
     return params
 
   @rpc_export_function
   async def get_param_ids(self, params):
-    '''Return parameter IDs.'''
+    """Return parameter IDs."""
     return [get_param_id(param) for param in params]
 
   @rpc_export_function
   async def get_hash_ids(self, params):
-    '''Return hash IDs.'''
+    """Return hash IDs."""
     return [get_hash_id(param) for param in params]
 
   @rpc_export_function
   async def filter_params(self, chain):
-    '''Filter parameters using an operation chain.'''
+    """Filter parameters using an operation chain."""
     data = None
     for i, (operation, args, kwargs) in enumerate(chain):
       # Source

@@ -1,4 +1,4 @@
-'''Provide the State class.'''
+"""Provide the State class."""
 
 __all__ = ['State']
 
@@ -11,8 +11,9 @@ import aiofiles
 
 from exptools.rpc_helper import rpc_export_function, rpc_export_generator
 
+
 class State:
-  '''Manage a persistent state.'''
+  """Manage a persistent state."""
 
   def __init__(self, cls_name, path, loop):
     self.cls_name = cls_name
@@ -28,30 +29,30 @@ class State:
     self._load()
 
   def _initialize_state(self):
-    '''Initialize the state.'''
+    """Initialize the state."""
     self._state = None
 
   def _serialize_state(self):
-    '''Serialize the state for a dump.'''
+    """Serialize the state for a dump."""
     return self._state
 
   def _deserialize_state(self, state):
-    '''Deserialize the state from a dump.'''
+    """Deserialize the state from a dump."""
     self._state = state
 
   def _get_state(self):
-    '''Return the state.'''
+    """Return the state."""
     assert self.lock.locked()
     return self._serialize_state()
 
   @rpc_export_function
   async def get_state(self):
-    '''Return the state.'''
+    """Return the state."""
     async with self.lock:
       return self._get_state()
 
   def _load(self):
-    '''Load the state file.'''
+    """Load the state file."""
     if not os.path.exists(self.path):
       self._initialize_state()
       self.logger.warning(f'Initialized new state')
@@ -61,11 +62,11 @@ class State:
       self.logger.info(f'Loaded state at {self.path}')
 
   def _schedule_dump(self):
-    '''Schedule for a dump.'''
+    """Schedule for a dump."""
     self._dump_scheduled = True
 
   async def _dump(self):
-    '''Dump the state to the persistent file.'''
+    """Dump the state to the persistent file."""
     async with self.lock:
       if not self._dump_scheduled:
         return
@@ -80,7 +81,7 @@ class State:
       self.logger.debug(f'Stored state at {self.path}')
 
   async def run_forever(self):
-    '''Manage the state and dump the state as needed.'''
+    """Manage the state and dump the state as needed."""
     try:
       while True:
         await self._dump()
@@ -90,13 +91,13 @@ class State:
       await self._dump()
 
   async def notify(self):
-    '''Notify any listeners to state changes.'''
+    """Notify any listeners to state changes."""
     async with self.lock:
       self.lock.notify_all()
 
   @rpc_export_generator
   async def watch_state(self):
-    '''Wait for any changes to the state.'''
+    """Wait for any changes to the state."""
     while True:
       async with self.lock:
         self.logger.debug(f'State change notified')

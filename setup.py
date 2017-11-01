@@ -1,7 +1,6 @@
-'''A setup.py for exptools.'''
+"""A setup.py for exptools."""
 
 from setuptools import setup, find_packages
-from os import path
 
 setup(
     name='exptools',

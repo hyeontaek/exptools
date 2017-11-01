@@ -1,23 +1,14 @@
-'''Provide the History class.'''
+"""Provide the History class."""
 
 __all__ = ['History']
 
-from exptools.param import get_hash_id
+from exptools.param import get_hash_id, HISTORY_STUB
 from exptools.rpc_helper import rpc_export_function
 from exptools.state import State
 
-class History(State):
-  '''Manage the history data of previous job execution.'''
 
-  stub = {
-      'queued': None,
-      'started': None,
-      'finished': None,
-      'duration': None,
-      'resources': None,
-      'status': None,
-      'succeeded': None,
-      }
+class History(State):
+  """Manage the history data of previous job execution."""
 
   def __init__(self, path, loop):
     super().__init__('History', path, loop)
@@ -32,11 +23,11 @@ class History(State):
     self._state = state
 
   async def update(self, job):
-    '''Record the job execution result.'''
+    """Record the job execution result."""
     hash_id = get_hash_id(job['param'])
 
     hist_data = {}
-    for key in self.stub:
+    for key in HISTORY_STUB:
       hist_data[key] = job[key]
 
     async with self.lock:
@@ -48,13 +39,13 @@ class History(State):
 
   @rpc_export_function
   async def reset(self, hash_ids):
-    '''Reset the job execution history.'''
+    """Reset the job execution history."""
     if not hash_ids:
       return hash_ids
 
     async with self.lock:
       for hash_id in hash_ids:
-        self._state[hash_id] = dict(self.stub)
+        self._state[hash_id] = dict(HISTORY_STUB)
         self.logger.info(f'Reset history for parameter {hash_id}')
 
       self.lock.notify_all()
@@ -63,7 +54,7 @@ class History(State):
 
   @rpc_export_function
   async def remove(self, hash_ids):
-    '''Remove the job execution history.'''
+    """Remove the job execution history."""
     if not hash_ids:
       return hash_ids
 
@@ -81,7 +72,7 @@ class History(State):
 
   @rpc_export_function
   async def migrate(self, hash_id_pairs):
-    '''Migrate symlinks for hash ID changes.'''
+    """Migrate symlinks for hash ID changes."""
     migrated_hash_id_pairs = []
     async with self.lock:
       for old_hash_id, new_hash_id in hash_id_pairs:
@@ -94,7 +85,7 @@ class History(State):
           continue
 
         self._state[new_hash_id] = self._state[old_hash_id]
-        self.logger.info(f'Migrated history of old parameter {old_hash_id} ' + \
+        self.logger.info(f'Migrated history of old parameter {old_hash_id} ' +
                          f'to new parameter {new_hash_id}')
         migrated_hash_id_pairs.append((old_hash_id, new_hash_id))
 
@@ -104,29 +95,29 @@ class History(State):
 
   @rpc_export_function
   async def hash_ids(self):
-    '''Get all hash IDs.'''
+    """Get all hash IDs."""
     async with self.lock:
       return list(self._state.keys())
 
   @rpc_export_function
   async def history_list(self, hash_ids):
-    '''Get history data for given hash IDs.'''
+    """Get history data for given hash IDs."""
     async with self.lock:
       history_list = []
       for hash_id in hash_ids:
         if hash_id in self._state:
           history = self._state[hash_id]
         else:
-          history = self.stub
+          history = HISTORY_STUB
         history_list.append(history)
       return history_list
 
   @rpc_export_function
   async def history(self, hash_id):
-    '''Get history data for the given hash ID.'''
+    """Get history data for the given hash ID."""
     async with self.lock:
       if hash_id in self._state:
         history = self._state[hash_id]
       else:
-        history = self.stub
+        history = HISTORY_STUB
       return history

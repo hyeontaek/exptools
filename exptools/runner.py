@@ -1,4 +1,4 @@
-'''Provide the Runner class.'''
+"""Provide the Runner class."""
 
 __all__ = ['Runner']
 
@@ -15,12 +15,13 @@ import aionotify
 
 from exptools.file import mkdirs, rmdirs
 from exptools.param import (
-    get_param_id, get_hash_id,
-    get_name, get_command, get_cwd, get_retry, get_retry_delay, get_time_limit)
+  get_param_id, get_hash_id,
+  get_name, get_command, get_cwd, get_retry, get_retry_delay, get_time_limit)
 from exptools.rpc_helper import rpc_export_function, rpc_export_generator
 
+
 class Runner:
-  '''Run jobs with parameters.'''
+  """Run jobs with parameters."""
 
   def __init__(self, base_dir, queue, scheduler, loop):
     self.base_dir = base_dir
@@ -34,7 +35,7 @@ class Runner:
       mkdirs(self.base_dir, ignore_errors=False)
 
   async def run_forever(self):
-    '''Run scheduled jobs.'''
+    """Run scheduled jobs."""
 
     tasks = []
     try:
@@ -62,7 +63,7 @@ class Runner:
 
   @staticmethod
   def _create_job_files(job, job_dir):
-    '''Create job filles.'''
+    """Create job files."""
 
     # Dump job
     with open(os.path.join(job_dir, 'job.json'), 'wt') as file:
@@ -80,7 +81,7 @@ class Runner:
 
   @staticmethod
   def _construct_env(job, job_dir):
-    '''Construct environment variables.'''
+    """Construct environment variables."""
     param = job['param']
 
     env = dict(os.environ)
@@ -141,7 +142,7 @@ class Runner:
       os.unlink(hash_path + '_tmp')
 
   async def _run(self, job):
-    '''Run a job.'''
+    """Run a job."""
 
     job_id = job['job_id']
 
@@ -173,7 +174,7 @@ class Runner:
       await self.queue.set_finished(job_id, succeeded)
 
   async def _try(self, job, job_id, param):
-    '''Run a job.'''
+    """Run a job."""
 
     param_id = get_param_id(param)
     hash_id = get_hash_id(param)
@@ -198,25 +199,25 @@ class Runner:
       env = self._construct_env(job, job_dir)
 
       with open(os.path.join(job_dir, 'stdout'), 'wb', buffering=0) as stdout, \
-           open(os.path.join(job_dir, 'stderr'), 'wb', buffering=0) as stderr:
+          open(os.path.join(job_dir, 'stderr'), 'wb', buffering=0) as stderr:
 
         self._make_tmp_symlinks(param_id, hash_id, job_id)
 
         # Launch process
         proc = await asyncio.create_subprocess_exec(
-            *expanded_command,
-            cwd=cwd,
-            stdin=asyncio.subprocess.DEVNULL,
-            stdout=stdout,
-            stderr=stderr,
-            env=env,
-            loop=self.loop)
+          *expanded_command,
+          cwd=cwd,
+          stdin=asyncio.subprocess.DEVNULL,
+          stdout=stdout,
+          stderr=stderr,
+          env=env,
+          loop=self.loop)
 
         await self.queue.set_pid(job_id, proc.pid)
 
         # Watch status changes
         status_task = asyncio.ensure_future(
-            self._watch_status(job_id, job_dir), loop=self.loop)
+          self._watch_status(job_id, job_dir), loop=self.loop)
 
         try:
           if time_limit <= 0:
@@ -238,23 +239,23 @@ class Runner:
           if proc.returncode is None:
             try:
               proc.send_signal(signal.SIGTERM)
-            except Exception: # pylint: disable=broad-except
+            except Exception:  # pylint: disable=broad-except
               self.logger.exception('Exception while killing process')
 
             try:
               await asyncio.wait_for(proc.wait(), 10, loop=self.loop)
-            except Exception: # pylint: disable=broad-except
+            except Exception:  # pylint: disable=broad-except
               self.logger.exception('Exception while waiting for process')
 
           if proc.returncode is None:
             try:
               proc.send_signal(signal.SIGKILL)
-            except Exception: # pylint: disable=broad-except
+            except Exception:  # pylint: disable=broad-except
               self.logger.exception('Exception while killing process')
 
             try:
               await proc.wait()
-            except Exception: # pylint: disable=broad-except
+            except Exception:  # pylint: disable=broad-except
               self.logger.exception('Exception while waiting for process')
 
       # Read status before making the job finished
@@ -269,7 +270,7 @@ class Runner:
       # Pass through
       raise
 
-    except Exception: # pylint: disable=broad-except
+    except Exception:  # pylint: disable=broad-except
       self.logger.exception(f'Exception while running job {job_id}')
 
     finally:
@@ -278,7 +279,7 @@ class Runner:
     return succeeded
 
   async def _watch_status(self, job_id, job_dir):
-    '''Watch the status file changes.'''
+    """Watch the status file changes."""
     status_path = os.path.join(job_dir, 'status.json')
 
     watcher = aionotify.Watcher()
@@ -293,14 +294,14 @@ class Runner:
         except concurrent.futures.CancelledError:
           # Break loop (likely normal exit through task cancellation)
           break
-        except Exception: # pylint: disable=broad-except
+        except Exception:  # pylint: disable=broad-except
           self.logger.exception(f'Exception while watching status of job {job_id}')
     finally:
       watcher.unwatch(status_path)
       watcher.close()
 
   async def _read_status(self, job_id, job_dir):
-    '''Read the status file and send it to the queue.'''
+    """Read the status file and send it to the queue."""
     status_path = os.path.join(job_dir, 'status.json')
 
     try:
@@ -313,7 +314,7 @@ class Runner:
       assert isinstance(status, dict)
 
       progress = status.get('progress', 0.)
-      assert progress >= 0. and progress <= 1.
+      assert 0. <= progress <= 1.
 
       assert isinstance(status.get('message', ''), str)
 
@@ -321,12 +322,12 @@ class Runner:
     except concurrent.futures.CancelledError:
       # Ignore (likely normal exit through task cancellation)
       raise
-    except Exception: # pylint: disable=broad-except
+    except Exception:  # pylint: disable=broad-except
       self.logger.exception(f'Exception while reading status of job {job_id}')
 
   @rpc_export_function
   async def kill(self, job_ids=None, signal_type=None):
-    '''Kill started jobs.'''
+    """Kill started jobs."""
     queue_state = await self.queue.get_state()
 
     if job_ids is None:
@@ -353,7 +354,7 @@ class Runner:
 
   @rpc_export_function
   async def migrate(self, param_id_pairs, hash_id_pairs):
-    '''Migrate symlinks for parameter and hash ID changes.'''
+    """Migrate symlinks for parameter and hash ID changes."""
 
     migrated_param_id_pairs = []
     migrated_hash_id_pairs = []
@@ -382,7 +383,7 @@ class Runner:
 
   @rpc_export_function
   async def job_ids(self):
-    '''Return job IDs in the output directory.'''
+    """Return job IDs in the output directory."""
     job_ids = []
     for filename in os.listdir(self.base_dir):
       if filename.startswith('j-'):
@@ -391,8 +392,8 @@ class Runner:
 
   @rpc_export_function
   async def param_ids(self):
-    '''Return parameter IDs in the output directory.
-    Outputs may include temporary symlinks (*_tmp).'''
+    """Return parameter IDs in the output directory.
+    Outputs may include temporary symlinks (*_tmp)."""
     param_ids = []
     for filename in os.listdir(self.base_dir):
       if filename.startswith('p-'):
@@ -401,8 +402,8 @@ class Runner:
 
   @rpc_export_function
   async def hash_ids(self):
-    '''Return hash IDs in the output directory.
-    Outputs may include temporary symlinks (*_tmp).'''
+    """Return hash IDs in the output directory.
+    Outputs may include temporary symlinks (*_tmp)."""
     hash_ids = []
     for filename in os.listdir(self.base_dir):
       if filename.startswith('h-'):
@@ -410,7 +411,7 @@ class Runner:
     return hash_ids
 
   def _remove_output(self, trash_dir, param_ids, hash_ids):
-    '''Remove job output directories that (mis)matches given job IDs.'''
+    """Remove job output directories that (mis)matches given job IDs."""
 
     removed_outputs = []
     for id_ in list(param_ids) + list(hash_ids):
@@ -432,7 +433,7 @@ class Runner:
     return removed_outputs
 
   def _remove_dangling_noref(self, trash_dir):
-    '''Remove dangling last, p-*, or h-* symlinks and not referenced j-* directories in output.'''
+    """Remove dangling last, p-*, or h-* symlinks and not referenced j-* directories in output."""
     removed_outputs = []
     filenames = os.listdir(self.base_dir)
     filenames = set(filenames)
@@ -478,7 +479,7 @@ class Runner:
 
   @rpc_export_function
   async def remove_output(self, param_ids, hash_ids):
-    '''Remove job output data that match given IDs.'''
+    """Remove job output data that match given IDs."""
     trash_dir = os.path.join(self.base_dir, 'trash')
     if not os.path.exists(trash_dir):
       os.mkdir(trash_dir)
@@ -499,7 +500,7 @@ class Runner:
     return removed_output
 
   async def _read_output(self, id_, read_stdout, external_command, extra_args):
-    '''Yield the output of an external command on the job output.'''
+    """Yield the output of an external command on the job output."""
     assert id_.find('/') == -1 and id_.find('\\') == -1
 
     path = os.path.join(self.base_dir, id_)
@@ -510,11 +511,11 @@ class Runner:
     command = [external_command] + extra_args + [path]
 
     proc = await asyncio.create_subprocess_exec(
-        *command,
-        stdin=asyncio.subprocess.DEVNULL,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.STDOUT,
-        loop=self.loop)
+      *command,
+      stdin=asyncio.subprocess.DEVNULL,
+      stdout=asyncio.subprocess.PIPE,
+      stderr=asyncio.subprocess.STDOUT,
+      loop=self.loop)
 
     try:
       while True:
@@ -522,18 +523,18 @@ class Runner:
         if not data:
           break
         yield base64.b64encode(data).decode('ascii')
-    except Exception: # pylint: disable=broad-except
+    except Exception:  # pylint: disable=broad-except
       proc.terminate()
       raise
     finally:
       try:
         await proc.wait()
-      except Exception: # pylint: disable=broad-except
+      except Exception:  # pylint: disable=broad-except
         self.logger.exception('Exception while waiting for process')
 
   @rpc_export_generator
   async def cat_like(self, id_, read_stdout, external_command, extra_args):
-    '''Run an external command on the job output.'''
+    """Run an external command on the job output."""
     assert external_command in ['cat', 'head', 'tail']
     async for data in self._read_output(id_, read_stdout, external_command, extra_args):
       yield data
