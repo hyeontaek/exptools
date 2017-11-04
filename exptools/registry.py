@@ -139,6 +139,13 @@ class Registry(State):
     async with self.lock:
       return await self._add(paramset, params)
 
+  @rpc_export_function
+  async def add_by_param_ids(self, paramset, param_ids):
+    """Add parameters to a parameter set."""
+    params = await self.params(param_ids)
+    async with self.lock:
+      return await self._add(paramset, params)
+
   async def _remove(self, paramset, param_ids):
     """Remove parameters from a parameter set."""
     assert self.lock.locked()

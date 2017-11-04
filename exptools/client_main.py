@@ -462,12 +462,15 @@ class CommandHandler:
     """add parameters to a parameter set"""
     paramset = self.args.paramset
     if self.args.file is None:
-      params = await self._execute_chain('params')
+      params = None
+      param_ids = await self._execute_chain('param_ids')
     elif self.args.file == '-':
       params = json.loads(sys.stdin.read())
+      param_ids = None
     else:
       with open(self.args.file) as file:
         params = json.loads(file.read())
+        param_ids = None
 
     if self.args.create and paramset not in await self.client.registry.paramsets():
       succeeded = await self.client.registry.add_paramset(paramset)
@@ -476,7 +479,10 @@ class CommandHandler:
       else:
         print(f'Failed to add parameter set: {paramset}')
 
-    param_ids = await self.client.registry.add(paramset, params)
+    if param_ids is None:
+      param_ids = await self.client.registry.add(paramset, params)
+    else:
+      param_ids = await self.client.registry.add_by_param_ids(paramset, param_ids)
     print(f'Added parameters to {paramset}: {" ".join(param_ids)}')
 
   @arg_export('command_rm')
