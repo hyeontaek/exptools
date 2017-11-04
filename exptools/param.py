@@ -5,6 +5,7 @@ __all__ = [
   'get_hash_id',
   'make_hash_id',
   'make_unique_id',
+  'get_property',
   'get_name',
   'get_command',
   'get_cwd',
@@ -13,7 +14,6 @@ __all__ = [
 ]
 
 import collections
-import copy
 import hashlib
 import json
 
@@ -54,22 +54,22 @@ def make_hash_id(param):
 
 def make_unique_id(param):
   """Calculate the unique ID of a parameter for equality tests."""
-  filtered_param = copy.deepcopy(param)
+  # Make a copy because key '_' will be replaced
+  filtered_param = dict(param)
   if '_' in filtered_param:
-    meta = filtered_param['_']
-    for key in ['param_id', 'hash_id'] + list(HISTORY_STUB.keys()):
-      if key in meta:
-        del meta[key]
+    del filtered_param['_']
   param_str = json.dumps(filtered_param, sort_keys=True)
   # param_str = json.dumps(filtered_param, sort_keys=True, separators=(',', ':'))
   return 'u-' + base58.b58encode(_HASH_FUNC(param_str.encode('utf-8')).digest())
 
 
-def _get_property(param, key, default):
+def get_property(param, key, default):
   """Return a property of a parameter."""
   value = default
-  if '_' in param and key in param['_']:
-    value = param['_'][key]
+  if '__' + key in param:
+    value = param['__' + key]
+  elif '_' + key in param:
+    value = param['_' + key]
   elif key in param:
     value = param[key]
   return value
@@ -77,7 +77,7 @@ def _get_property(param, key, default):
 
 def get_name(param):
   """Return the name of a parameter."""
-  name = _get_property(param, 'name', None)
+  name = get_property(param, 'name', None)
   if name is None:
     filtered_param = {key: value for key, value in param.items() if not key.startswith('_')}
     name = json.dumps(filtered_param, sort_keys=True)
@@ -86,7 +86,7 @@ def get_name(param):
 
 def get_command(param):
   """Return the command of a parameter."""
-  command = _get_property(param, 'command', None)
+  command = get_property(param, 'command', None)
   if command is None:
     raise RuntimeError(f'command must exists for parameter {get_param_id(param)}')
   return command
@@ -94,22 +94,22 @@ def get_command(param):
 
 def get_cwd(param):
   """Return the working directory of a parameter."""
-  return _get_property(param, 'cwd', None)
+  return get_property(param, 'cwd', None)
 
 
 def get_retry(param):
   """Return the retry of a parameter."""
-  return _get_property(param, 'retry', 0)
+  return get_property(param, 'retry', 0)
 
 
 def get_retry_delay(param):
   """Return the retry delay of a parameter."""
-  return _get_property(param, 'retry_delay', 0)
+  return get_property(param, 'retry_delay', 0)
 
 
 def get_time_limit(param):
   """Return the time limit of a parameter."""
-  return _get_property(param, 'time_limit', 0)
+  return get_property(param, 'time_limit', 0)
 
 
 class ParamBuilder(collections.ChainMap):

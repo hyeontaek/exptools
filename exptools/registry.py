@@ -3,7 +3,6 @@
 __all__ = ['Registry']
 
 import collections
-import copy
 
 import base58
 
@@ -108,15 +107,16 @@ class Registry(State):
 
     param_ids = []
     for param in params:
-      param = copy.deepcopy(param)
-      if '_' not in param:
-        param['_'] = {}
+      # Make a copy because key '_' will be replaced
+      param = dict(param)
 
       param_id = self._get_next_param_id()
       hash_id = make_hash_id(param)
 
-      param['_']['param_id'] = param_id
-      param['_']['hash_id'] = hash_id
+      param['_'] = {
+        'param_id': param_id,
+        'hash_id': hash_id,
+      }
 
       self._state['params'][param_id] = param
       param_ids.append(param_id)

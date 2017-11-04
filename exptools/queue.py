@@ -5,7 +5,6 @@ __all__ = ['Queue']
 import asyncio
 import collections
 import concurrent
-import copy
 
 import base58
 
@@ -82,16 +81,30 @@ class Queue(State):
   def _get_state_fast(self):
     """Return the state. Parameter details are removed."""
     assert self.lock.locked()
-    state = self._serialize_state()
+
+    state = {
+      'finished_jobs': None,
+      'started_jobs': None,
+      'queued_jobs': None,
+      'concurrency': self._state['concurrency'],
+      'next_job_id': self._state['next_job_id'],
+    }
 
     for key in ['finished_jobs', 'started_jobs', 'queued_jobs']:
-      for job in state[key]:
-        param = copy.deepcopy(job['param'])
-        param['_'] = {
-          'param_id': get_param_id(param),
-          'hash_id': get_hash_id(param),
-          'name': get_name(param),
+      jobs = []
+      for job in self._state[key].values():
+        job = dict(job)
+        param = job['param']
+        param = {
+          '_': {
+            'param_id': get_param_id(param),
+            'hash_id': get_hash_id(param),
+            'name': get_name(param),
+          },
         }
+        jobs.append(job)
+      state[key] = jobs
+
     return state
 
   @rpc_export_function

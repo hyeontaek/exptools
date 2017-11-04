@@ -16,6 +16,7 @@ class Resolver:
     self.loop = loop
 
   async def _augment(self, params):
+    """Augment parameters with their history."""
     hash_ids = [get_hash_id(param) for param in params]
 
     history_list = await self.history.history_list(hash_ids)
@@ -47,7 +48,6 @@ class Resolver:
         param_ids = await self.registry.paramset(paramset=id_)
         params.extend(await self.registry.params(param_ids))
 
-    await self._augment(params)
     return params
 
   @rpc_export_function
@@ -188,6 +188,12 @@ class Resolver:
     return params
 
   @rpc_export_function
+  async def get_params_with_history(self, params):
+    """Return parameters with history."""
+    await self._augment(params)
+    return params
+
+  @rpc_export_function
   async def get_param_ids(self, params):
     """Return parameter IDs."""
     return [get_param_id(param) for param in params]
@@ -225,6 +231,10 @@ class Resolver:
         if i != len(chain) - 1:
           raise RuntimeError(f'Excessive operation after {operation}')
         return await self.get_params(data, *args, **kwargs)
+      elif operation == 'get_params_with_history':
+        if i != len(chain) - 1:
+          raise RuntimeError(f'Excessive operation after {operation}')
+        return await self.get_params_with_history(data, *args, **kwargs)
       elif operation == 'get_param_ids':
         if i != len(chain) - 1:
           raise RuntimeError(f'Excessive operation after {operation}')

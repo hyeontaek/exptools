@@ -12,6 +12,7 @@ import logging
 import os
 import re
 
+from exptools.param import get_property
 from exptools.rpc_helper import rpc_export_function
 
 
@@ -208,12 +209,12 @@ class GreedyScheduler(Scheduler):
         job = queue_state['queued_jobs'][0]
         job_id = job['job_id']
         param = job['param']
-        meta = param['_']
+        demands_dict = get_property(param, 'demands', None)
 
-        if 'demands' in meta:
-          demands = list(meta['demands'].items())
-        else:
+        if demands_dict is None:
           demands = list(self.resources.items())
+        else:
+          demands = list(demands_dict.items())
         demand_count = len(demands)
 
         model = pyomo.environ.ConcreteModel()
