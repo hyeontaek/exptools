@@ -95,12 +95,12 @@ class Queue(State):
       for job in self._state[key].values():
         job = dict(job)
         param = job['param']
-        param = {
+        job['param'] = {
           '_': {
             'param_id': get_param_id(param),
             'hash_id': get_hash_id(param),
-            'name': get_name(param),
           },
+          '_name': get_name(param),
         }
         jobs.append(job)
       state[key] = jobs
