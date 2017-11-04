@@ -308,20 +308,28 @@ class CommandHandler:
   async def _handle_start(self):
     """start the scheduler"""
     succeeded = await self.client.scheduler.start()
-    print('Scheduler started' if succeeded else 'Failed to start scheduler')
+    if succeeded:
+      print('Scheduler started')
+    else:
+      raise RuntimeError('Failed to start scheduler')
 
   @arg_export('command_stop')
   async def _handle_stop(self):
     """stop the scheduler"""
     succeeded = await self.client.scheduler.stop()
-    print('Scheduler stopped' if succeeded else 'Failed to stop scheduler')
+    if succeeded:
+      print('Scheduler stopped')
+    else:
+      raise RuntimeError('Failed to stop scheduler')
 
   @arg_export('command_oneshot')
   async def _handle_oneshot(self):
     """schedule only one job and stop"""
     succeeded = await self.client.scheduler.set_oneshot()
-    print('Scheduler oneshot mode set'
-          if succeeded else 'Failed to set oneshot mode')
+    if succeeded:
+      print('Scheduler oneshot mode set')
+    else:
+      raise RuntimeError('Failed to set oneshot mode')
 
   @arg_export('command_resource')
   @arg_define('operation', type=str, choices=['add', 'rm'], help='operation')
@@ -335,99 +343,104 @@ class CommandHandler:
       succeeded = await self.client.scheduler.remove_resource(self.args.key, self.args.value)
     else:
       assert False
-    print('Resource updated' if succeeded else 'Failed to update resource')
+    if succeeded:
+      print('Resource updated')
+    else:
+      raise RuntimeError('Failed to update resource')
 
   #### Parameter set handlers
 
   @arg_export('command_paramset')
   @arg_define_exclusive('operation',
-                        '-l', '--list', action='store_true', default=False,
+                        '-l', '--list', action='store_const', const='list', dest='operation',
+                        default=argparse.SUPPRESS,
                         help='list existing parameter sets')
   @arg_define_exclusive('operation',
-                        '-c', '--create', action='store_true', default=False,
-                        help='create new parameter sets even if already exist')
+                        '-c', '--create', action='store_const', const='create', dest='operation',
+                        default='create',
+                        help='create a new parameter set')
   @arg_define_exclusive('operation',
-                        '-d', '--delete', action='store_true', default=False,
+                        '-d', '--delete', action='store_const', const='delete', dest='operation',
+                        default=argparse.SUPPRESS,
                         help='delete existing parameter sets')
   @arg_define_exclusive('operation',
-                        '-r', '--rename', action='store_true', default=False,
+                        '-r', '--rename', action='store_const', const='rename', dest='operation',
+                        default=argparse.SUPPRESS,
                         help='rename an existing parameter set')
   @arg_define_exclusive('operation',
-                        '-m', '--migrate', action='store_true', default=False,
+                        '-m', '--migrate', action='store_const', const='migrate', dest='operation',
+                        default=argparse.SUPPRESS,
                         help='migrate the output and history of a parameter set into another')
+  @arg_define('-i', '--initialize', action='store_true', default=False,
+              help='initialize existing parameter sets if exist')
   @arg_define('paramsets', type=str, nargs='*', help='parameter sets')
   async def _handle_paramset(self):
     """manage parameter sets"""
-    if self.args.list:
-      return await self._handle_paramset_list()
+    if self.args.operation == 'list':
+      if self.args.paramsets:
+        raise RuntimeError('-l/--list does not take parameter sets')
+      return await self._paramset_list()
 
-    if self.args.delete:
-      return await self._handle_paramset_remove()
+    elif self.args.operation == 'create':
+      if not self.args.paramsets:
+        raise RuntimeError('No parameter set is given')
+      return await self._paramset_add(self.args.paramsets, self.args.initialize)
 
-    if self.args.rename:
-      return await self._handle_paramset_rename()
+    elif self.args.operation == 'delete':
+      if not self.args.paramsets:
+        raise RuntimeError('No parameter set is given')
+      return await self._paramset_remove(self.args.paramsets)
 
-    if self.args.migrate:
-      return await self._handle_paramset_migrate()
+    elif self.args.operation == 'rename':
+      if len(self.args.paramsets) != 2:
+        raise RuntimeError('-r/--rename take two parameter sets')
+      return await self._paramset_rename(*self.args.paramsets)
 
-    return await self._handle_paramset_add()
+    elif self.args.operation == 'migrate':
+      if len(self.args.paramsets) != 2:
+        raise RuntimeError('-m/--migrate take two parameter sets')
+      return await self._paramset_migrate(*self.args.paramsets)
 
-  async def _handle_paramset_list(self):
-    if self.args.paramsets:
-      raise RuntimeError('-l/--list does not take parameter sets')
+    else:
+      assert False
 
+  async def _paramset_list(self):
     paramsets = await self.client.registry.paramsets()
-    print('\n'.join(paramsets))
+    print('Parameter sets:')
+    for paramset in paramsets:
+      print('  ' + paramset)
 
-  async def _handle_paramset_add(self):
-    if not self.args.paramsets:
-      raise RuntimeError('No parameter set is given')
-
-    for paramset in self.args.paramsets:
-      if self.args.create and paramset in await self.client.registry.paramsets():
+  async def _paramset_add(self, paramsets, initialize):
+    for paramset in paramsets:
+      if initialize and paramset in await self.client.registry.paramsets():
         succeeded = await self.client.registry.remove_paramset(paramset)
         if succeeded:
-          print(f'Parameter set removed: {paramset}')
+          print(f'Removed: {paramset}')
         else:
-          print(f'Failed to remove parameter set: {paramset}')
+          raise RuntimeError(f'Failed to remove: {paramset}')
 
       succeeded = await self.client.registry.add_paramset(paramset)
       if succeeded:
-        print(f'Parameter set added: {paramset}')
+        print(f'Added: {paramset}')
       else:
-        print(f'Failed to add parameter set: {paramset}')
+        raise RuntimeError(f'Failed to add: {paramset}')
 
-  async def _handle_paramset_rename(self):
-    if len(self.args.paramsets) != 2:
-      raise RuntimeError('-r/--rename take two parameter sets')
-
-    old_paramset = self.args.paramsets[0]
-    new_paramset = self.args.paramsets[1]
-
+  async def _paramset_rename(self, old_paramset, new_paramset):
     succeeded = await self.client.registry.rename_paramset(old_paramset, new_paramset)
     if succeeded:
-      print(f'Parameter set renamed: {old_paramset} to {new_paramset}')
+      print(f'Renamed: {old_paramset} to {new_paramset}')
     else:
-      print(f'Failed to rename parameter set: {old_paramset} to {new_paramset}')
+      raise RuntimeError(f'Failed to rename: {old_paramset} to {new_paramset}')
 
-  async def _handle_paramset_remove(self):
-    if not self.args.paramsets:
-      raise RuntimeError('No parameter set is given')
-
-    for paramset in self.args.paramsets:
+  async def _paramset_remove(self, paramsets):
+    for paramset in paramsets:
       succeeded = await self.client.registry.remove_paramset(paramset)
       if succeeded:
-        print(f'Parameter set removed: {paramset}')
+        print(f'Removed: {paramset}')
       else:
-        print(f'Failed to remove parameter set: {paramset}')
+        raise RuntimeError(f'Failed to remove: {paramset}')
 
-  async def _handle_paramset_migrate(self):
-    if len(self.args.paramsets) != 2:
-      raise RuntimeError('-m/--migrate take two parameter sets')
-
-    old_paramset = self.args.paramsets[0]
-    new_paramset = self.args.paramsets[1]
-
+  async def _paramset_migrate(self, old_paramset, new_paramset):
     old_param_ids = await self.client.registry.paramset(old_paramset)
     new_param_ids = await self.client.registry.paramset(new_paramset)
 
@@ -437,7 +450,7 @@ class CommandHandler:
                     in await self.client.registry.params(new_param_ids)]
 
     if len(old_param_ids) != len(new_param_ids):
-      raise RuntimeError('Two inputs of parameters must have the same length')
+      raise RuntimeError('Two parameter sets must have the same number of parameters')
 
     param_id_pairs = list(zip(old_param_ids, new_param_ids))
     hash_id_pairs = list(zip(old_hash_ids, new_hash_ids))
@@ -453,6 +466,8 @@ class CommandHandler:
   @arg_define('paramset', type=str, help='parameter set to modify')
   @arg_define('-c', '--create', action='store_true', default=False,
               help='create a new parameter set if not exists')
+  @arg_define('-i', '--initialize', action='store_true', default=False,
+              help='initialize the existing parameter set if exists')
   @arg_define('-f', '--file', type=str, default=None,
               help=('load from file instead of using selected parameters; ' +
                     'use "-" to use standard input'))
@@ -470,18 +485,18 @@ class CommandHandler:
         params = json.loads(file.read())
         param_ids = None
 
-    if self.args.create and paramset not in await self.client.registry.paramsets():
-      succeeded = await self.client.registry.add_paramset(paramset)
-      if succeeded:
-        print(f'Parameter set added: {paramset}')
-      else:
-        print(f'Failed to add parameter set: {paramset}')
+    if paramset not in await self.client.registry.paramsets():
+      if self.args.create:
+        await self._paramset_add([paramset], False)
+    else:
+      if self.args.initialize:
+        await self._paramset_add([paramset], True)
 
     if param_ids is None:
       param_ids = await self.client.registry.add(paramset, params)
     else:
       param_ids = await self.client.registry.add_by_param_ids(paramset, param_ids)
-    print(f'Added parameters to {paramset}: {" ".join(param_ids)}')
+    print(f'Added: {len(param_ids)} parameters to {paramset}')
 
   @arg_export('command_rm')
   @arg_define('paramset', type=str, help='parameter set to modify')
@@ -491,7 +506,7 @@ class CommandHandler:
     param_ids = await self._execute_chain('param_ids')
 
     param_ids = await self.client.registry.remove(paramset, param_ids)
-    print(f'Removed parameters to {paramset}: {" ".join(param_ids)}')
+    print(f'Removed: {len(param_ids)} parameters from {paramset}')
 
   @arg_export('command_reset')
   async def _handle_reset(self):
@@ -891,18 +906,13 @@ class CommandHandler:
     param = {'command': list(self.args.arguments)}
 
     if paramset not in await self.client.registry.paramsets():
-      succeeded = await self.client.registry.add_paramset(paramset)
-      if succeeded:
-        print(f'Parameter set added: {paramset}')
-      else:
-        print(f'Failed to add parameter set: {paramset}')
-        return
+      await self._paramset_add([paramset], False)
 
     param_ids = await self.client.registry.add(paramset, [param])
-    print(f'Registered parameters for {paramset}: {len(param_ids)}')
+    print(f'Added: {len(param_ids)} parameters to {paramset}')
 
     job_ids = await self.client.queue.add(param_ids, not self.args.top)
-    print(f'Added queued jobs: {" ".join(job_ids)}')
+    print(f'Added: {len(job_ids)} queued jobs')
 
   @arg_export('command_enqueue')
   @arg_define('-t', '--top', action='store_true', default=False,
@@ -912,7 +922,7 @@ class CommandHandler:
     param_ids = await self._execute_chain('param_ids')
 
     job_ids = await self.client.queue.add(param_ids, not self.args.top)
-    print(f'Added queued jobs: {" ".join(job_ids)}')
+    print(f'Added: {len(job_ids)} queued jobs')
 
   @arg_export('command_estimate')
   async def _handle_estimate(self):
@@ -945,7 +955,7 @@ class CommandHandler:
     job_ids = await self._parse_job_ids(['queued'])
 
     moved_job_ids = await self.client.queue.move(job_ids, self.args.offset)
-    print(f'Moved queued jobs: {len(moved_job_ids)}')
+    print(f'Moved: {len(moved_job_ids)} queued jobs')
 
   @arg_export('command_cancel')
   @arg_import('common_job_ids')
@@ -954,7 +964,7 @@ class CommandHandler:
     job_ids = await self._parse_job_ids(['queued'])
 
     removed_job_ids = await self.client.queue.remove_queued(job_ids)
-    print(f'Removed queued jobs: {len(removed_job_ids)}')
+    print(f'Removed: {len(removed_job_ids)} queued jobs')
 
   @arg_export('command_retry')
   @arg_import('common_job_ids')
@@ -969,21 +979,24 @@ class CommandHandler:
     param_ids = [get_param_id(job['param']) for job in finished_jobs]
 
     job_ids = await self.client.queue.add(param_ids, not self.args.top)
-    print(f'Added queued jobs: {" ".join(job_ids)}')
+    print(f'Added: {len(job_ids)} queued jobs')
 
     removed_job_ids = await self.client.queue.remove_finished(finished_job_ids)
-    print(f'Removed finished jobs: {len(removed_job_ids)}')
+    print(f'Removed: {len(removed_job_ids)} finished jobs')
 
   @arg_export('command_kill')
   @arg_define_exclusive('signal_type',
                         '-2', '--int', action='store_const', const='int', dest='signal_type',
-                        default=argparse.SUPPRESS, help='kill using SIGINT')
+                        default=argparse.SUPPRESS,
+                        help='kill using SIGINT')
   @arg_define_exclusive('signal_type',
                         '-9', '--kill', action='store_const', const='kill', dest='signal_type',
-                        default=argparse.SUPPRESS, help='kill using SIGKILL')
+                        default=argparse.SUPPRESS,
+                        help='kill using SIGKILL')
   @arg_define_exclusive('signal_type',
                         '-15', '--term', action='store_const', const='term', dest='signal_type',
-                        default='term', help='kill using SIGTERM (default)')
+                        default='term',
+                        help='kill using SIGTERM (default)')
   @arg_import('common_job_ids')
   async def _handle_kill(self):
     """kill started jobs"""
@@ -991,7 +1004,7 @@ class CommandHandler:
 
     killed_job_ids = await self.client.runner.kill(job_ids, signal_type=self.args.signal_type)
 
-    print(f'Killed jobs: {len(killed_job_ids)}')
+    print(f'Killed: {len(killed_job_ids)} started jobs')
 
   @arg_export('command_dismiss')
   @arg_import('common_job_ids')
@@ -1000,7 +1013,7 @@ class CommandHandler:
     job_ids = await self._parse_job_ids(['finished'])
 
     removed_job_ids = await self.client.queue.remove_finished(job_ids)
-    print(f'Removed finished jobs: {len(removed_job_ids)}')
+    print(f'Removed: {len(removed_job_ids)} finished jobs')
 
   #### Job output retrieval
 
