@@ -158,8 +158,6 @@ class CommandHandler:
 
     if output_type == 'params':
       self.chain.append(['get_params', [], {}])
-    elif output_type == 'params_with_history':
-      self.chain.append(['get_params_with_history', [], {}])
     elif output_type == 'param_ids':
       self.chain.append(['get_param_ids', [], {}])
     elif output_type == 'hash_ids':
@@ -638,7 +636,7 @@ class CommandHandler:
               help='show local time instead of UTC')
   async def _handle_du(self):
     """summarize parameters with time information"""
-    params = await self._execute_chain('params_with_history')
+    params = await self._execute_chain('params')
 
     param_id_max_len = self._get_param_id_max_len(params)
 
@@ -675,7 +673,7 @@ class CommandHandler:
   @arg_export('command_dum')
   async def _handle_dum(self):
     """dump parameters in Python"""
-    params = await self._execute_chain('params_with_history')
+    params = await self._execute_chain('params')
 
     for param in params:
       print(f'{get_param_id(param)}')
@@ -688,7 +686,7 @@ class CommandHandler:
               help='write to a file instead of standard output')
   async def _handle_dump(self):
     """dump parameters in JSON"""
-    params = await self._execute_chain('params_with_history')
+    params = await self._execute_chain('params')
 
     json_data = json.dumps(params, sort_keys=True, indent=2)
 

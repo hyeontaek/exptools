@@ -48,6 +48,7 @@ class Resolver:
         param_ids = await self.registry.paramset(paramset=id_)
         params.extend(await self.registry.params(param_ids))
 
+    await self._augment(params)
     return params
 
   @rpc_export_function
@@ -190,7 +191,6 @@ class Resolver:
   @rpc_export_function
   async def get_params_with_history(self, params):
     """Return parameters with history."""
-    await self._augment(params)
     return params
 
   @rpc_export_function
@@ -231,10 +231,6 @@ class Resolver:
         if i != len(chain) - 1:
           raise RuntimeError(f'Excessive operation after {operation}')
         return await self.get_params(data, *args, **kwargs)
-      elif operation == 'get_params_with_history':
-        if i != len(chain) - 1:
-          raise RuntimeError(f'Excessive operation after {operation}')
-        return await self.get_params_with_history(data, *args, **kwargs)
       elif operation == 'get_param_ids':
         if i != len(chain) - 1:
           raise RuntimeError(f'Excessive operation after {operation}')
