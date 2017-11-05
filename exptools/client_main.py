@@ -830,7 +830,7 @@ class CommandHandler:
 
         output += '\n'
 
-      _, rem_map = await estimator.estimate_remaining_time(queue_state, False, use_similar)
+      remaining_time, rem_map = await estimator.estimate_remaining_time(queue_state, False, use_similar)
       last_rem = 0.
 
       if 'started' in job_types:
@@ -905,7 +905,12 @@ class CommandHandler:
 
       # output += f"Concurrency: {queue_state['concurrency']}"
 
-      output += await format_estimated_time(last_rem, queue_state, use_color) + '\n'
+      if not oneshot:
+        # reuse remaining_time
+        pass
+      else:
+        remaining_time, _ = await estimator.estimate_remaining_time(queue_state, True, use_similar)
+      output += await format_estimated_time(remaining_time, queue_state, use_color) + '\n'
 
       if self.args.clear_screen:
         os.system('clear')
