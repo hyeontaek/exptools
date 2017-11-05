@@ -9,6 +9,7 @@ import json
 import logging
 import os
 import secrets
+import traceback
 
 from exptools.history import History
 from exptools.queue import Queue
@@ -88,17 +89,27 @@ async def server_main(argv, ready_event, loop):
     registry, history, queue, resolver, scheduler, runner,
     ready_event, loop)
 
+  async def _print_exc(coro):
+    try:
+      return await coro
+    except concurrent.futures.CancelledError:
+      # Pass through
+      raise
+    except Exception:  # pylint: disable=broad-except
+      logger.exception('Exception in server tasks')
+      raise
+
   state_tasks = [
-    asyncio.ensure_future(registry.run_forever(), loop=loop),
-    asyncio.ensure_future(history.run_forever(), loop=loop),
-    asyncio.ensure_future(queue.run_forever(), loop=loop),
-    asyncio.ensure_future(scheduler.run_forever(), loop=loop),
+    asyncio.ensure_future(_print_exc(registry.run_forever()), loop=loop),
+    asyncio.ensure_future(_print_exc(history.run_forever()), loop=loop),
+    asyncio.ensure_future(_print_exc(queue.run_forever()), loop=loop),
+    asyncio.ensure_future(_print_exc(scheduler.run_forever()), loop=loop),
   ]
 
-  server_task = asyncio.ensure_future(server.run_forever(), loop=loop)
+  server_task = asyncio.ensure_future(_print_exc(server.run_forever()), loop=loop)
 
   execution_tasks = [
-    asyncio.ensure_future(runner.run_forever(), loop=loop),
+    asyncio.ensure_future(_print_exc(runner.run_forever()), loop=loop),
     server_task,
   ]
 
