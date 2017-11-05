@@ -15,6 +15,7 @@ import sys
 import termcolor
 
 from exptools.estimator import Estimator
+from exptools.magic import Magic
 from exptools.param import get_param_id, get_hash_id, get_name
 from exptools.rpc_client import Client
 from exptools.time import (
@@ -1123,6 +1124,10 @@ def make_parser():
                       help='the port number of the server (default: %(default)s)')
   parser.add_argument('--secret-file', type=str,
                       default='secret.json', help='the secret file path (default: %(default)s)')
+
+  parser.add_argument('--magic-file', type=str, default='magic_client',
+                      help='the magic file path (default: %(default)s)')
+
   parser.add_argument('--color', type=str, default='yes',
                       choices=['yes', 'no'],
                       help='use colors (default: %(default)s)')
@@ -1185,10 +1190,22 @@ async def client_main(argv, loop):
   pipe_break.append(True)
 
   # Run commands
-  chain = []
-  client_pool = {}
-  for i, (args, unknown_args) in enumerate(args_list):
-    # Run a handler
-    handler = CommandHandler(
-      common_args, args, unknown_args, pipe_break[i], chain, client_pool, loop)
-    await handler.handle()
+  magic = Magic(common_args.magic_file, loop)
+  magic_task = asyncio.ensure_future(magic.run_forever(), loop=loop)
+
+  try:
+    chain = []
+    client_pool = {}
+    for i, (args, unknown_args) in enumerate(args_list):
+      # Run a handler
+      handler = CommandHandler(
+        common_args, args, unknown_args, pipe_break[i], chain, client_pool, loop)
+      await handler.handle()
+
+  finally:
+    magic_task.cancel()
+    try:
+      await magic_task
+    except concurrent.futures.CancelledError:
+      # Ignore CancelledError because we caused it
+      pass

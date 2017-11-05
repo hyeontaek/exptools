@@ -11,6 +11,7 @@ import os
 import secrets
 
 from exptools.history import History
+from exptools.magic import Magic
 from exptools.queue import Queue
 from exptools.registry import Registry
 from exptools.resolver import Resolver
@@ -29,6 +30,9 @@ def make_parser():
                       help='the port number of the server (default: %(default)s)')
   parser.add_argument('--secret-file', type=str,
                       default='secret.json', help='the secret file path (default: %(default)s)')
+
+  parser.add_argument('--magic-file', type=str, default='magic_server',
+                      help='the magic file path (default: %(default)s)')
 
   parser.add_argument('--scheduler-type', type=str, default='serial',
                       help='the scheduler type (default: %(default)s)')
@@ -76,6 +80,8 @@ async def server_main(argv, ready_event, loop):
     logger.info(f'Using secret file at {args.secret_file}')
   secret = json.load(open(args.secret_file))
 
+  magic = Magic(args.magic_file, loop)
+
   registry = Registry(args.registry_file, loop)
   history = History(args.history_file, loop)
   queue = Queue(args.queue_file, registry, history, loop)
@@ -99,6 +105,7 @@ async def server_main(argv, ready_event, loop):
   ]
 
   execution_tasks = [
+    asyncio.ensure_future(magic.run_forever(), loop=loop),
     asyncio.ensure_future(runner.run_forever(), loop=loop),
     asyncio.ensure_future(server.run_forever(), loop=loop),
   ]
