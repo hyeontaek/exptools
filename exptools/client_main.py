@@ -830,7 +830,8 @@ class CommandHandler:
 
         output += '\n'
 
-      remaining_time, rem_map = await estimator.estimate_remaining_time(queue_state, False, use_similar)
+      remaining_time, rem_map = (
+        await estimator.estimate_remaining_time(queue_state, False, use_similar))
       last_rem = 0.
 
       if 'started' in job_types:

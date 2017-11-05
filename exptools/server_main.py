@@ -9,7 +9,6 @@ import json
 import logging
 import os
 import secrets
-import traceback
 
 from exptools.history import History
 from exptools.queue import Queue
