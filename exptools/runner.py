@@ -121,17 +121,17 @@ class Runner:
       os.unlink(last_path)
     os.symlink(job_id, last_path, target_is_directory=True)
 
-  def _make_symlinks(self, param_id, hash_id, job_id):
+  def _make_symlinks(self, param_id, hash_id, job_dir_basename):
     param_path = os.path.join(self.base_dir, param_id)
     hash_path = os.path.join(self.base_dir, hash_id)
 
     if os.path.lexists(param_path):
       os.unlink(param_path)
-    os.symlink(job_id, param_path, target_is_directory=True)
+    os.symlink(job_dir_basename, param_path, target_is_directory=True)
 
     if os.path.lexists(hash_path):
       os.unlink(hash_path)
-    os.symlink(job_id, hash_path, target_is_directory=True)
+    os.symlink(job_dir_basename, hash_path, target_is_directory=True)
 
   def _remove_tmp_symlinks(self, param_id, hash_id):
     param_path = os.path.join(self.base_dir, param_id)
@@ -197,11 +197,15 @@ class Runner:
       self.logger.info(f'Launching job {job_id}: {name}')
 
       # Make the job directory
-      job_dir = os.path.join(self.base_dir, job['job_id'])
+      job_dir_basename = job['job_id']
       if current_retry > 0:
-        job_dir += f'_{current_retry}'
-      while os.path.exists(job_dir):
-        job_dir += f'_{random.randint(0, 9999)}'
+        job_dir_basename += f'_{current_retry}'
+      while True:
+        job_dir = os.path.join(self.base_dir, job_dir_basename)
+        if not os.path.exists(job_dir):
+          break
+        job_dir_basename += f'_{random.randint(0, 9999)}'
+
       os.mkdir(job_dir)
 
       self._create_job_files(job, job_dir)
@@ -271,7 +275,7 @@ class Runner:
       await self._read_status(job_id, job_dir)
 
       if proc.returncode == 0:
-        self._make_symlinks(param_id, hash_id, job_id)
+        self._make_symlinks(param_id, hash_id, job_dir_basename)
 
         succeeded = True
 
