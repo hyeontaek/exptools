@@ -39,6 +39,7 @@ setup(
       'aiofiles',
       'aionotify',
       'base58',
+      'numpy',
       'pyomo',
       'pytz',
       'termcolor',

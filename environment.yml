@@ -2,6 +2,7 @@ name: exptools
 channels:
 - defaults
 dependencies:
+- numpy
 - pytz
 - termcolor
 - pip:
