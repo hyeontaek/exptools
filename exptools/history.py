@@ -37,20 +37,20 @@ class History(State):
       self.lock.notify_all()
       self._schedule_dump()
 
-  @rpc_export_function
-  async def reset(self, hash_ids):
-    """Reset the job execution history."""
-    if not hash_ids:
-      return hash_ids
+  #@rpc_export_function
+  #async def reset(self, hash_ids):
+  #  """Reset the job execution history."""
+  #  if not hash_ids:
+  #    return hash_ids
 
-    async with self.lock:
-      for hash_id in hash_ids:
-        self._state[hash_id] = dict(HISTORY_STUB)
-        self.logger.info(f'Reset history for parameter {hash_id}')
+  #  async with self.lock:
+  #    for hash_id in hash_ids:
+  #      self._state[hash_id] = dict(HISTORY_STUB)
+  #      self.logger.info(f'Reset history for parameter {hash_id}')
 
-      self.lock.notify_all()
-      self._schedule_dump()
-    return hash_ids
+  #    self.lock.notify_all()
+  #    self._schedule_dump()
+  #  return hash_ids
 
   @rpc_export_function
   async def remove(self, hash_ids):

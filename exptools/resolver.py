@@ -9,10 +9,11 @@ from exptools.rpc_helper import rpc_export_function
 class Resolver:
   """Filter parameters."""
 
-  def __init__(self, registry, history, queue, loop):
+  def __init__(self, registry, history, queue, runner, loop):
     self.registry = registry
     self.history = history
     self.queue = queue
+    self.runner = runner
     self.loop = loop
 
   async def _augment(self, params):
@@ -93,7 +94,7 @@ class Resolver:
   async def filter_omit(self, params, types):
     """Omit parameters of specified types"""
     valid_types = [
-      'succeeded', 'failed', 'finished', 'started', 'queued', 'identical', 'duplicate']
+      'succeeded', 'failed', 'finished', 'started', 'queued', 'identical', 'duplicate', 'has_output']
     for type_ in types:
       assert type_ in valid_types
 
@@ -148,6 +149,15 @@ class Resolver:
         hash_id = get_hash_id(param)
         if hash_id not in seen_hash_ids:
           seen_hash_ids.add(hash_id)
+          new_params.append(param)
+      params = new_params
+
+    if 'has_output' in types:
+      output_hash_ids = await self.runner.hash_ids()
+      new_params = []
+      for param in params:
+        hash_id = get_hash_id(param)
+        if hash_id not in output_hash_ids:
           new_params.append(param)
       params = new_params
 

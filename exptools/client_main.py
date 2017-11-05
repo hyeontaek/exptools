@@ -525,13 +525,13 @@ class CommandHandler:
     param_ids = await self.client.registry.remove(paramset, param_ids)
     print(f'Removed: {len(param_ids)} parameters from {paramset}')
 
-  @arg_export('command_reset')
-  async def _handle_reset(self):
-    """reset history data of matching IDs"""
+  @arg_export('command_forget')
+  async def _handle_forget(self):
+    """remove history data of matching IDs"""
     hash_ids = await self._execute_chain('hash_ids')
 
-    reset_hash_ids = await self.client.history.reset(hash_ids)
-    print(f'Reset: {len(reset_hash_ids)} history data')
+    forgot_hash_ids = await self.client.history.remove(hash_ids)
+    print(f'Removed: {len(forgot_hash_ids)} history data')
 
   @arg_export('command_prune')
   async def _handle_prune(self):
@@ -586,11 +586,12 @@ class CommandHandler:
                 'started', 'A',
                 'queued', 'Q',
                 'identical', 'I',
-                'duplicate', 'D'],
+                'duplicate', 'D',
+                'has_output', 'O'],
               nargs='*',
               help=('omit specified parameter types; ' +
                     'S=success, F=failed, f=finished, A=started, Q=queued, ' +
-                    'I=identical, D=duplicate'))
+                    'I=identical, D=duplicate, O=has_output'))
   async def _handle_omit(self):
     """omit parameters of specified types"""
     types = []
@@ -603,6 +604,7 @@ class CommandHandler:
         'Q': 'queued',
         'I': 'identical',
         'D': 'duplicate',
+        'O': 'has_output',
       }.get(type_, type_)
       types.append(type_)
 
@@ -617,11 +619,12 @@ class CommandHandler:
                 'started', 'A',
                 'queued', 'Q',
                 'identical', 'I',
-                'duplicate', 'D'],
+                'duplicate', 'D',
+                'has_output', 'O'],
               nargs='*',
               help=('only include specified parameter types; ' +
                     'S=success, F=failed, f=finished, A=started, Q=queued, ' +
-                    'I=identical, D=duplicate'))
+                    'I=identical, D=duplicate, O=has_output'))
   async def _handle_only(self):
     """only include parameters of specified types"""
     types = []
@@ -634,6 +637,7 @@ class CommandHandler:
         'Q': 'queued',
         'I': 'identical',
         'D': 'duplicate',
+        'O': 'has_output',
       }.get(type_, type_)
       types.append(type_)
 

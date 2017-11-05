@@ -79,10 +79,13 @@ async def server_main(argv, ready_event, loop):
   registry = Registry(args.registry_file, loop)
   history = History(args.history_file, loop)
   queue = Queue(args.queue_file, registry, history, loop)
-  resolver = Resolver(registry, history, queue, loop)
   scheduler = get_scheduler(args.scheduler_type)(
     args.scheduler_mode, args.scheduler_file, queue, history, loop)
+
   runner = Runner(args.output_dir, queue, scheduler, loop)
+
+  resolver = Resolver(registry, history, queue, runner, loop)
+
   server = Server(
     args.host, args.port, secret,
     registry, history, queue, resolver, scheduler, runner,
