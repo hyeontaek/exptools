@@ -249,27 +249,41 @@ class CommandHandler:
   #### Common methods
 
   @arg_export('common_get_queue_state')
+  @arg_define('-s', '--similar', action='store_true', default=False,
+              help='use similar jobs to estimate job duration for never succeeded jobs')
   @arg_define('-f', '--follow', action='store_true', default=False, help='follow queue changes')
   @arg_define('-i', '--interval', type=float, default=0.,
               help=('refresh interval in seconds for no queue change; ' +
                     'use 0 to refresh upon changes only (default: %(default)s)'))
-  @arg_define('-s', '--stop-empty', action='store_true', default=False,
+  @arg_define('-e', '--stop-empty', action='store_true', default=False,
               help='stop upon empty queue')
   @arg_define('-c', '--clear-screen', action='store_true', default=False,
               help='clear screen before showing the queue')
   async def _get_queue_state(self):
+    use_similar = self.args.similar
+
     if self.args.follow:
       interval = self.args.interval
 
       if not interval:
-        async for state in self.client_watch.queue.watch_state_fast():
-          yield state
+        if not use_similar:
+          async for state in self.client_watch.queue.watch_state_fast():
+            yield state
+        else:
+          async for state in self.client_watch.queue.watch_state():
+            yield state
       else:
         # Manually access asynchronous generator to use asyncio.wait() for timeout
-        watch_state_gen = self.client_watch.queue.watch_state_fast().__aiter__()
+        if not use_similar:
+          watch_state_gen = self.client_watch.queue.watch_state_fast().__aiter__()
+        else:
+          watch_state_gen = self.client_watch.queue.watch_state().__aiter__()
         gen_next = asyncio.ensure_future(watch_state_gen.__anext__(), loop=self.loop)
         try:
-          state = await self.client.queue.get_state_fast()
+          if not use_similar:
+            state = await self.client.queue.get_state_fast()
+          else:
+            state = await self.client.queue.get_state()
           try:
             while True:
               await asyncio.wait([gen_next], timeout=interval, loop=self.loop)
@@ -289,7 +303,10 @@ class CommandHandler:
             # Ignore CancelledError because we caused it
             pass
     else:
-      state = await self.client.queue.get_state_fast()
+      if not use_similar:
+        state = await self.client.queue.get_state_fast()
+      else:
+        state = await self.client.queue.get_state()
       yield state
 
   @arg_export('common_get_stdout_stderr')
@@ -717,13 +734,15 @@ class CommandHandler:
   @arg_import('common_get_queue_state')
   async def _handle_s(self):
     """summarize the queue state"""
-    estimator = Estimator(self.client.history)
+    estimator = Estimator(self.client.registry, self.client.history)
     use_color = self.common_args.color == 'yes'
+    use_similar = self.args.similar
 
     async for queue_state in self._get_queue_state():
       oneshot = await self.client.scheduler.is_oneshot()
 
-      output = await format_estimated_time(estimator, queue_state, oneshot, use_color)
+      remaining_time, _ = await estimator.estimate_remaining_time(queue_state, oneshot, use_similar)
+      output = await format_estimated_time(remaining_time, queue_state, use_color)
 
       if self.args.clear_screen:
         os.system('clear')
@@ -744,13 +763,14 @@ class CommandHandler:
   async def _handle_status(self):
     """show the queue state"""
     limit = self.args.limit
+    use_similar = self.args.similar
 
     if self.args.job_types == 'all':
       job_types = {'finished', 'started', 'queued'}
     else:
       job_types = set(self.args.job_types)
 
-    estimator = Estimator(self.client.history)
+    estimator = Estimator(self.client.registry, self.client.history)
     use_color = self.common_args.color == 'yes'
 
     if use_color:
@@ -810,7 +830,7 @@ class CommandHandler:
 
         output += '\n'
 
-      _, rem_map = await estimator.estimate_remaining_time(queue_state, False)
+      _, rem_map = await estimator.estimate_remaining_time(queue_state, False, use_similar)
       last_rem = 0.
 
       if 'started' in job_types:
@@ -885,7 +905,7 @@ class CommandHandler:
 
       # output += f"Concurrency: {queue_state['concurrency']}"
 
-      output += await format_estimated_time(estimator, queue_state, oneshot, use_color) + '\n'
+      output += await format_estimated_time(last_rem, queue_state, use_color) + '\n'
 
       if self.args.clear_screen:
         os.system('clear')
@@ -925,25 +945,34 @@ class CommandHandler:
     print(f'Added: {len(job_ids)} queued jobs')
 
   @arg_export('command_estimate')
+  @arg_define('-s', '--similar', action='store_true', default=False,
+              help='use similar jobs to estimate job duration for never succeeded jobs')
   async def _handle_estimate(self):
     """estimate execution time instead of enqueueing"""
     hash_ids = await self._execute_chain('hash_ids')
 
-    queue_state = await self.client.queue.get_state_fast()
-    oneshot = await self.client.scheduler.is_oneshot()
+    use_similar = self.args.similar
     use_color = self.common_args.color == 'yes'
 
-    estimator = Estimator(self.client.history)
+    if not use_similar:
+      queue_state = await self.client.queue.get_state_fast()
+    else:
+      queue_state = await self.client.queue.get_state()
+    oneshot = await self.client.scheduler.is_oneshot()
 
+    estimator = Estimator(self.client.registry, self.client.history)
+
+    remaining_time, _ = await estimator.estimate_remaining_time(queue_state, oneshot, use_similar)
     print('Current:   ' +
-          await format_estimated_time(estimator, queue_state, oneshot, use_color))
+          await format_estimated_time(remaining_time, queue_state, use_color))
 
     queue_state['queued_jobs'].extend(
       [{'job_id': 'dummy-j-{i}', 'param': {'_': {'hash_id': hash_id}}}
        for i, hash_id in enumerate(hash_ids)])
 
+    remaining_time, _ = await estimator.estimate_remaining_time(queue_state, oneshot, use_similar)
     print('Estimated: ' +
-          await format_estimated_time(estimator, queue_state, oneshot, use_color))
+          await format_estimated_time(remaining_time, queue_state, use_color))
 
   @arg_export('command_move')
   @arg_define('offset', type=int,

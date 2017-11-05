@@ -180,7 +180,7 @@ def format_job_count(queue_state, use_color):
   return output
 
 
-async def format_estimated_time(estimator, queue_state, oneshot, use_color):
+async def format_estimated_time(remaining_time, queue_state, use_color):
   """Format the estimated time with colors."""
 
   state = queue_state
@@ -191,7 +191,6 @@ async def format_estimated_time(estimator, queue_state, oneshot, use_color):
       """Use no color."""
       return s
 
-  remaining_time, _ = await estimator.estimate_remaining_time(state, oneshot)
   remaining_str = format_sec_short(remaining_time)
 
   current_time = utcnow()
