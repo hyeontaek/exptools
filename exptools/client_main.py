@@ -296,7 +296,12 @@ class CommandHandler:
           except StopAsyncIteration:
             pass
         finally:
-          gen_next.cancel()
+          if not gen_next.done():
+            try:
+              await watch_state_gen.aclose()
+            finally:
+              gen_next.cancel()
+
           try:
             await gen_next
           except concurrent.futures.CancelledError:
