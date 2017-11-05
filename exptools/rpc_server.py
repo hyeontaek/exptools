@@ -212,10 +212,10 @@ class Server:
       server = await websockets.serve(
         self._get_serve(), self.host, self.port, max_size=self.max_size, loop=self.loop)
     except Exception:  # pylint: disable=broad-except
-      self.logger.exception('Exception while initializing server')
+      # Set self.ready_event anyway to wake up waiters
       if self.ready_event:
         self.ready_event.set()
-      return
+      raise
 
     try:
       self.logger.info(f'Listening on ws://{self.host}:{self.port}/')
