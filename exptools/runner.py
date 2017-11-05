@@ -500,9 +500,11 @@ class Runner:
     # Keep symlinks related to started jobs
     param_ids = set(param_ids)
     param_ids -= set([get_param_id(job['param']) for job in queue_state['started_jobs']])
+    param_ids -= set([get_param_id(job['param']) + '_tmp' for job in queue_state['started_jobs']])
 
     hash_ids = set(hash_ids)
     hash_ids -= set([get_hash_id(job['param']) for job in queue_state['started_jobs']])
+    hash_ids -= set([get_hash_id(job['param']) + '_tmp' for job in queue_state['started_jobs']])
 
     removed_output = self._remove_output(trash_dir, param_ids, hash_ids)
     removed_output += self._remove_dangling_noref(trash_dir)
