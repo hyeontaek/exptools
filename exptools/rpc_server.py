@@ -189,7 +189,7 @@ class Server:
         ]
         try:
           # Stop waiting if any of two handlers fails
-          await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED, loop=self.loop)
+          await asyncio.wait(tasks, return_when=asyncio.FIRST_EXCEPTION, loop=self.loop)
         finally:
           for task in tasks:
             task.cancel()
