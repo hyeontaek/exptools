@@ -38,7 +38,7 @@ class Resolver:
         params.append(await self.registry.param(param_id=id_))
 
       elif id_.startswith('h-'):
-        param_ids = self.registry.param_ids_by_hash_id(hash_id=id_)
+        param_ids = await self.registry.param_ids_by_hash_id(hash_id=id_)
         params.extend(await self.registry.params(param_ids))
 
       elif id_.startswith('j-'):
