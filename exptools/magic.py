@@ -27,23 +27,28 @@ class Magic:
     '''Process magic commands.'''
     open(self.path, 'w').close()
 
-    watcher = aionotify.Watcher()
-    watcher.watch(self.path, aionotify.Flags.CLOSE_WRITE)
-    await watcher.setup(self.loop)
     try:
-      while True:
-        try:
-          await watcher.get_event()
-          await self._handle()
-          self.logger.debug(f'Detected status change for magic file')
-        except concurrent.futures.CancelledError:
-          # Break loop (likely normal exit through task cancellation)
-          break
-        except Exception:  # pylint: disable=broad-except
-          self.logger.exception(f'Exception while watching magic file')
+      watcher = aionotify.Watcher()
+      watcher.watch(self.path, aionotify.Flags.CLOSE_WRITE)
+      await watcher.setup(self.loop)
+      try:
+        while True:
+          try:
+            await watcher.get_event()
+            await self._handle()
+            self.logger.debug(f'Detected status change for magic file')
+          except concurrent.futures.CancelledError:
+            # Break loop (likely normal exit through task cancellation)
+            break
+          except Exception:  # pylint: disable=broad-except
+            self.logger.exception(f'Exception while watching magic file')
+      finally:
+        watcher.unwatch(self.path)
+        watcher.close()
+
     finally:
-      watcher.unwatch(self.path)
-      watcher.close()
+      if os.path.exists(self.path):
+        os.unlink(self.path)
 
   async def _handle(self):
     async with aiofiles.open(self.path) as file:
