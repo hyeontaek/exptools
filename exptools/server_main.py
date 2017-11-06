@@ -80,8 +80,6 @@ async def server_main(argv, ready_event, loop):
     logger.info(f'Using secret file at {args.secret_file}')
   secret = json.load(open(args.secret_file))
 
-  magic = Magic(args.magic_file, loop)
-
   registry = Registry(args.registry_file, loop)
   history = History(args.history_file, loop)
   queue = Queue(args.queue_file, registry, history, loop)
@@ -105,10 +103,12 @@ async def server_main(argv, ready_event, loop):
   ]
 
   execution_tasks = [
-    asyncio.ensure_future(magic.run_forever(), loop=loop),
     asyncio.ensure_future(runner.run_forever(), loop=loop),
     asyncio.ensure_future(server.run_forever(), loop=loop),
   ]
+
+  magic = Magic(args.magic_file, loop)
+  magic_task = asyncio.ensure_future(magic.run_forever(), loop=loop)
 
   try:
     await asyncio.wait(state_tasks + execution_tasks,
@@ -132,5 +132,13 @@ async def server_main(argv, ready_event, loop):
         except concurrent.futures.CancelledError:
           # Ignore CancelledError because we caused it
           pass
+
+      logger.info('Waiting for magic task to exit')
+      magic_task.cancel()
+      try:
+        await magic_task
+      except concurrent.futures.CancelledError:
+        # Ignore CancelledError because we caused it
+        pass
 
     logger.info('Tasks exited')
