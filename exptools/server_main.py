@@ -31,7 +31,7 @@ def make_parser():
   parser.add_argument('--secret-file', type=str,
                       default='secret.json', help='the secret file path (default: %(default)s)')
 
-  parser.add_argument('--magic-file', type=str, default='magic_server',
+  parser.add_argument('--magic-file', type=str, default=f'magic_server_{os.getpid()}',
                       help='the magic file path (default: %(default)s)')
 
   parser.add_argument('--scheduler-type', type=str, default='serial',

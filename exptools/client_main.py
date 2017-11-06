@@ -1125,7 +1125,7 @@ def make_parser():
   parser.add_argument('--secret-file', type=str,
                       default='secret.json', help='the secret file path (default: %(default)s)')
 
-  parser.add_argument('--magic-file', type=str, default='magic_client',
+  parser.add_argument('--magic-file', type=str, default=f'magic_client_{os.getpid()}',
                       help='the magic file path (default: %(default)s)')
 
   parser.add_argument('--color', type=str, default='yes',
