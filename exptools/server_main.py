@@ -31,7 +31,7 @@ def make_parser():
   parser.add_argument('--secret-file', type=str,
                       default='secret.json', help='the secret file path (default: %(default)s)')
 
-  parser.add_argument('--magic-file', type=str, default=f'magic_server_{os.getpid()}',
+  parser.add_argument('--magic-file', type=str, default='magic_server_PID',
                       help='the magic file path (default: %(default)s)')
 
   parser.add_argument('--scheduler-type', type=str, default='serial',
@@ -107,7 +107,7 @@ async def server_main(argv, ready_event, loop):
     asyncio.ensure_future(server.run_forever(), loop=loop),
   ]
 
-  magic = Magic(args.magic_file, loop)
+  magic = Magic(args.magic_file.replace('PID', str(os.getpid())), loop)
   magic_task = asyncio.ensure_future(magic.run_forever(), loop=loop)
 
   try:

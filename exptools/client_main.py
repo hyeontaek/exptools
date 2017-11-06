@@ -1125,7 +1125,7 @@ def make_parser():
   parser.add_argument('--secret-file', type=str,
                       default='secret.json', help='the secret file path (default: %(default)s)')
 
-  parser.add_argument('--magic-file', type=str, default=f'magic_client_{os.getpid()}',
+  parser.add_argument('--magic-file', type=str, default='magic_client_PID',
                       help='the magic file path (default: %(default)s)')
 
   parser.add_argument('--color', type=str, default='yes',
@@ -1190,7 +1190,7 @@ async def client_main(argv, loop):
   pipe_break.append(True)
 
   # Run commands
-  magic = Magic(common_args.magic_file, loop)
+  magic = Magic(common_args.magic_file.replace('PID', str(os.getpid())), loop)
   magic_task = asyncio.ensure_future(magic.run_forever(), loop=loop)
 
   try:
