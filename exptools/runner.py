@@ -104,22 +104,22 @@ class Runner:
     env['EXPTOOLS_STATUS_JSON_PATH'] = os.path.join(job_dir, 'status.json')
     return env
 
-  def _make_tmp_symlinks(self, param_id, hash_id, job_id):
+  def _make_tmp_symlinks(self, param_id, hash_id, job_dir_basename):
     param_path = os.path.join(self.base_dir, param_id)
     hash_path = os.path.join(self.base_dir, hash_id)
 
     if os.path.lexists(param_path + '_tmp'):
       os.unlink(param_path + '_tmp')
-    os.symlink(job_id, param_path + '_tmp', target_is_directory=True)
+    os.symlink(job_dir_basename, param_path + '_tmp', target_is_directory=True)
 
     if os.path.lexists(hash_path + '_tmp'):
       os.unlink(hash_path + '_tmp')
-    os.symlink(job_id, hash_path + '_tmp', target_is_directory=True)
+    os.symlink(job_dir_basename, hash_path + '_tmp', target_is_directory=True)
 
     last_path = os.path.join(self.base_dir, 'last')
     if os.path.lexists(last_path):
       os.unlink(last_path)
-    os.symlink(job_id, last_path, target_is_directory=True)
+    os.symlink(job_dir_basename, last_path, target_is_directory=True)
 
   def _make_symlinks(self, param_id, hash_id, job_dir_basename):
     param_path = os.path.join(self.base_dir, param_id)
@@ -214,7 +214,7 @@ class Runner:
       with open(os.path.join(job_dir, 'stdout'), 'wb', buffering=0) as stdout, \
           open(os.path.join(job_dir, 'stderr'), 'wb', buffering=0) as stderr:
 
-        self._make_tmp_symlinks(param_id, hash_id, job_id)
+        self._make_tmp_symlinks(param_id, hash_id, job_dir_basename)
 
         # Launch process
         proc = await asyncio.create_subprocess_exec(
