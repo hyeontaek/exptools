@@ -94,7 +94,8 @@ class Resolver:
   async def filter_omit(self, params, types):
     """Omit parameters of specified types"""
     valid_types = [
-      'succeeded', 'failed', 'finished', 'started', 'queued', 'identical', 'duplicate', 'has_output']
+      'succeeded', 'failed', 'finished', 'started', 'queued',
+      'identical', 'duplicate', 'has_output']
     for type_ in types:
       assert type_ in valid_types
 
