@@ -8,7 +8,7 @@ setup(
     version='0.1.0',
 
     description='Experiment tools',
-    long_description='Experiment tools for system projects',
+    long_description='Experiment tools for systems projects',
 
     url='https://github.com/hyeontaek/exptools',
 
