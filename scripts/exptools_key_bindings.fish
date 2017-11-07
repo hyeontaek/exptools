@@ -11,6 +11,13 @@ function exptools_key_bindings
     end
   end
 
+  function __etc_paramset_cmd
+    set -q ETC_CMD; or set ETC_CMD "etc"
+    set -q ETC_COMMON_OPTS; or set ETC_COMMON_OPTS ""
+    set -q ETC_PARAMSET_OPTS; or set ETC_PARAMSET_OPTS "paramset -l"
+    echo "$ETC_CMD $ETC_COMMON_OPTS $ETC_PARAMSET_OPTS"
+  end
+
   function __etc_status_cmd
     set -q ETC_CMD; or set ETC_CMD "etc"
     set -q ETC_COMMON_OPTS; or set ETC_COMMON_OPTS ""
@@ -23,6 +30,18 @@ function exptools_key_bindings
     set -q ETC_COMMON_OPTS; or set ETC_COMMON_OPTS ""
     set -q ETC_DU_OPTS; or set ETC_DU_OPTS "select all : du"
     echo "$ETC_CMD $ETC_COMMON_OPTS $ETC_DU_OPTS"
+  end
+
+  function fzf-paramset-widget -d "Insert selected paramsets"
+    set -q FZF_TMUX_HEIGHT; or set FZF_TMUX_HEIGHT 40%
+    set -lx FZF_DEFAULT_OPTS "--height $FZF_TMUX_HEIGHT $FZF_DEFAULT_OPTS"
+    eval (__etc_paramset_cmd) | tail -n +2 | eval (__fzfcmd) --multi | while read -l r; set result $result $r; end
+
+    for i in $result
+      commandline -it -- (string replace -r '^  (.+)$' '$1' $i)
+      commandline -it -- ' '
+    end
+    commandline -f repaint
   end
 
   function fzf-job-id-widget -d "Insert selected jobs' job ID"
@@ -61,11 +80,13 @@ function exptools_key_bindings
     commandline -f repaint
   end
 
+  bind \e7 fzf-paramset-widget
   bind \e8 fzf-job-id-widget
   bind \e9 fzf-param-id-widget
   bind \e0 fzf-hash-id-widget
 
   if bind -M insert > /dev/null 2>&1
+    bind -M insert \e7 fzf-paramset-widget
     bind -M insert \e8 fzf-job-id-widget
     bind -M insert \e9 fzf-param-id-widget
     bind -M insert \e0 fzf-hash-id-widget
