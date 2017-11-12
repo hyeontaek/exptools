@@ -540,10 +540,15 @@ class CommandHandler:
     print(f'Removed: {len(forgot_hash_ids)} history data')
 
   @arg_export('command_prune')
+  @arg_define('--missing-history', action='store_true', default=False,
+              help='also prune output that has no history data')
   async def _handle_prune(self):
     """prune unknown output and history data"""
     valid_param_ids = set(await self.client.registry.param_ids())
     valid_hash_ids = set(await self.client.registry.hash_ids())
+
+    if self.args.missing_history:
+      valid_hash_ids &= set(await self.client.history.hash_ids())
 
     param_ids = set(await self.client.runner.param_ids()) - valid_param_ids
     hash_ids = set(await self.client.runner.hash_ids()) - valid_hash_ids
