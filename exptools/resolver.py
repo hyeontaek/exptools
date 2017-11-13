@@ -98,7 +98,7 @@ class Resolver:
     # load pandas lazily for fast startup
     import pandas
     df = pandas.DataFrame(params, index=map(get_param_id, params))
-    selected_df = df.query(filter_expr)
+    selected_df = df.query(filter_expr, local_dict={}, global_dict={})
     selected_param_ids = set(selected_df.index)
     return [param for param in params if get_param_id(param) in selected_param_ids]
 
