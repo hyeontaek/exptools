@@ -113,36 +113,35 @@ class Resolver:
 
     hash_ids = [get_hash_id(param) for param in params]
 
-    if 'succeeded' in types or 'failed' in types or 'finished' in types:
-      history_list = await self.history.history_list(hash_ids)
+    if 'succeeded' in types:
+      params = [param for param in params if param['_']['succeeded'] != True]
+
+    if 'failed' in types:
+      params = [param for param in params if param['_']['succeeded'] != False]
+
+    if 'finished' in types:
+      params = [param for param in params if param['_']['finished'] is None]
+
+    if 'started' in types:
+      started_jobs = await self.queue.jobs(await self.queue.job_ids(['started']))
+      started_job_hash_ids = set([get_hash_id(job['param']) for job in started_jobs])
 
       new_params = []
-      for param, history in zip(params, history_list):
-        if 'succeeded' in types and history['succeeded']:
-          continue
-        if 'failed' in types and not history['succeeded']:
-          continue
-        if 'finished' in types and history['finished'] is not None:
+      for param, hash_id in zip(params, hash_ids):
+        if hash_id in started_job_hash_ids:
           continue
         new_params.append(param)
       params = new_params
 
-    if 'started' in types or 'queued' in types:
-      started_jobs = await self.queue.jobs(await self.queue.job_ids(['started']))
+    if 'queued' in types:
       queued_jobs = await self.queue.jobs(await self.queue.job_ids(['queued']))
+      queued_job_hash_ids = set([get_hash_id(job['param']) for job in queued_jobs])
 
       new_params = []
       for param, hash_id in zip(params, hash_ids):
-        if 'started' in types:
-          matching_jobs = [job for job in started_jobs if get_hash_id(job['param']) == hash_id]
-          if matching_jobs:
-            continue
-        if 'queued' in types:
-          matching_jobs = [job for job in queued_jobs if get_hash_id(job['param']) == hash_id]
-          if matching_jobs:
-            continue
+        if hash_id in queued_job_hash_ids:
+          continue
         new_params.append(param)
-
       params = new_params
 
     if 'identical' in types:
