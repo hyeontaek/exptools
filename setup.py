@@ -40,6 +40,7 @@ setup(
       'aionotify',
       'base58',
       'numpy',
+      'pandas',
       'pyomo',
       'pytz',
       'termcolor',

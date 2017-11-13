@@ -3,6 +3,7 @@ channels:
 - defaults
 dependencies:
 - numpy
+- pandas
 - pytz
 - termcolor
 - pip:
