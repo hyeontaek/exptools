@@ -111,20 +111,15 @@ class Resolver:
 
     aeval = asteval.Interpreter(no_print=True)
 
-    # Use low-level asteval methods to avoid parsing the expression for each param
-    aeval.symtable['param'] = aeval.symtable['p'] = {}
-    parsed = aeval.parse(filter_expr)
-
     new_params = []
     for param in params:
       # Note that by exposing param without copying,
       # the user-supplied filter_expr may modify the content of param.
       # However, we allow it because the modification is only visible via get_param(),
       # which is used by dump commands and no other commands such as add or enqueue.
-
       aeval.symtable['param'] = aeval.symtable['p'] = param
-      # Directly run the AST node instead of calling eval()
-      result = aeval.run(parsed, expr=filter_expr, lineno=0)
+
+      result = aeval.eval(filter_expr, show_errors=False)
       if result:
         new_params.append(param)
     return new_params
