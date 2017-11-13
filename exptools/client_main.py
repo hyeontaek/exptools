@@ -599,6 +599,12 @@ class CommandHandler:
     """filter parameters using a pandas query expression"""
     self._add_to_chain('pandas_query', self.args.filter_expr)
 
+  @arg_export('command_asteval')
+  @arg_define('filter_expr', type=str, help='asteval (python) expression')
+  async def _handle_asteval(self):
+    """filter parameters using an asteval expression"""
+    self._add_to_chain('asteval', self.args.filter_expr)
+
   @arg_export('command_omit')
   @arg_define('omit_types',
               choices=[

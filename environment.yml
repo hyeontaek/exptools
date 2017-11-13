@@ -10,6 +10,7 @@ dependencies:
 - pip:
   - aiofiles
   - aionotify
+  - asteval
   - base58
   - pyomo
   - tzlocal

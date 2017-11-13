@@ -38,6 +38,7 @@ setup(
     install_requires=[
       'aiofiles',
       'aionotify',
+      'asteval',
       'base58',
       'numexpr', # implicit dependency from numpy
       'numpy',

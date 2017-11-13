@@ -1,5 +1,6 @@
 """Implement the Resolver class."""
 
+import copy
 import re
 
 from exptools.param import get_param_id, get_hash_id, get_name, make_unique_id
@@ -88,19 +89,45 @@ class Resolver:
   @rpc_export_function
   async def filter_yaql(self, params, filter_expr):
     """Filter parameters using a YAQL expression."""
-    # load yaql lazily for fast startup
+    # Load yaql lazily for fast startup
     import yaql
     return yaql.eval(f'$.where({filter_expr})', data=params)
 
   @rpc_export_function
   async def filter_pandas_query(self, params, filter_expr):
     """Filter parameters using a pandas query expression."""
-    # load pandas lazily for fast startup
+    # Load pandas lazily for fast startup
     import pandas
     df = pandas.DataFrame(params, index=map(get_param_id, params))
     selected_df = df.query(filter_expr, local_dict={}, global_dict={})
     selected_param_ids = set(selected_df.index)
     return [param for param in params if get_param_id(param) in selected_param_ids]
+
+  @rpc_export_function
+  async def filter_asteval(self, params, filter_expr):
+    """Filter parameters using an asteval expression."""
+    # Load asteval lazily for fast startup
+    import asteval
+
+    aeval = asteval.Interpreter(no_print=True)
+
+    # Use low-level asteval methods to avoid parsing the expression for each param
+    aeval.symtable['param'] = aeval.symtable['p'] = {}
+    parsed = aeval.parse(filter_expr)
+
+    new_params = []
+    for param in params:
+      # Note that by exposing param without copying,
+      # the user-supplied filter_expr may modify the content of param.
+      # However, we allow it because the modification is only visible via get_param(),
+      # which is used by dump commands and no other commands such as add or enqueue.
+
+      aeval.symtable['param'] = aeval.symtable['p'] = param
+      # Directly run the AST node instead of calling eval()
+      result = aeval.run(parsed, expr=filter_expr, lineno=0)
+      if result:
+        new_params.append(param)
+    return new_params
 
   @rpc_export_function
   async def filter_omit(self, params, types):
@@ -245,6 +272,8 @@ class Resolver:
         data = await self.filter_yaql(data, *args, **kwargs)
       elif operation == 'pandas_query':
         data = await self.filter_pandas_query(data, *args, **kwargs)
+      elif operation == 'asteval':
+        data = await self.filter_asteval(data, *args, **kwargs)
       elif operation == 'omit':
         data = await self.filter_omit(data, *args, **kwargs)
       elif operation == 'only':
