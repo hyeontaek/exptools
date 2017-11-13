@@ -568,6 +568,11 @@ class CommandHandler:
     """select parameters in the registry"""
     self._add_to_chain('select', self.args.ids)
 
+  @arg_export('command_augment')
+  async def _handle_augment(self):
+    """augment parameters with history data"""
+    self._add_to_chain('augment')
+
   @arg_export('command_grep')
   @arg_define('filter_expr', type=str, help='regular expression')
   @arg_define('-i', '--ignore-case', action='store_true', default=False,

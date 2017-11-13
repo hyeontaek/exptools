@@ -16,15 +16,6 @@ class Resolver:
     self.runner = runner
     self.loop = loop
 
-  async def _augment(self, params):
-    """Augment parameters with their history."""
-    hash_ids = [get_hash_id(param) for param in params]
-
-    history_list = await self.history.history_list(hash_ids)
-
-    for param, history in zip(params, history_list):
-      param['_'].update(history)
-
   @rpc_export_function
   async def select(self, ids):
     """Select parameters in the registry."""
@@ -49,7 +40,18 @@ class Resolver:
         param_ids = await self.registry.paramset(paramset=id_)
         params.extend(await self.registry.params(param_ids))
 
-    await self._augment(params)
+    return params
+
+  @rpc_export_function
+  async def filter_augment(self, params):
+    """Augment parameters with their history."""
+    hash_ids = [get_hash_id(param) for param in params]
+
+    history_list = await self.history.history_list(hash_ids)
+
+    for param, history in zip(params, history_list):
+      param['_'].update(history)
+
     return params
 
   @rpc_export_function
@@ -236,6 +238,8 @@ class Resolver:
         data = await self.select(*args, **kwargs)
 
       # Filter
+      elif operation == 'augment':
+        data = await self.filter_augment(data, *args, **kwargs)
       elif operation == 'grep':
         data = await self.filter_grep(data, *args, **kwargs)
       elif operation == 'yaql':
