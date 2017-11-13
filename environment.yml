@@ -2,6 +2,7 @@ name: exptools
 channels:
 - defaults
 dependencies:
+- numexpr
 - numpy
 - pandas
 - pytz

@@ -39,6 +39,7 @@ setup(
       'aiofiles',
       'aionotify',
       'base58',
+      'numexpr', # implicit dependency from numpy
       'numpy',
       'pandas',
       'pyomo',
