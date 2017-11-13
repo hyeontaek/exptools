@@ -91,6 +91,16 @@ class Resolver:
     return yaql.eval(f'$.where({filter_expr})', data=params)
 
   @rpc_export_function
+  async def filter_pandas_query(self, params, filter_expr):
+    """Filter parameters using a pandas query expression."""
+    # load pandas lazily for fast startup
+    import pandas
+    df = pandas.DataFrame(params, index=map(param_id, params))
+    selected_df = df.query(filter_expr)
+    selected_param_ids = set(selected_df.index)
+    return [param for param in params if get_param_id(param) in selected_param_ids]
+
+  @rpc_export_function
   async def filter_omit(self, params, types):
     """Omit parameters of specified types"""
     valid_types = [
@@ -230,6 +240,8 @@ class Resolver:
         data = await self.filter_grep(data, *args, **kwargs)
       elif operation == 'yaql':
         data = await self.filter_yaql(data, *args, **kwargs)
+      elif operation == 'pandas_query':
+        data = await self.filter_pandas_query(data, *args, **kwargs)
       elif operation == 'omit':
         data = await self.filter_omit(data, *args, **kwargs)
       elif operation == 'only':

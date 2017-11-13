@@ -588,6 +588,12 @@ class CommandHandler:
     """filter parameters using a YAQL expression"""
     self._add_to_chain('yaql', self.args.filter_expr)
 
+  @arg_export('command_pdq')
+  @arg_define('filter_expr', type=str, help='pandas query expression')
+  async def _handle_pandas_query(self):
+    """filter parameters using a pandas query expression"""
+    self._add_to_chain('pandas_query', self.args.filter_expr)
+
   @arg_export('command_omit')
   @arg_define('omit_types',
               choices=[
