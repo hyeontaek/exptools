@@ -15,6 +15,8 @@ task = asyncio.ensure_future(server_main(argv, ready_event, loop=loop), loop=loo
 ret = 1
 try:
   ret = loop.run_until_complete(task)
+except BrokenPipeError:
+  pass
 except KeyboardInterrupt:
   pass
 finally:
