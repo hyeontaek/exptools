@@ -1,6 +1,5 @@
 """Implement the Resolver class."""
 
-import copy
 import re
 
 from exptools.param import get_param_id, get_hash_id, get_name, make_unique_id
@@ -98,8 +97,8 @@ class Resolver:
     """Filter parameters using a pandas query expression."""
     # Load pandas lazily for fast startup
     import pandas
-    df = pandas.DataFrame(params, index=map(get_param_id, params))
-    selected_df = df.query(filter_expr, local_dict={}, global_dict={})
+    params_df = pandas.DataFrame(params, index=map(get_param_id, params))
+    selected_df = params_df.query(filter_expr, local_dict={}, global_dict={})
     selected_param_ids = set(selected_df.index)
     return [param for param in params if get_param_id(param) in selected_param_ids]
 
