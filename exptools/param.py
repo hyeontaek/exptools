@@ -11,6 +11,7 @@ __all__ = [
   'get_cwd',
   'get_time_limit',
   'ParamBuilder',
+  'ParamListBuilder',
 ]
 
 import collections
@@ -113,10 +114,114 @@ def get_time_limit(param):
 
 
 class ParamBuilder(collections.ChainMap):
-  """A parameter builder."""
+  """A parameter builder that facilitates incremental parameter construction."""
 
-  def __add__(self, update):
-    """Return a new parameter with updates on top of the current parameter."""
-    child = self.new_child()
-    child.update(update)
-    return child
+  def __add__(self, other):
+    """Return a new ParamBuilder with updates on top of the current parameter."""
+    assert isinstance(other, ParamBuilder)
+    return ParamBuilder(*(other.maps + self.maps))
+
+  def __mul__(self, other):
+    """Return a new ParamListBuilder that is a cross product of self and other."""
+    assert isinstance(other, (ParamBuilder, ParamListBuilder))
+    return ParamListBuilder([self]) * other
+
+  def apply(self, map_func, *, in_place=False):
+    """Apply a map function."""
+    if in_place:
+      map_func(self)
+      return self
+
+    new_param = map_func(self)
+    if isinstance(new_param, ParamBuilder):
+      return new_param
+    elif isinstance(new_param, ParamListBuilder):
+      return new_param
+    else:
+      raise TypeError('Unrecognized return type: ' + type(new_param).__name__)
+    return new_param
+
+  def copy(self):
+    """Return a new copy of self."""
+    return ParamBuilder({}, *self.maps)
+
+  def flatten_copy(self):
+    """Return a new flattened copy of self."""
+    return ParamBuilder(dict(self))
+
+  def flatten(self):
+    """Return a flattened version of self."""
+    if len(self.maps) > 1:
+      return ParamBuilder(dict(self))
+    return self
+
+  def finalize(self):
+    """Return a parameter that is converted to dict."""
+    if len(self.maps) > 1:
+      return dict(self)
+    return self.maps[0]
+
+
+class ParamListBuilder(list):
+  """A list of parameter builders."""
+
+  def __add__(self, other):
+    """Return a new ParamListBuilder that combines self and other."""
+    assert isinstance(other, ParamListBuilder)
+    return ParamListBuilder(super().__add__(other))
+
+  def __mul__(self, other):
+    """Return a new ParamListBuilder that is a cross product of self and other."""
+    assert isinstance(other, (ParamBuilder, ParamListBuilder))
+
+    pbl = ParamListBuilder()
+    if isinstance(other, ParamListBuilder):
+      for param in self:
+        for o_param in other:
+          pbl.append(param + o_param)
+    else:
+      for param in self:
+        pbl.append(param + other)
+    return pbl
+
+  def __getitem__(self, index):
+    """Return an item at index or a new ParamListBuilder containing items in the range."""
+    if isinstance(index, slice):
+      return ParamListBuilder(super().__getitem__(index))
+    return super().__getitem__(index)
+
+  def apply(self, map_func, *, in_place=False):
+    """Apply a map function."""
+    if in_place:
+      for param in self:
+        map_func(param)
+      return self
+
+    new_params = ParamListBuilder()
+    for param in self:
+      new_param = map_func(param)
+      if new_param is None:
+        continue
+      elif isinstance(new_param, ParamBuilder):
+        new_params.append(new_param)
+      elif isinstance(new_param, ParamListBuilder):
+        new_params.extend(new_param)
+      else:
+        raise TypeError('Unrecognized return type: ' + type(new_param).__name__)
+    return new_params
+
+  def copy(self):
+    """Return a new copy of self."""
+    return ParamListBuilder(self)
+
+  def flatten_copy(self):
+    """Return a new flattened copy of self."""
+    return ParamListBuilder([param.flatten_copy() for param in self])
+
+  def flatten(self):
+    """Return a flattened version of self."""
+    return ParamListBuilder([param.flatten() for param in self])
+
+  def finalize(self):
+    """Return a list of parameters that are converted to dict."""
+    return [param.finalize() for param in self]
