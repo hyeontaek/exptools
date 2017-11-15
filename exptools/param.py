@@ -116,6 +116,15 @@ def get_time_limit(param):
 class ParamBuilder(collections.ChainMap):
   """A parameter builder that facilitates incremental parameter construction."""
 
+  def __init__(self, *args, **kwargs):
+    if args:
+      super().__init__(*args)
+      assert not kwargs, 'Keyword arguments cannot be used when a dict list is provided'
+    else:
+      super().__init__()
+      if kwargs:
+        self.maps[0].update(kwargs)
+
   def __add__(self, other):
     """Return a new ParamBuilder with updates on top of the current parameter."""
     assert isinstance(other, ParamBuilder)
