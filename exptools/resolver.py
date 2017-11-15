@@ -213,18 +213,50 @@ class Resolver:
     """Sort parameters by given key"""
     key_path = sort_key.split('.')
 
-    def _key_func(param):
-      current_obj = param
-      for key in key_path:
-        if current_obj and key in current_obj:
-          current_obj = current_obj[key]
-        else:
-          current_obj = None
-      if current_obj is None:
-        return ''
-      return str(current_obj)
+    def _compare_func(obj1, obj2):
+      # None is smaller than any value
+      if obj1 is None:
+        if obj2 is not None:
+          return -1
+        return 0
+      else:
+        if obj2 is None:
+          return 1
 
-    return list(sorted(params, key=_key_func, reverse=reverse))
+      # str is compared directly
+      if isinstance(obj1, str):  # assumed: isinstance(y, str) == True
+        if obj1 < obj2:
+          return -1
+        elif obj1 == obj2:
+          return 0
+        return 1
+
+      # others are assumed to be numeric
+      return obj1 - obj2
+
+    # Adapted from functools.cmp_to_key()
+    class _Key:
+      def __init__(self, obj):
+        for key in key_path:
+          if isinstance(obj, dict) and key in obj:
+            obj = obj[key]
+          else:
+            obj = None
+        self.obj = obj
+      def __lt__(self, other):
+        return _compare_func(self.obj, other.obj) < 0
+      def __gt__(self, other):
+        return _compare_func(self.obj, other.obj) > 0
+      def __eq__(self, other):
+        return _compare_func(self.obj, other.obj) == 0
+      def __le__(self, other):
+        return _compare_func(self.obj, other.obj) <= 0
+      def __ge__(self, other):
+        return _compare_func(self.obj, other.obj) >= 0
+      def __ne__(self, other):
+        return _compare_func(self.obj, other.obj) != 0
+
+    return list(sorted(params, key=_Key, reverse=reverse))
 
   @rpc_export_function
   async def get_params(self, params):
