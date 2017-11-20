@@ -164,8 +164,10 @@ def test_format_job_count(mock_colored):
 async def test_format_estimated_time(mock_colored, mock_estimator):
   mock_colored.side_effect = lambda s, *args, **kwargs: s
 
-  async def _estimate_remaining_time(state, oneshot):
-    return 10., {}
+  remaining_time = 10.
+
+  async def _estimate_remaining_time(state, oneshot, use_similar):
+    return remaining_time, {}
 
   mock_estimator.estimate_remaining_time.side_effect = _estimate_remaining_time
 
@@ -178,12 +180,12 @@ async def test_format_estimated_time(mock_colored, mock_estimator):
     'concurrency': 1.1,
   }
 
-  oneshot = False
+  assert (await format_estimated_time(remaining_time, queue_state, True) ==
+          'S:1 F:2 A:3 Q:4  Remaining %ds  Finish by %s  Concurrency 1.1' % (
+            remaining_time,
+            format_local_short(utcnow() + datetime.timedelta(seconds=10))))
 
-  assert (await format_estimated_time(estimator, queue_state, oneshot, True) ==
-          'S:1 F:2 A:3 Q:4  Remaining 10s  Finish by %s  Concurrency 1.1' %
-          format_local_short(utcnow() + datetime.timedelta(seconds=10)))
-
-  assert (await format_estimated_time(estimator, queue_state, oneshot, False) ==
-          'S:1 F:2 A:3 Q:4  Remaining 10s  Finish by %s  Concurrency 1.1' %
-          format_local_short(utcnow() + datetime.timedelta(seconds=10)))
+  assert (await format_estimated_time(10., queue_state, False) ==
+          'S:1 F:2 A:3 Q:4  Remaining %ds  Finish by %s  Concurrency 1.1' % (
+            remaining_time,
+            format_local_short(utcnow() + datetime.timedelta(seconds=10))))
