@@ -72,6 +72,7 @@ class State:
         return
       self._dump_scheduled = False
 
+      self.logger.debug(f'Serializing state for dump')
       state = self._serialize_state()
 
       data = json.dumps(state, sort_keys=True, indent=2)
