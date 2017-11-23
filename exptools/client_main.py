@@ -290,24 +290,33 @@ class CommandHandler:
               await asyncio.wait([gen_next], timeout=interval, loop=self.loop)
 
               if gen_next.done():
-                state = gen_next.result()
+                state = await gen_next
                 # Make a new task to get the next item
                 gen_next = asyncio.ensure_future(watch_state_gen.__anext__(), loop=self.loop)
               yield state
+          except GeneratorExit:
+            # This happens when this generator is stopped (e.g., etc status --stop-empty)
+            # Throw GeneratorExit within watch_state_gen's yield
+            await watch_state_gen.aclose()
+            raise
           except StopAsyncIteration:
             pass
         finally:
           if not gen_next.done():
-            try:
-              await watch_state_gen.aclose()
-            finally:
-              gen_next.cancel()
+            gen_next.cancel()
 
-          try:
-            await gen_next
-          except concurrent.futures.CancelledError:
-            # Ignore CancelledError because we caused it
-            pass
+          # It appears to be conceptually cleaner to wait for gen_next here.
+          # However, this block serves as finalization, which makes it tricky to use await
+          # as the event loop may be terminating now.
+          # Thus, we do not wait for gen_next here;
+          # we rely on garbage collection for awaiting gen_next,
+          # hoping that gen_next does not emit any exception.
+
+          #try:
+          #  await gen_next
+          #except concurrent.futures.CancelledError:
+          #  # Ignore CancelledError because we caused it
+          #  pass
     else:
       if not use_similar:
         state = await self.client.queue.get_state_fast()
