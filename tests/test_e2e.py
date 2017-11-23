@@ -83,6 +83,11 @@ async def add_params(server, paramset, params, loop):
   await run(server, ['add', '-c', '-f', params_json_path, paramset], loop=loop)
 
 
+async def enqueue_params(server, paramset, loop):
+  """Enqueue params in a paramset."""
+  await run(server, ['select', paramset, ':', 'enqueue'], loop=loop)
+
+
 @pytest.mark.asyncio
 async def test_s(capsys, server, loop):
   await run(server, ['--color=no', 's'], loop=loop)
@@ -98,11 +103,7 @@ async def test_s(capsys, server, loop):
 @pytest.mark.asyncio
 async def test_add(capsys, server, loop):
   paramset = 'params'
-  params = [
-    {
-      'command': 'ls',
-    },
-  ]
+  params = [{'command': 'echo'}]
   await add_params(server, paramset, params, loop=loop)
   stdout, stderr = capsys.readouterr()
   # pytest -s
@@ -112,3 +113,20 @@ async def test_add(capsys, server, loop):
   assert re.search(
     r'^Added: %d parameters to %s$' % (len(params), paramset),
     stdout, re.MULTILINE) is not None
+
+
+@pytest.mark.asyncio
+async def test_enqueue(capsys, server, loop):
+  paramset = 'params'
+  params = [{'command': 'echo'}]
+  await add_params(server, paramset, params, loop=loop)
+  await enqueue_params(server, paramset, loop=loop)
+  stdout, stderr = capsys.readouterr()
+  # pytest -s
+  # print(stdout)
+  # print(stderr)
+  assert re.search(r'^Added: %s$' % paramset, stdout, re.MULTILINE) is not None
+  assert re.search(
+    r'^Added: %d parameters to %s$' % (len(params), paramset),
+    stdout, re.MULTILINE) is not None
+  assert re.search(r'^Added: %s queued jobs$' % len(params), stdout, re.MULTILINE) is not None
