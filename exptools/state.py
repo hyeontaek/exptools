@@ -97,10 +97,26 @@ class State:
       self.lock.notify_all()
 
   @rpc_export_generator
-  async def watch_state(self):
+  async def watch_state(self, hold_lock=False):
     """Wait for any changes to the state."""
-    while True:
-      async with self.lock:
+    if hold_lock:
+      while True:
+        async with self.lock:
+          state = self._get_state()
+
+          self.logger.debug(f'State change notified')
+          yield state
+
+          await self.lock.wait()
+    else:
+      while True:
+        async with self.lock:
+          state = self._get_state()
+          if hold_lock:
+            yield state
+
         self.logger.debug(f'State change notified')
-        yield self._get_state()
-        await self.lock.wait()
+        yield state
+
+        async with self.lock:
+          await self.lock.wait()

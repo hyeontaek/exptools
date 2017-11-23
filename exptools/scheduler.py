@@ -133,7 +133,7 @@ class SerialScheduler(Scheduler):
 
   async def schedule(self):
     """Schedule a job."""
-    async for queue_state in self.queue.watch_state():
+    async for queue_state in self.queue.watch_state(hold_lock=True):
       # Ignore the queue change if not running
       if not self.running:
         continue
@@ -192,7 +192,7 @@ class GreedyScheduler(Scheduler):
     import pyomo.environ
     import pyomo.opt
 
-    async for queue_state in self.queue.watch_state():
+    async for queue_state in self.queue.watch_state(hold_lock=True):
       # Ignore the queue change if not running
       if not self.running:
         continue
