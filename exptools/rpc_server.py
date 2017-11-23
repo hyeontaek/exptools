@@ -20,7 +20,7 @@ class Server:
   """Implement a RPC server that exposes internal objects."""
 
   def __init__(self, host, port, secret,
-               registry, history, queue, resolver, scheduler, runner,
+               registry, history, queue, resolver, scheduler, output, runner,
                ready_event, loop):
     self.host = host
     self.port = port
@@ -30,6 +30,7 @@ class Server:
     self.queue = queue
     self.resolver = resolver
     self.scheduler = scheduler
+    self.output = output
     self.runner = runner
     self.ready_event = ready_event
     self.loop = loop
@@ -51,6 +52,7 @@ class Server:
       ('queue', self.queue),
       ('resolver', self.resolver),
       ('scheduler', self.scheduler),
+      ('output', self.output),
       ('runner', self.runner),
     ]
 

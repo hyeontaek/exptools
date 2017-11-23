@@ -479,7 +479,7 @@ class CommandHandler:
     hash_id_pairs = list(zip(old_hash_ids, new_hash_ids))
 
     migrated_param_id_pairs, migrated_hash_id_pairs = (
-      await self.client.runner.migrate(param_id_pairs, hash_id_pairs))
+      await self.client.output.migrate(param_id_pairs, hash_id_pairs))
     migrated_hash_id_pairs = await self.client.history.migrate(hash_id_pairs)
     print(f'Migrated: ' +
           f'{len(migrated_param_id_pairs) + len(migrated_hash_id_pairs)} runner data, ' +
@@ -550,9 +550,9 @@ class CommandHandler:
     if self.args.missing_history:
       valid_hash_ids &= set(await self.client.history.hash_ids())
 
-    param_ids = set(await self.client.runner.param_ids()) - valid_param_ids
-    hash_ids = set(await self.client.runner.hash_ids()) - valid_hash_ids
-    removed_outputs = await self.client.runner.remove_output(list(param_ids), list(hash_ids))
+    param_ids = set(await self.client.output.param_ids()) - valid_param_ids
+    hash_ids = set(await self.client.output.hash_ids()) - valid_hash_ids
+    removed_outputs = await self.client.output.remove(list(param_ids), list(hash_ids))
 
     hash_ids = set(await self.client.history.hash_ids()) - valid_hash_ids
     removed_hash_ids = await self.client.history.remove(list(hash_ids))
@@ -1096,7 +1096,7 @@ class CommandHandler:
       print('Only the first job ID will be used')
     job_id = job_ids[0]
 
-    async for data in self.client.runner.cat_like(job_id, stdout, 'cat', self.unknown_args):
+    async for data in self.client.output.cat_like(job_id, stdout, 'cat', self.unknown_args):
       data = base64.b64decode(data.encode('ascii')).decode('utf-8')
       print(data, end='')
 
@@ -1112,7 +1112,7 @@ class CommandHandler:
       print('Only the first job ID will be used')
     job_id = job_ids[0]
 
-    async for data in self.client.runner.cat_like(job_id, stdout, 'head', self.unknown_args):
+    async for data in self.client.output.cat_like(job_id, stdout, 'head', self.unknown_args):
       data = base64.b64decode(data.encode('ascii')).decode('utf-8')
       print(data, end='')
 
@@ -1128,7 +1128,7 @@ class CommandHandler:
       print('Only the first job ID will be used')
     job_id = job_ids[0]
 
-    async for data in self.client.runner.cat_like(job_id, stdout, 'tail', self.unknown_args):
+    async for data in self.client.output.cat_like(job_id, stdout, 'tail', self.unknown_args):
       data = base64.b64decode(data.encode('ascii')).decode('utf-8')
       print(data, end='')
 

@@ -13,6 +13,7 @@ import sys
 import websockets
 
 from exptools.history import History
+from exptools.output import Output
 from exptools.queue import Queue
 from exptools.registry import Registry
 from exptools.resolver import Resolver
@@ -34,6 +35,7 @@ class Client:
     self.queue = ObjectProxy(self, 'queue', Queue)
     self.resolver = ObjectProxy(self, 'resolver', Resolver)
     self.scheduler = ObjectProxy(self, 'scheduler', Scheduler)
+    self.output = ObjectProxy(self, 'output', Output)
     self.runner = ObjectProxy(self, 'runner', Runner)
 
     self.max_size = 1048576

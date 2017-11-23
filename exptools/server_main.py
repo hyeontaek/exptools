@@ -12,6 +12,7 @@ import secrets
 
 from exptools.history import History
 from exptools.magic import Magic
+from exptools.output import Output
 from exptools.queue import Queue
 from exptools.registry import Registry
 from exptools.resolver import Resolver
@@ -85,14 +86,15 @@ async def server_main(argv, ready_event, loop):
   queue = Queue(args.queue_file, registry, history, loop)
   scheduler = get_scheduler(args.scheduler_type)(
     args.scheduler_mode, args.scheduler_file, queue, history, loop)
+  output = Output(args.output_dir, queue, loop)
 
-  runner = Runner(args.output_dir, queue, scheduler, loop)
+  runner = Runner(queue, scheduler, output, loop)
 
   resolver = Resolver(registry, history, queue, runner, loop)
 
   server = Server(
     args.host, args.port, secret,
-    registry, history, queue, resolver, scheduler, runner,
+    registry, history, queue, resolver, scheduler, output, runner,
     ready_event, loop)
 
   state_tasks = [
@@ -100,6 +102,7 @@ async def server_main(argv, ready_event, loop):
     asyncio.ensure_future(history.run_forever(), loop=loop),
     asyncio.ensure_future(queue.run_forever(), loop=loop),
     asyncio.ensure_future(scheduler.run_forever(), loop=loop),
+    asyncio.ensure_future(output.run_forever(), loop=loop),
   ]
 
   execution_tasks = [
