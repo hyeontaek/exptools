@@ -3,8 +3,17 @@ import datetime
 import asynctest.mock
 import pytest
 
-from exptools.time import *
-
+from exptools.time import (
+  utcnow, localnow,
+  as_local, as_utc,
+  format_utc, format_utc_short, format_local, format_local_short,
+  parse_utc, parse_local,
+  diff_sec,
+  format_sec, format_sec_fixed, format_sec_short,
+  job_elapsed_time,
+  format_job_count,
+  format_estimated_time,
+)
 
 class _mocked_datetime(datetime.datetime):
   @classmethod
@@ -159,19 +168,11 @@ def test_format_job_count(mock_colored):
 
 @pytest.mark.asyncio
 @asynctest.mock.patch('datetime.datetime', new=_mocked_datetime)
-@asynctest.mock.patch('exptools.estimator.Estimator')
 @asynctest.mock.patch('termcolor.colored')
-async def test_format_estimated_time(mock_colored, mock_estimator):
+async def test_format_estimated_time(mock_colored):
   mock_colored.side_effect = lambda s, *args, **kwargs: s
 
   remaining_time = 10.
-
-  async def _estimate_remaining_time(state, oneshot, use_similar):
-    return remaining_time, {}
-
-  mock_estimator.estimate_remaining_time.side_effect = _estimate_remaining_time
-
-  estimator = mock_estimator
 
   queue_state = {
     'finished_jobs': [{'succeeded': True}, {'succeeded': False}, {'succeeded': False}],
