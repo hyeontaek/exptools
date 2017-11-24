@@ -88,6 +88,19 @@ async def enqueue_params(server, paramset, loop):
   await run(server, ['select', paramset, ':', 'enqueue'], loop=loop)
 
 
+async def start(server, loop, oneshot=False):
+  """Start the scheduler."""
+  if not oneshot:
+    await run(server, ['start'], loop=loop)
+  else:
+    await run(server, ['oneshot'], loop=loop)
+
+
+async def wait_empty(server, loop):
+  """Wait until the job queue becomes empty."""
+  await run(server, ['--color=no', 's', '--follow', '--stop-empty'], loop=loop)
+
+
 def assert_line(output, line):
   """Check if line exists in output."""
   assert re.search(line, output, re.MULTILINE) is not None
@@ -96,7 +109,7 @@ def assert_line(output, line):
 @pytest.mark.asyncio
 async def test_s(capsys, server, loop):
   await run(server, ['--color=no', 's'], loop=loop)
-  stdout, stderr = capsys.readouterr()
+  stdout, _ = capsys.readouterr()
   print(stdout)
   assert_line(stdout, r'^S:0 F:0 A:0 Q:0  Remaining 0s  Finish by .*  Concurrency 1\.0$')
 
@@ -104,9 +117,9 @@ async def test_s(capsys, server, loop):
 @pytest.mark.asyncio
 async def test_add(capsys, server, loop):
   paramset = 'params'
-  params = [{'command': 'echo'}]
+  params = [{'command': ['echo']}]
   await add_params(server, paramset, params, loop=loop)
-  stdout, stderr = capsys.readouterr()
+  stdout, _ = capsys.readouterr()
   print(stdout)
   assert_line(stdout, r'^Added: %s$' % paramset)
   assert_line(stdout, r'^Added: %d parameters to %s$' % (len(params), paramset))
@@ -115,11 +128,27 @@ async def test_add(capsys, server, loop):
 @pytest.mark.asyncio
 async def test_enqueue(capsys, server, loop):
   paramset = 'params'
-  params = [{'command': 'echo'}]
+  params = [{'command': ['echo']}]
   await add_params(server, paramset, params, loop=loop)
   await enqueue_params(server, paramset, loop=loop)
-  stdout, stderr = capsys.readouterr()
+  stdout, _ = capsys.readouterr()
   print(stdout)
   assert_line(stdout, r'^Added: %s$' % paramset)
   assert_line(stdout, r'^Added: %d parameters to %s$' % (len(params), paramset))
   assert_line(stdout, r'^Added: %s queued jobs$' % len(params))
+
+
+@pytest.mark.asyncio
+async def test_run(capsys, server, loop):
+  paramset = 'params'
+  params = [{'command': ['echo']}]
+  await add_params(server, paramset, params, loop=loop)
+  await enqueue_params(server, paramset, loop=loop)
+  await start(server, loop=loop)
+  await wait_empty(server, loop=loop)
+  stdout, _ = capsys.readouterr()
+  print(stdout)
+  assert_line(stdout, r'^Added: %s$' % paramset)
+  assert_line(stdout, r'^Added: %d parameters to %s$' % (len(params), paramset))
+  assert_line(stdout, r'^Added: %s queued jobs$' % len(params))
+  assert_line(stdout, r'^S:1 F:0 A:0 Q:0  Remaining 0s  Finish by .*  Concurrency 1\.0$')
