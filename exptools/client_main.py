@@ -1057,8 +1057,9 @@ class CommandHandler:
     job_ids = await self.client.queue.add(param_ids, not self.args.top)
     print(f'Added: {len(job_ids)} queued jobs')
 
-    removed_job_ids = await self.client.queue.remove_finished(finished_job_ids)
-    print(f'Removed: {len(removed_job_ids)} finished jobs')
+    if self.args.dismiss:
+      removed_job_ids = await self.client.queue.remove_finished(finished_job_ids)
+      print(f'Removed: {len(removed_job_ids)} finished jobs')
 
   @arg_export('command_kill')
   @arg_define_exclusive('signal_type',
